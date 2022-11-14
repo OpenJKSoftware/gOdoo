@@ -45,6 +45,7 @@
     "files.insertFinalNewline": true,
     "editor.snippetSuggestions": "bottom",
     "editor.formatOnSave": true,
+    "git.scanRepositories": ["/odoo/workspace", "/odoo/odoo"],
     "editor.codeActionsOnSave": {
       "source.sortImports": true
     },

@@ -34,14 +34,6 @@ repos:
       - id: fix-encoding-pragma
         args: ["--remove"]
 
-  - repo: local
-    hooks:
-      - id: poetry check
-        name: poetry-check
-        entry: bash -c 'poetry check && poetry lock --check'
-        language: system
-        pass_filenames: false
-
   - repo: https://github.com/OCA/pylint-odoo
     rev: v8.0.16
     hooks:

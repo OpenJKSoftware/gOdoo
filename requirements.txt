@@ -1,7 +1,11 @@
-#Requirements for Scripts
-phonenumbers==8.12.45
-premailer==3.10.0
-pyzbar==0.1.9
-pdf2image==1.16.0
-jingtrang==0.1.2
-mock==4.0.3
+# Dev Depends
+pylint-odoo==8.0.16
+inotify==0.2.10
+ipdb==0.13.9
+debugpy==1.6.0
+black==22.10.0
+isort==5.10.1
+pre_commit==2.20.0
+watchdog==2.1.7
+py-spy==0.3.11
+rope==0.23.0

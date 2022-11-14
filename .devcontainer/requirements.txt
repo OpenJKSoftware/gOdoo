@@ -1,2 +1,0 @@
-# Devrequirements for Odoo
-

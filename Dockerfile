@@ -2,7 +2,7 @@
 # This file uses Multiple Build Stages
 
 ARG USERNAME=ContainerUser
-
+ARG WORKSPACE=/odoo/workspace
 
 FROM registry.gitlab.com/jksoftware1/docker-python:main as odoo_depends
 
@@ -59,19 +59,18 @@ USER root
 
 # Adds Packages needed for this Odoo Workspace
 FROM node_npm as python_workspace
-COPY requirements.txt /tmp/workspace_reqs.txt
-RUN pip3 install -r /tmp/workspace_reqs.txt --no-warn-script-location --upgrade
-COPY odoo_repospec.yml /odoo/build_repospec.yml
-COPY ./thirdparty /tmp/thirdparty_zip
-COPY ./wodoo /odoo/wodoo_lib/wodoo
-COPY pyproject.toml /odoo/wodoo_lib/pyproject.toml
-RUN set -x; pip install --editable /odoo/wodoo_lib
+ARG WORKSPACE
+RUN echo "alias wodoo='python3 -m wodoo'" >> /etc/bash.bashrc
+COPY odoo_repospec.yml pyproject.toml README.md $WORKSPACE/
+COPY wodoo ${WORKSPACE}/wodoo
+COPY thirdparty ${WORKSPACE}/thirdparty
+RUN pip install -e $WORKSPACE
 # Wodoo Default Env Vars:
 ENV ODOO_MAIN_FOLDER=/odoo/odoo \
-    ODOO_GITSPEC=/odoo/build_repospec.yml \
+    ODOO_GITSPEC=$WORKSPACE/odoo_repospec.yml \
     ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
-    ODOO_THIRDPARTY_ZIP_LOCATION=/tmp/thirdparty_zip \
-    ODOO_WORKSPACE_ADDON_LOCATION=/odoo/workspace/addons \
+    ODOO_THIRDPARTY_ZIP_LOCATION=$WORKSPACE/thirdparty \
+    ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
     ODOO_CONF_PATH=config/odoo.conf \
     ODOO_BOOTSTRAP_FLAG=/var/lib/odoo/bootstrap_flag \
     ODOO_MAIN_DB=odoo \
@@ -81,8 +80,8 @@ ENV ODOO_MAIN_FOLDER=/odoo/odoo \
     ODOO_DB_HOST=db \
     ODOO_DB_PORT=5432
 # Path Env Vars:
-ENV PYTHONPATH="$ODOO_MAIN_FOLDER:/odoo:$PYTHONPATH" \
-    PATH="$ODOO_MAIN_FOLDER:/odoo/workspace/scripts:/odoo/wodoo:$PATH"
+ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
+    PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:/odoo/wodoo:$PATH"
 ARG SOURCE_CLONE_ARCHIVE=False
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
@@ -102,10 +101,11 @@ RUN --mount=type=ssh set -x; \
 # I'd really like to somehow get the Requirements.Txt in another Parralel Task next to the Clone.
 FROM python_workspace as base_odoo
 ARG USERNAME
+ARG WORKSPACE
 COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
 COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
 EXPOSE 8069 8071 8072
-WORKDIR /odoo/workspace
+WORKDIR $WORKSPACE
 RUN set -x; \
     mkdir -p /etc/odoo/ \
     && chown -R ${USERNAME}:${USERNAME} /etc/odoo/ \
@@ -119,9 +119,10 @@ RUN set -x; \
 # Image for Devserver (Start in Entrypoint)
 FROM base_odoo as server
 ARG USERNAME
+ARG WORKSPACE
 RUN rm -rf {/tmp/*,/var/cache/apt}
 COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
-COPY --chown=${USERNAME}:${USERNAME} ./scripts /odoo/workspace/scripts
+COPY --chown=${USERNAME}:${USERNAME} ./scripts $WORKSPACE/scripts
 USER ${USERNAME}
 ENTRYPOINT [ "python3 -m wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
 
@@ -129,9 +130,8 @@ ENTRYPOINT [ "python3 -m wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
 # Stage for testing, because we need the workspace with git available for delta checking
 FROM base_odoo as test
 ARG USERNAME
-ADD --chown=${USERNAME}:${USERNAME} . /odoo/workspace
-ENV ODOO_GITSPEC=/odoo/workspace/odoo_repospec.yml \
-    ODOO_THIRDPARTY_ZIP_LOCATION=/odoo/workspace/thirdparty
+ARG WORKSPACE
+ADD --chown=${USERNAME}:${USERNAME} . $WORKSPACE
 USER ${USERNAME}
 ENTRYPOINT [ "python3 -m wodoo test all" ]
 
@@ -139,21 +139,20 @@ ENTRYPOINT [ "python3 -m wodoo test all" ]
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
 FROM base_odoo as devcontainer
 ARG USERNAME
+ARG WORKSPACE
+COPY ./requirements.txt $WORKSPACE/requirements.txt
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
-    && apt-get -y install --no-install-recommends postgresql-client-15 default-jdk netcat
-RUN rm -rf {/tmp/*,/var/cache/apt}
-
-ENV ODOO_GITSPEC=/odoo/workspace/odoo_repospec.yml \
-    ODOO_THIRDPARTY_ZIP_LOCATION=/odoo/workspace/thirdparty
+    && apt-get -y install --no-install-recommends postgresql-client-15 default-jdk netcat \
+    && pip install -r $WORKSPACE/requirements.txt
+# Separate statement, because it removes cache
+RUN rm -rf {/tmp/*,/var/cache/apt,$WORKSPACE/*}
 
 USER ${USERNAME}
-COPY .devcontainer/requirements.txt /tmp/dev_reqs.txt
 RUN set -x; \
     sudo mkdir -p -m 0770 ~/.vscode-server/extensions \
     && sudo chown -R ${USERNAME} ~/.vscode-server \
-    && pip3 install -r /tmp/dev_reqs.txt --no-warn-script-location --upgrade \
     && npm install -g prettier eslint
 CMD [ "sleep", "infinity" ]

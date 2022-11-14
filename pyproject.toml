@@ -1,5 +1,5 @@
 [project]
-name = "open-wodoo"
+name = "wodoo"
 version = "0.0.1"
 description = "Wrapper around Odoo-Bin with some convinience RPC functions."
 readme = "README.md"
@@ -22,25 +22,11 @@ dependencies = [
 ]
 requires-python = ">=3.8"
 
-[project.optional-dependencies]
-dev = [
-    "pylint-odoo==8.0.16",
-    "inotify==0.2.10",
-    "ipdb==0.13.9",
-    "debugpy==1.6.0",
-    "black==22.10.0",
-    "isort==5.10.1",
-    "pre_commit==2.20.0",
-    "watchdog==2.1.7",
-    "py-spy==0.3.11",
-    "rope==0.23.0",
-]
-
 [project.urls]
 Homepage = "https://gitlab.com/jksoftware1/open-wodoo"
 
-[project.scripts]
-wodoo = "wodoo.__main__:main"
+[tool.setuptools.packages]
+find = {}  # Scan the project directory with the default parameters
 
 [build-system]
 requires = ["setuptools>=61.0.0", "wheel"]
