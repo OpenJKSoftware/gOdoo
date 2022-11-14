@@ -1,0 +1,70 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "LaunchOdoo",
+      "type": "python",
+      "request": "launch",
+      "stopOnEntry": false,
+      "program": "/odoo/odoo/odoo-bin",
+      "justMyCode": false,
+      "args": [
+        "-c",
+        "${workspaceRoot}/config/odoo.conf",
+        "--dev",
+        "xml,qweb",
+        "--log-level",
+        "debug",
+        // "--log-sql",
+        "--log-request",
+        // "--log-response",
+        "--workers",
+        "0"
+      ],
+      "cwd": "${workspaceRoot}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "LaunchOdooTests",
+      "type": "python",
+      "request": "launch",
+      "stopOnEntry": false,
+      "program": "/odoo/odoo/odoo-bin",
+      "justMyCode": false,
+      "args": [
+        "-c",
+        "${workspaceRoot}/config/odoo.conf",
+        "--log-level",
+        "test",
+        "-u",
+        "module_name",
+        "--test-tags",
+        "/module_name",
+        "--workers",
+        "0",
+        "--stop-after-init"
+      ],
+      "cwd": "${workspaceRoot}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Wodoo",
+      "type": "python",
+      "request": "launch",
+      "justMyCode": false,
+      "module": "wodoo",
+      "args": [
+        "--help"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Python: Aktuelle Datei",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "args": [],
+      "console": "integratedTerminal"
+    }
+  ]
+}

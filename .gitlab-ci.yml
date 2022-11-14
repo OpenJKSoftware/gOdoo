@@ -1,0 +1,117 @@
+default:
+  tags:
+      - "amd64"
+      - "docker"
+
+variables:
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  IMAGE_TAG_TESTING: $IMAGE_TAG-testing
+  POSTGRES_DB: postgres
+  POSTGRES_USER: odoo_user
+  POSTGRES_PASSWORD: odoo
+  POSTGRES_HOST_AUTH_METHOD: trust
+  ODOO_DB_HOST: postgres
+  ODOO_TEST_SKIP_MODULES: ""
+
+stages:
+  - lint
+  - build
+  - test
+  - push
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      variables:
+        TEST_TARGET: changes:$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+        UPGRADE_FLAG_BRANCH: --branch $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables:
+        TEST_TARGET: all
+        UPGRADE_FLAG_BRANCH: --branch $CI_DEFAULT_BRANCH
+
+.docker_login: &docker_login
+  - echo "$CI_BUILD_TOKEN" | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
+
+.ssh_config: &ssh_config
+  - eval $(ssh-agent -s)
+  # - ssh-add <(echo "$SSH_PRIVATE_KEY") # Add Private keys here
+
+
+pylint:
+  stage: lint
+  image: python:3.8-alpine
+  before_script:
+    - pip install pylint-odoo==8.0.16 pylint-gitlab==1.1.0
+  script:
+    - pylint --version
+    - pylint --exit-zero --output-format=pylint_gitlab.GitlabCodeClimateReporter addons wodoo > codeclimate.json
+    - pylint --exit-zero --output-format=pylint_gitlab.GitlabPagesHtmlReporter addons wodoo > pylint.html
+    - pylint addons wodoo
+  artifacts:
+    when: always
+    paths:
+      - pylint.html
+    reports:
+      codequality: codeclimate.json
+
+build:
+  stage: build
+  image: docker:20.10.21
+  services:
+  - docker:20.10.21-dind
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: full
+  before_script:
+    - *docker_login
+    - *ssh_config
+    - docker pull $CI_REGISTRY_IMAGE:$CI_DEFAULT_BRANCH || true
+  script:
+    - echo "Building Image and tagging as '$IMAGE_TAG_TESTING'"
+    - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --ssh default --pull --progress=plain --tag $IMAGE_TAG_TESTING
+      --target test --build-arg SOURCE_CLONE_ARCHIVE=true --cache-from $CI_REGISTRY_IMAGE:main .
+    - docker push $IMAGE_TAG_TESTING
+
+test:
+  stage: test
+  variables:
+    GIT_STRATEGY: none
+  image:
+    name: $IMAGE_TAG_TESTING
+    entrypoint: [""]
+  rules:
+    - changes:
+        - odoo_repospec.yml
+      variables:
+        TEST_TARGET: all
+    - changes:
+        - "*"
+  services:
+    - name: postgres:15-alpine
+  before_script:
+    - | # Ensure that the MR Target Branch is fetched in the git repo.
+      if [ ! -z $CI_MERGE_REQUEST_TARGET_BRANCH_NAME ]
+      then
+        cd /odoo/workspace/
+        git remote set-url origin "https://gitlab-ci-token:$CI_JOB_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_PATH.git"
+        git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME:$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      fi
+  script:
+    - echo Testing with Target $TEST_TARGET
+    - "python3 -m wodoo --verbose test $TEST_TARGET"
+
+push image:
+  stage: push
+  image: docker:20.10.21
+  services:
+    - docker:20.10.21-dind
+  only:
+    - branches
+  before_script:
+    - *docker_login
+    - docker pull $IMAGE_TAG_TESTING
+  script:
+    - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --progress=plain --tag $IMAGE_TAG --target server --build-arg
+      SOURCE_CLONE_ARCHIVE=true --cache-from $IMAGE_TAG_TESTING .
+    - docker push $IMAGE_TAG

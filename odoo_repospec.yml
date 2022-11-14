@@ -1,0 +1,7 @@
+odoo:
+  url: https://github.com/odoo/odoo/
+  branch: 16.0
+# thirdparty:
+#   OCA:
+#     - url: https://github.com/OCA/social.git
+#       commit: da880bd6bae77bec6ec1954b8fcef9b5bcb901ad

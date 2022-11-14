@@ -1,0 +1,158 @@
+[project]
+name = "open-wodoo"
+version = "0.0.1"
+description = "Wrapper around Odoo-Bin with some convinience RPC functions."
+readme = "README.md"
+authors = [{ name = "Joshua Kreuder", email = "Joshua_Kreuder@outlook.de" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: LGPL-3 ",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["odoo","wodoo"]
+dependencies = [
+    "python-dotenv==0.20.0",
+    "ruamel.yaml==0.17.21",
+    "typer>=0.4.1",
+    "GitPython==3.1.27",
+    "rich==12.6.0",
+    "wodoo-rpc==0.0.2",
+    "openupgradelib==3.3.4",
+]
+requires-python = ">=3.8"
+
+[project.optional-dependencies]
+dev = [
+    "pylint-odoo==8.0.16",
+    "inotify==0.2.10",
+    "ipdb==0.13.9",
+    "debugpy==1.6.0",
+    "black==22.10.0",
+    "isort==5.10.1",
+    "pre_commit==2.20.0",
+    "watchdog==2.1.7",
+    "py-spy==0.3.11",
+    "rope==0.23.0",
+]
+
+[project.urls]
+Homepage = "https://gitlab.com/jksoftware1/open-wodoo"
+
+[project.scripts]
+wodoo = "wodoo.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+profile="black"
+multi_line_output=3
+include_trailing_comma=true
+force_grid_wrap=0
+combine_as_imports=true
+use_parentheses=true
+line_length=120
+known_odoo="odoo"
+known_odoo_addons="odoo.addons"
+sections="FUTURE,STDLIB,THIRDPARTY,ODOO,ODOO_ADDONS,FIRSTPARTY,LOCALFOLDER"
+default_section="THIRDPARTY"
+ensure_newline_before_comments=true
+
+[tool.pylint.format]
+max-line-length=120
+
+[tool.pylint.master]
+init-hook='import sys; sys.path.append("/odoo/odoo")'
+load-plugins="pylint_odoo"
+score="n"
+
+[tool.pylint.odoolint]
+readme-template-url="https://github.com/OCA/maintainer-tools/blob/master/template/module/README.rst"
+manifest-required-authors="WEMPE Elektronic GmbH"
+manifest-required-keys="license"
+manifest-deprecated-keys="active"
+license-allowed="AGPL-3,GPL-2,GPL-2 or any later version,GPL-3,GPL-3 or any later version,LGPL-3,Other proprietary"
+valid-odoo-versions="14.0"
+
+[tool.pylint.'MESSAGES CONTROL']
+disable="all"
+
+enable=[
+    "anomalous-backslash-in-string",
+    "api-one-deprecated",
+    "api-one-multi-together",
+    "assignment-from-none",
+    "attribute-deprecated",
+    "class-camelcase",
+    "dangerous-default-value",
+    "dangerous-view-replace-wo-priority",
+    "development-status-allowed",
+    "duplicate-id-csv",
+    "duplicate-key",
+    "duplicate-xml-fields",
+    "duplicate-xml-record-id",
+    "eval-referenced",
+    "eval-used",
+    "incoherent-interpreter-exec-perm",
+    "license-allowed",
+    "manifest-author-string",
+    "manifest-deprecated-key",
+    "manifest-required-author",
+    "manifest-required-key",
+    "manifest-version-format",
+    "method-compute",
+    "method-inverse",
+    "method-required-super",
+    "method-search",
+    "openerp-exception-warning",
+    "pointless-statement",
+    "pointless-string-statement",
+    "print-used",
+    "redundant-keyword-arg",
+    "redundant-modulename-xml",
+    "reimported",
+    "relative-import",
+    "return-in-init",
+    "rst-syntax-error",
+    "sql-injection",
+    "too-few-format-args",
+    "translation-field",
+    "translation-required",
+    "unreachable",
+    "use-vim-comment",
+    "wrong-tabs-instead-of-spaces",
+    "xml-syntax-error",
+    # messages that do not cause the lint step to fail
+    "consider-merging-classes-inherited",
+    "create-user-wo-reset-password",
+    "dangerous-filter-wo-user",
+    "deprecated-module",
+    "file-not-used",
+    "invalid-commit",
+    "missing-manifest-dependency",
+    "missing-newline-extrafiles",
+    # missing-readme",
+    "no-utf8-coding-comment",
+    "odoo-addons-relative-import",
+    "old-api7-method-defined",
+    "redefined-builtin",
+    "too-complex",
+    "unnecessary-utf8-coding-comment",
+    "unidiomatic-typecheck",
+    "unsubscriptable-object",
+    "missing-return",
+    # "use-a-generator",
+    "no-else-raise",
+    "useless-return"
+    ]
+
+
+[tool.pylint.reports]
+msg-template="{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}"
+output-format="colorized"
+reports="no"

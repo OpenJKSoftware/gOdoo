@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "../odoo"
+    },
+    {
+      "path": "../thirdparty"
+    },
+    {
+      "path": "../wodoo"
+    }
+  ],
+}

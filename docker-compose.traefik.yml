@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  app:
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.service=${COMPOSE_PROJECT_NAME}
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=websecure
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=${TRAEFIK_HOST_RULE}
+      - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=8069
+
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.service=${COMPOSE_PROJECT_NAME}_longpoll
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.entrypoints=websecure
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.rule=(${TRAEFIK_HOST_RULE}) && PathPrefix(`/longpolling`)
+      - traefik.http.services.${COMPOSE_PROJECT_NAME}_longpoll.loadbalancer.server.port=8072
+
+networks:
+  traefik:
+    external: true

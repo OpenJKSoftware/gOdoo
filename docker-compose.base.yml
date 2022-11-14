@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      pull: true
+      context: .
+      ssh:
+        - default
+      target: server
+    init: true
+    command: ""
+    env_file:
+      - .env
+    depends_on:
+      - db
+    volumes:
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "odoo_web:/var/lib/odoo"
+      - "odoo_thirdparty:/odoo/thirdparty"
+      - "${ODOO_CONF_PATH:-./config}:/config"
+
+  db:
+    image: postgres:15-alpine
+    pull_policy: always
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=${ODOO_DB_PASSWORD:-odoo}
+      - POSTGRES_USER=${ODOO_DB_USER:-odoo_user}
+    volumes:
+      - "db:/var/lib/postgresql/data"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "./config/postgresql.conf:/etc/postgresql/postgresql.conf"
+
+volumes:
+  db:
+  odoo_web:
+  odoo_thirdparty:

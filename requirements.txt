@@ -1,0 +1,7 @@
+#Requirements for Scripts
+phonenumbers==8.12.45
+premailer==3.10.0
+pyzbar==0.1.9
+pdf2image==1.16.0
+jingtrang==0.1.2
+mock==4.0.3

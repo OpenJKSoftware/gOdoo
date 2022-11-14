@@ -1,0 +1,159 @@
+# Odoo Docker Container
+# This file uses Multiple Build Stages
+
+ARG USERNAME=ContainerUser
+
+
+FROM registry.gitlab.com/jksoftware1/docker-python:main as odoo_depends
+
+# Install Dependencies
+USER root
+RUN --mount=type=cache,target=/var/cache/apt set -x; \
+    apt-get update \
+    && apt-get -y install --no-install-recommends  \
+    libxml2-dev \
+    libxslt1-dev \
+    libldap2-dev \
+    libsasl2-dev \
+    libtiff5-dev \
+    libjpeg62-turbo-dev \
+    libopenjp2-7-dev \
+    zlib1g-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libwebp-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libxcb1-dev \
+    libpq-dev \
+    libssl-dev \
+    fonts-noto-cjk \
+    python3-dev \
+    python3-libsass \
+    graphviz \
+    && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.buster_amd64.deb \
+    && echo 'ea8277df4297afc507c61122f3c349af142f31e5 wkhtmltox.deb' | sha1sum -c - \
+    && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
+    && rm -rf wkhtmltox.deb
+
+FROM odoo_depends as node_npm
+ARG USERNAME
+ENV NVM_DIR=/usr/local/nvm \
+    NODE_VERSION=16.17.1
+RUN install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
+
+USER ${USERNAME}
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+# install node and npm
+RUN source $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && npm config -g set cafile /etc/ssl/certs/ca-certificates.crt \
+    && nvm use default
+# add node and npm to path so the commands are available
+ENV NODE_PATH=$NVM_DIR/v$NODE_VERSION/lib/node_modules \
+    PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH\
+    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+USER root
+
+
+# Adds Packages needed for this Odoo Workspace
+FROM node_npm as python_workspace
+COPY requirements.txt /tmp/workspace_reqs.txt
+RUN pip3 install -r /tmp/workspace_reqs.txt --no-warn-script-location --upgrade
+COPY odoo_repospec.yml /odoo/build_repospec.yml
+COPY ./thirdparty /tmp/thirdparty_zip
+COPY ./wodoo /odoo/wodoo_lib/wodoo
+COPY pyproject.toml /odoo/wodoo_lib/pyproject.toml
+RUN set -x; pip install --editable /odoo/wodoo_lib
+# Wodoo Default Env Vars:
+ENV ODOO_MAIN_FOLDER=/odoo/odoo \
+    ODOO_GITSPEC=/odoo/build_repospec.yml \
+    ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
+    ODOO_THIRDPARTY_ZIP_LOCATION=/tmp/thirdparty_zip \
+    ODOO_WORKSPACE_ADDON_LOCATION=/odoo/workspace/addons \
+    ODOO_CONF_PATH=config/odoo.conf \
+    ODOO_BOOTSTRAP_FLAG=/var/lib/odoo/bootstrap_flag \
+    ODOO_MAIN_DB=odoo \
+    ODOO_DB_FILTER=odoo \
+    ODOO_DB_PASSWORD=odoo \
+    ODOO_DB_USER=odoo_user \
+    ODOO_DB_HOST=db \
+    ODOO_DB_PORT=5432
+# Path Env Vars:
+ENV PYTHONPATH="$ODOO_MAIN_FOLDER:/odoo:$PYTHONPATH" \
+    PATH="$ODOO_MAIN_FOLDER:/odoo/workspace/scripts:/odoo/wodoo:$PATH"
+ARG SOURCE_CLONE_ARCHIVE=False
+ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
+
+
+FROM python_workspace as odoo_source
+RUN set -x ; \
+    python3 -m wodoo update --update-mode odoo \
+    && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
+
+FROM python_workspace as oodo_addon_source
+RUN --mount=type=ssh set -x; \
+    mkdir -p /odoo/thirdparty \
+    && python3 -m wodoo update --update-mode thirdparty \
+    && python3 -m wodoo update --update-mode zip
+
+# Copies Source to image and installs Odoo Depends.
+# I'd really like to somehow get the Requirements.Txt in another Parralel Task next to the Clone.
+FROM python_workspace as base_odoo
+ARG USERNAME
+COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
+COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
+EXPOSE 8069 8071 8072
+WORKDIR /odoo/workspace
+RUN set -x; \
+    mkdir -p /etc/odoo/ \
+    && chown -R ${USERNAME}:${USERNAME} /etc/odoo/ \
+    && mkdir -p /var/lib/odoo/ \
+    && chown -R ${USERNAME}:${USERNAME} /var/lib/odoo/ \
+    && sudo -u ${USERNAME} pip3 install -r $ODOO_MAIN_FOLDER/requirements.txt --no-warn-script-location --upgrade \
+    && mkdir -p {$ODOO_THIRDPARTY_LOCATION, $(basename $ODOO_CONF_PATH)} \
+    && chown ${USERNAME}:${USERNAME} {$ODOO_THIRDPARTY_LOCATION, $(basename $ODOO_CONF_PATH)}
+
+
+# Image for Devserver (Start in Entrypoint)
+FROM base_odoo as server
+ARG USERNAME
+RUN rm -rf {/tmp/*,/var/cache/apt}
+COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
+COPY --chown=${USERNAME}:${USERNAME} ./scripts /odoo/workspace/scripts
+USER ${USERNAME}
+ENTRYPOINT [ "python3 -m wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
+
+
+# Stage for testing, because we need the workspace with git available for delta checking
+FROM base_odoo as test
+ARG USERNAME
+ADD --chown=${USERNAME}:${USERNAME} . /odoo/workspace
+ENV ODOO_GITSPEC=/odoo/workspace/odoo_repospec.yml \
+    ODOO_THIRDPARTY_ZIP_LOCATION=/odoo/workspace/thirdparty
+USER ${USERNAME}
+ENTRYPOINT [ "python3 -m wodoo test all" ]
+
+
+# Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
+FROM base_odoo as devcontainer
+ARG USERNAME
+RUN --mount=type=cache,target=/var/cache/apt set -x; \
+    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+    && apt-get update \
+    && apt-get -y install --no-install-recommends postgresql-client-15 default-jdk netcat
+RUN rm -rf {/tmp/*,/var/cache/apt}
+
+ENV ODOO_GITSPEC=/odoo/workspace/odoo_repospec.yml \
+    ODOO_THIRDPARTY_ZIP_LOCATION=/odoo/workspace/thirdparty
+
+USER ${USERNAME}
+COPY .devcontainer/requirements.txt /tmp/dev_reqs.txt
+RUN set -x; \
+    sudo mkdir -p -m 0770 ~/.vscode-server/extensions \
+    && sudo chown -R ${USERNAME} ~/.vscode-server \
+    && pip3 install -r /tmp/dev_reqs.txt --no-warn-script-location --upgrade \
+    && npm install -g prettier eslint
+CMD [ "sleep", "infinity" ]
