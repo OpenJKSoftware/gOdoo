@@ -11,6 +11,7 @@ from .helper import set_logging
 sys.path.append(Path(__file__).parent)
 from dotenv import load_dotenv
 
+
 def main_callback(
     ctx: typer.Context,
     odoo_main_path: Path = typer.Option(..., envvar="ODOO_MAIN_FOLDER", help="folder with odoo-bin"),
@@ -37,7 +38,8 @@ def main_callback(
     )
     set_logging(verbose=verbose)
 
-def main():
+
+def main_cli():
     load_dotenv(".env", override=True)
 
     app = typer.Typer(callback=main_callback)
@@ -53,7 +55,3 @@ def main():
     app.command("shell", help="Shell into Odoo")(shell.shell)
     app.command("uninstall", help="Uninstall Modules")(shell.uninstall_modules)
     app()
-
-
-if __name__ == "__main__":
-    main()

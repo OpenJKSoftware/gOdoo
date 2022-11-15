@@ -54,18 +54,18 @@ RUN source $NVM_DIR/nvm.sh \
 ENV NODE_PATH=$NVM_DIR/v$NODE_VERSION/lib/node_modules \
     PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH\
     NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-USER root
 
 
 # Adds Packages needed for this Odoo Workspace
 FROM node_npm as python_workspace
 ARG WORKSPACE
-RUN echo "alias wodoo='python3 -m wodoo'" >> /etc/bash.bashrc
+WORKDIR $WORKSPACE
+# RUN echo "alias wodoo='python3 -m wodoo'" >> /etc/bash.bashrc
 # Copy everything to $WORKSPACE. Installs Wodoo from there. In the Devcontainer stage we remove all the files and replace the folder with a Bind-Mount
-COPY odoo_repospec.yml pyproject.toml README.md $WORKSPACE/
-COPY wodoo ${WORKSPACE}/wodoo
-COPY thirdparty ${WORKSPACE}/thirdparty
-RUN pip install -e $WORKSPACE
+COPY --chown=${USERNAME}:${USERNAME} odoo_repospec.yml pyproject.toml README.md $WORKSPACE/
+COPY --chown=${USERNAME}:${USERNAME} open_wodoo ${WORKSPACE}/open_wodoo
+COPY --chown=${USERNAME}:${USERNAME} thirdparty ${WORKSPACE}/thirdparty
+RUN poetry install && chown -R ${USERNAME}:${USERNAME} ${WORKSPACE}
 # Wodoo Default Env Vars:
 ENV ODOO_MAIN_FOLDER=/odoo/odoo \
     ODOO_GITSPEC=$WORKSPACE/odoo_repospec.yml \
@@ -89,14 +89,14 @@ ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
 FROM python_workspace as odoo_source
 RUN set -x ; \
-    python3 -m wodoo update --update-mode odoo \
+    poetry run wodoo update --update-mode odoo \
     && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
 
 FROM python_workspace as oodo_addon_source
 RUN --mount=type=ssh set -x; \
     mkdir -p /odoo/thirdparty \
-    && python3 -m wodoo update --update-mode thirdparty \
-    && python3 -m wodoo update --update-mode zip
+    && poetry run wodoo update --update-mode thirdparty \
+    && poetry run wodoo update --update-mode zip
 
 # Copies Source to image and installs Odoo Depends.
 # I'd really like to somehow get the Requirements.Txt in another Parralel Task next to the Clone.
@@ -106,7 +106,7 @@ ARG WORKSPACE
 COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
 COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
 EXPOSE 8069 8071 8072
-WORKDIR $WORKSPACE
+USER root
 RUN set -x; \
     mkdir -p /etc/odoo/ \
     && chown -R ${USERNAME}:${USERNAME} /etc/odoo/ \
@@ -115,7 +115,7 @@ RUN set -x; \
     && sudo -u ${USERNAME} pip3 install -r $ODOO_MAIN_FOLDER/requirements.txt --no-warn-script-location --upgrade \
     && mkdir -p {$ODOO_THIRDPARTY_LOCATION, $(basename $ODOO_CONF_PATH)} \
     && chown ${USERNAME}:${USERNAME} {$ODOO_THIRDPARTY_LOCATION, $(basename $ODOO_CONF_PATH)}
-
+USER ${USERNAME}
 
 # Image for Devserver (Start in Entrypoint)
 FROM base_odoo as server
@@ -125,7 +125,7 @@ RUN rm -rf {/tmp/*,/var/cache/apt}
 COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
 COPY --chown=${USERNAME}:${USERNAME} ./scripts $WORKSPACE/scripts
 USER ${USERNAME}
-ENTRYPOINT [ "python3 -m wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
+ENTRYPOINT [ "poetry run python3 -m wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
 
 
 # Stage for testing, because we need the workspace with git available for delta checking
@@ -133,14 +133,14 @@ FROM base_odoo as test
 ARG USERNAME
 ARG WORKSPACE
 ADD --chown=${USERNAME}:${USERNAME} . $WORKSPACE
-USER ${USERNAME}
-ENTRYPOINT [ "python3 -m wodoo test all" ]
+ENTRYPOINT [ "poetry run python3 -m wodoo test all" ]
 
 
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
 FROM base_odoo as devcontainer
 ARG USERNAME
 ARG WORKSPACE
+USER root
 COPY ./requirements.dev.txt $WORKSPACE
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \

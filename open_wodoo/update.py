@@ -9,7 +9,6 @@ from typing import List
 import typer
 
 from .helper_cli import typer_unpacker
-from .helper_odoo_files import get_odoo_addons_in_folder
 from .helper_git import (
     GitUrl,
     git_clone_thirdparty_repos,
@@ -19,6 +18,7 @@ from .helper_git import (
     yaml_remove_compare_commit,
     yaml_roundtrip_loader,
 )
+from .helper_odoo_files import get_odoo_addons_in_folder
 
 LOGGER = logging.getLogger(__name__)
 

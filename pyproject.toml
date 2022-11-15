@@ -1,36 +1,40 @@
-[project]
-name = "wodoo"
-version = "0.0.1"
+[tool.poetry]
+name = "open-wodoo"
+version = "0.0.2"
 description = "Wrapper around Odoo-Bin with some convinience RPC functions."
+authors = ["Joshua Kreuder <Joshua_Kreuder@outlook.com>"]
+license = "LGPL-3"
 readme = "README.md"
-authors = [{ name = "Joshua Kreuder", email = "Joshua_Kreuder@outlook.de" }]
-license = { file = "LICENSE" }
-classifiers = [
-    "License :: OSI Approved :: LGPL-3 ",
-    "Programming Language :: Python",
-    "Programming Language :: Python :: 3",
-]
-keywords = ["odoo","wodoo"]
-dependencies = [
-    "python-dotenv==0.20.0",
-    "ruamel.yaml==0.17.21",
-    "typer>=0.4.1",
-    "GitPython==3.1.27",
-    "rich==12.6.0",
-    "wodoo-rpc==0.0.2",
-    "openupgradelib==3.3.4",
-]
-requires-python = ">=3.8"
+packages = [{include = "open_wodoo"}]
 
-[project.urls]
-Homepage = "https://gitlab.com/jksoftware1/open-wodoo"
+[tool.poetry.scripts]
+wodoo = "open_wodoo.cli:main_cli"
 
-[tool.setuptools.packages]
-find = {}  # Scan the project directory with the default parameters
+[tool.poetry.dependencies]
+python = ">=3.8,<3.11"
+python-dotenv = "0.20.0"
+ruamel-yaml = "0.17.21"
+typer = {extras = ["all"], version = "^0.7.0"}
+gitpython = "3.1.27"
+rich = "12.6.0"
+wodoo-rpc = "0.0.2"
+openupgradelib = "3.3.4"
+
+[tool.poetry.group.dev.dependencies]
+pylint-odoo = "8.0.16"
+inotify = "0.2.10"
+ipdb = "0.13.9"
+debugpy = "1.6.0"
+black = "22.10.0"
+isort = "5.10.1"
+pre-commit = "2.20.0"
+watchdog = "2.1.7"
+py-spy = "0.3.11"
+rope = "0.23.0"
 
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 120

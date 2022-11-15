@@ -6,11 +6,7 @@ from typing import List
 import typer
 
 from .helper_cli import typer_retuner
-from .helper_odoo_files import (
-    get_changed_modules,
-    get_depends_of_modules,
-    get_odoo_addons_in_folder,
-)
+from .helper_odoo_files import get_changed_modules, get_depends_of_modules, get_odoo_addons_in_folder
 from .launch import launch as launch_odoo
 
 LOGGER = logging.getLogger(__name__)
