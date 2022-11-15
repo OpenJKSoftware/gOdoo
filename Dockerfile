@@ -61,6 +61,7 @@ USER root
 FROM node_npm as python_workspace
 ARG WORKSPACE
 RUN echo "alias wodoo='python3 -m wodoo'" >> /etc/bash.bashrc
+# Copy everything to $WORKSPACE. Installs Wodoo from there. In the Devcontainer stage we remove all the files and replace the folder with a Bind-Mount
 COPY odoo_repospec.yml pyproject.toml README.md $WORKSPACE/
 COPY wodoo ${WORKSPACE}/wodoo
 COPY thirdparty ${WORKSPACE}/thirdparty
@@ -140,14 +141,14 @@ ENTRYPOINT [ "python3 -m wodoo test all" ]
 FROM base_odoo as devcontainer
 ARG USERNAME
 ARG WORKSPACE
-COPY ./requirements.txt $WORKSPACE/requirements.txt
+COPY ./requirements.dev.txt $WORKSPACE
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 default-jdk netcat \
-    && pip install -r $WORKSPACE/requirements.txt
-# Separate statement, because it removes cache
+    && pip install -r $WORKSPACE/requirements.dev.txt
+# Separate statement, because it removes cache. We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,$WORKSPACE/*}
 
 USER ${USERNAME}
