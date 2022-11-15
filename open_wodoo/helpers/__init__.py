@@ -3,13 +3,10 @@
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
-from time import sleep
-from typing import List
 
 import requests
-from wodoo_rpc import OdooApiWrapper, login_odoo
+from rich.logging import RichHandler
 
 LOGGER = logging.getLogger(__name__)
 
@@ -51,18 +48,18 @@ def set_logging(verbose: bool = False) -> None:
     """
     if verbose:
         logging.basicConfig(
-            stream=sys.stdout,
-            format="{asctime} - [{levelname}] - {message}",
-            style="{",
             level=logging.DEBUG,
+            format="{message}",
+            style="{",
+            handlers=[RichHandler(level=logging.DEBUG)],
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     else:
         logging.basicConfig(
-            stream=sys.stdout,
-            format="{asctime} - [{levelname}] - {message}",
-            style="{",
             level=logging.INFO,
+            format="{message}",
+            style="{",
+            handlers=[RichHandler(level=logging.INFO)],
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 

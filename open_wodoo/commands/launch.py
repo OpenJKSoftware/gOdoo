@@ -6,12 +6,12 @@ from typing import List
 
 import typer
 
+from ..commands.rpc.cli import rpc_callback
+from ..helpers.cli import typer_retuner, typer_unpacker
+from ..helpers.odoo_files import get_odoo_addons_in_folder
 from . import bootstrap, makedev, rpc
-from .helper_cli import rpc_callback, typer_retuner, typer_unpacker
-from .helper_odoo_files import get_odoo_addons_in_folder
 
 LOGGER = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 def _launch_command(
@@ -85,9 +85,8 @@ def _launch(
     return os.system(cmd_string)
 
 
-@app.command()
 @typer_unpacker
-def launch(
+def launch_odoo(
     ctx: typer.Context,
     launch: bool = typer.Option(True, help="Launch after Bootstrap"),
     odoo_demo: bool = typer.Option(False, help="Load Demo Data"),
@@ -114,7 +113,7 @@ def launch(
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
     if ctx.obj.odoo_conf_path.exists() and prep_stage:
-        makedev.config(ctx)
+        makedev.makedev_config(ctx)
 
     LOGGER.info("Bootstrap Flag Status: %s", ctx.obj.bootstrap_flag_location.exists())
     bootstraped = False
@@ -126,7 +125,7 @@ def launch(
         if not odoo_demo:
             extra_odoo_args_bootstrap += ["--without-demo all"]
 
-        ret = bootstrap.bootstrap(
+        ret = bootstrap.bootstrap_odoo(
             ctx=ctx,
             extra_cmd_args=extra_odoo_args_bootstrap,
             install_base=install_modules,
@@ -152,7 +151,7 @@ def launch(
     if prep_stage:
         LOGGER.info("Starting Stage Prepper Thread")
         loader_thread = threading.Thread(
-            target=makedev.rpc,
+            target=makedev.makedev_rpc,
             args=(ctx,),
             name="Stage Cutter",
         )
@@ -175,3 +174,9 @@ def launch(
         upgrade_workspace_modules=install_workspace_addons,
     )
     return typer_retuner(ret)
+
+
+def launch_cli_app():
+    app = typer.Typer()
+    app.command()(launch_odoo)
+    return app

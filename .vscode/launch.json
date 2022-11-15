@@ -52,10 +52,8 @@
       "type": "python",
       "request": "launch",
       "justMyCode": false,
-      "module": "wodoo",
-      "args": [
-        "--help"
-      ],
+      "module": "open_wodoo",
+      "args": ["--help"],
       "console": "integratedTerminal"
     },
     {

@@ -1,15 +1,24 @@
 """Main CLI for the Wodoo Odoo Wrapper, Wodoo."""
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import typer
-
-from . import bootstrap, launch, makedev, rpc, shell, test, update
-from .helper import set_logging
-
-sys.path.append(Path(__file__).parent)
 from dotenv import load_dotenv
+from rich.logging import RichHandler
+
+from .commands import (
+    bootstrap_odoo,
+    launch_odoo,
+    makedec_cli_app,
+    odoo_shell,
+    odoo_test,
+    rpc_cli_app,
+    uninstall_modules,
+    update_addons,
+)
+from .helpers import set_logging
 
 
 def main_callback(
@@ -44,14 +53,27 @@ def main_cli():
 
     app = typer.Typer(callback=main_callback)
     # Nested Subcommands
-    app.add_typer(rpc._app, name="rpc", help="Various RPC Wrappers")
-    app.add_typer(makedev._app, name="makedev", help="Set config and RPC settings to generate a staging environment")
+    app.add_typer(
+        typer_instance=rpc_cli_app(),
+        name="rpc",
+        help="Various RPC Wrappers",
+    )
+    app.add_typer(
+        typer_instance=makedec_cli_app(),
+        name="makedev",
+        help="Set config and RPC settings to generate a staging environment",
+    )
 
     # Normal Subcommands
-    app.command("launch", help="Launch Odoo, Bootstrap if bootstrapflag is not present")(launch.launch)
-    app.command("bootstrap", help="Bootstrap Odoo")(bootstrap.bootstrap)
-    app.command("update", help="Update Odoo, Thirdparty addons and Zip Addons ")(update.update_addons)
-    app.command("test", help="Bootstrap or Launch odoo in Testing Mode")(test.test)
-    app.command("shell", help="Shell into Odoo")(shell.shell)
-    app.command("uninstall", help="Uninstall Modules")(shell.uninstall_modules)
+    app.command("launch", help="Launch Odoo, Bootstrap if bootstrapflag is not present")(launch_odoo)
+    app.command("bootstrap", help="Bootstrap Odoo")(bootstrap_odoo)
+    app.command("update", help="Update Odoo, Thirdparty addons and Zip Addons ")(update_addons)
+    app.command("test", help="Bootstrap or Launch odoo in Testing Mode")(odoo_test)
+    app.command("shell", help="Shell into Odoo")(odoo_shell)
+    app.command("uninstall", help="Uninstall Modules")(uninstall_modules)
+    return app
+
+
+def launch_cli():
+    app = main_cli()
     app()

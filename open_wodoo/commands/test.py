@@ -5,9 +5,9 @@ from typing import List
 
 import typer
 
-from .helper_cli import typer_retuner
-from .helper_odoo_files import get_changed_modules, get_depends_of_modules, get_odoo_addons_in_folder
-from .launch import launch as launch_odoo
+from ..helpers.cli import typer_retuner
+from ..helpers.odoo_files import get_changed_modules, get_depends_of_modules, get_odoo_addons_in_folder
+from .launch import launch_odoo as launch_odoo
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
     return in_modules
 
 
-def test(
+def odoo_test(
     ctx: typer.Context,
     test_modules: List[str] = typer.Argument(
         ...,

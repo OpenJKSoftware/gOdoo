@@ -6,6 +6,8 @@ from typing import List
 
 from git import Repo
 
+from ..git import GitUrl
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -23,6 +25,8 @@ def get_odoo_addons_in_folder(search_folder: Path) -> List[Path]:
         List of Valid Module Folders within search_folder
     """
     module_paths = []
+    if not search_folder.exists():
+        return
     for folder in search_folder.iterdir():
         if folder.is_dir() and any(folder.glob("__manifest__.py")):
             module_paths.append(folder)

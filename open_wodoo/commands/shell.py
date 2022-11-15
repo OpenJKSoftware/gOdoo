@@ -4,7 +4,7 @@ from typing import List
 
 import typer
 
-from .helper_cli import typer_unpacker
+from ..helpers.cli import typer_retuner, typer_unpacker
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,11 +21,12 @@ def uninstall_modules(
     uninstall_cmd = f"env['ir.module.module'].search([('name','in',{module_list_str})]).filtered(lambda m: m.state not in ['uninstallable','uninstalled']).button_immediate_uninstall()"
     uninstall_shell = f'echo "{uninstall_cmd}" | {str(ctx.obj.odoo_main_path.absolute())}/odoo-bin shell -c {str(ctx.obj.odoo_conf_path.absolute())} --no-http'
     LOGGER.info("Launching Uninstaller: '%s'", uninstall_shell)
-    os.system(uninstall_shell)
+    ret = os.system(uninstall_shell)
+    return typer_retuner(ret)
 
 
 @typer_unpacker
-def shell(
+def odoo_shell(
     ctx: typer.Context,
     pipe_in_command: str = typer.Argument(""),
 ):

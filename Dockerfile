@@ -62,10 +62,14 @@ ARG WORKSPACE
 WORKDIR $WORKSPACE
 # RUN echo "alias wodoo='python3 -m wodoo'" >> /etc/bash.bashrc
 # Copy everything to $WORKSPACE. Installs Wodoo from there. In the Devcontainer stage we remove all the files and replace the folder with a Bind-Mount
-COPY --chown=${USERNAME}:${USERNAME} odoo_repospec.yml pyproject.toml README.md $WORKSPACE/
-COPY --chown=${USERNAME}:${USERNAME} open_wodoo ${WORKSPACE}/open_wodoo
-COPY --chown=${USERNAME}:${USERNAME} thirdparty ${WORKSPACE}/thirdparty
-RUN poetry install && chown -R ${USERNAME}:${USERNAME} ${WORKSPACE}
+COPY odoo_repospec.yml pyproject.toml poetry.lock README.md $WORKSPACE/
+COPY open_wodoo ${WORKSPACE}/open_wodoo
+COPY thirdparty ${WORKSPACE}/thirdparty
+USER root
+RUN set -x; \
+    chown -R $USERNAME:$USERNAME $WORKSPACE \
+    && poetry config virtualenvs.create false \
+    && poetry install
 # Wodoo Default Env Vars:
 ENV ODOO_MAIN_FOLDER=/odoo/odoo \
     ODOO_GITSPEC=$WORKSPACE/odoo_repospec.yml \
@@ -125,7 +129,7 @@ RUN rm -rf {/tmp/*,/var/cache/apt}
 COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
 COPY --chown=${USERNAME}:${USERNAME} ./scripts $WORKSPACE/scripts
 USER ${USERNAME}
-ENTRYPOINT [ "poetry run python3 -m wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
+ENTRYPOINT [ "poetry run wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
 
 
 # Stage for testing, because we need the workspace with git available for delta checking
@@ -133,7 +137,8 @@ FROM base_odoo as test
 ARG USERNAME
 ARG WORKSPACE
 ADD --chown=${USERNAME}:${USERNAME} . $WORKSPACE
-ENTRYPOINT [ "poetry run python3 -m wodoo test all" ]
+USER ${USERNAME}
+ENTRYPOINT [ "poetry run wodoo test all" ]
 
 
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
@@ -146,12 +151,14 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
-    && apt-get -y install --no-install-recommends postgresql-client-15 default-jdk netcat \
+    && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
     && pip install -r $WORKSPACE/requirements.dev.txt
-# Separate statement, because it removes cache. We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
-RUN rm -rf {/tmp/*,/var/cache/apt,$WORKSPACE/*}
 
-USER ${USERNAME}
+# Separate statement, because it removes cache.
+# We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
+RUN rm -rf {/tmp/*,/var/cache/apt,$WORKSPACE/*} \
+
+    USER ${USERNAME}
 RUN set -x; \
     sudo mkdir -p -m 0770 ~/.vscode-server/extensions \
     && sudo chown -R ${USERNAME} ~/.vscode-server \

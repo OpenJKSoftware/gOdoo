@@ -11,11 +11,10 @@ from configparser import ConfigParser
 import typer
 from wodoo_rpc.login import wait_for_odoo
 
-from . import helper
-from .helper_cli import rpc_callback, typer_unpacker
+from ..commands.rpc.cli import rpc_callback
+from ..helpers.cli import typer_unpacker
 
 LOGGER = logging.getLogger(__name__)
-_app = typer.Typer(callback=rpc_callback)
 
 
 def remove_label_printers(odoo_api, printer_url="host.docker.internal"):
@@ -79,8 +78,7 @@ def disable_audit_logs(odoo_api):
 
 
 @typer_unpacker
-@_app.command()
-def config(ctx: typer.Context):
+def makedev_config(ctx: typer.Context):
     """
     Set odoo.conf values for Staging Env.
     """
@@ -107,8 +105,7 @@ def config(ctx: typer.Context):
 
 
 @typer_unpacker
-@_app.command()
-def rpc(
+def makedev_rpc(
     ctx: typer.Context,
     banner_text: str = typer.Option(
         "Development", envvar="ODOO_BANNER_TEXT", help="Text to display in Top left ribbon banner"
@@ -132,3 +129,10 @@ def rpc(
     remove_label_printers(odoo_api=odoo_api)
     staging_banner(odoo_api=odoo_api, banner_text=banner_text, banner_background_color=banner_background_color)
     disable_audit_logs(odoo_api=odoo_api)
+
+
+def makedec_cli_app():
+    app = typer.Typer(callback=rpc_callback)
+    app.command("rpc", help="Set odoo.conf values for Staging Env.")(makedev_rpc)
+    app.command("config", help="Set some Odoo Options via RPC to disable prod features.")(makedev_config)
+    return app

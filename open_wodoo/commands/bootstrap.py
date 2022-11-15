@@ -5,9 +5,9 @@ from typing import List
 
 import typer
 
+from ..helpers.cli import typer_retuner, typer_unpacker
+from ..helpers.odoo_files import get_odoo_addons_in_folder
 from . import update
-from .helper_cli import typer_retuner, typer_unpacker
-from .helper_odoo_files import get_odoo_addons_in_folder
 
 LOGGER = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def _boostrap_command(
 
 
 @typer_unpacker
-def bootstrap(
+def bootstrap_odoo(
     ctx: typer.Context,
     thirdparty_addon_path: Path = typer.Option(
         ..., envvar="ODOO_THIRDPARTY_LOCATION", help="folder that contains thirdparty repos like OCA"

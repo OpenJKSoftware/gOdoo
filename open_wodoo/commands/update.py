@@ -8,17 +8,10 @@ from typing import List
 
 import typer
 
-from .helper_cli import typer_unpacker
-from .helper_git import (
-    GitUrl,
-    git_clone_thirdparty_repos,
-    git_download_zip,
-    git_ensure_cloned,
-    yaml_add_compare_commit,
-    yaml_remove_compare_commit,
-    yaml_roundtrip_loader,
-)
-from .helper_odoo_files import get_odoo_addons_in_folder
+from ..git import git_ensure_addon_repos, git_ensure_odoo_repo
+from ..helpers.cli import typer_unpacker
+from ..helpers.odoo_files import get_odoo_addons_in_folder
+from ..helpers.repospec import remove_unused_folders
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,54 +21,6 @@ class UpdateMode(str, Enum):
     zip = "zip"
     odoo = "odoo"
     thirdparty = "thirdparty"
-
-
-def clone_odoo(
-    target_folder: Path,
-    repo_spec_file: Path,
-    force_fetch: bool,
-    add_compare_comment: bool,
-    download_archive: bool,
-):
-    yaml = yaml_roundtrip_loader()
-    git_repos = yaml.load(repo_spec_file.resolve())
-    if not git_repos:
-        raise FileNotFoundError(f"Couldnt load yml file from: {str(repo_spec_file)}")
-
-    odoo_data = git_repos.get("odoo")
-    if not odoo_data:
-        raise KeyError(f"Could not find key 'odoo' in {str(repo_spec_file)}")
-
-    odoo_url = odoo_data["url"]
-    odoo_branch = odoo_data.get("branch", "master")
-    odoo_commit = odoo_data.get("commit", "")
-    if add_compare_comment:
-        yaml_add_compare_commit(odoo_data, odoo_branch)
-    else:
-        yaml_remove_compare_commit(odoo_data)
-
-    if download_archive:
-        if target_folder.exists() and next(target_folder.iterdir(), None):
-            LOGGER.debug("Clearing Odoo Target folder: %s", target_folder)
-            shutil.rmtree(target_folder)
-        git_download_zip(odoo_url, target_folder, odoo_branch, odoo_commit)
-    else:
-        LOGGER.info(
-            "Ensuring Odoo Source equals repospec: URL: %s, Branch: %s, Commit: %s",
-            odoo_url,
-            odoo_branch,
-            odoo_commit,
-        )
-        git_ensure_cloned(
-            target_folder,
-            repo_src=odoo_url,
-            branch=odoo_branch,
-            commit=odoo_commit,
-            pull=odoo_branch if force_fetch else "",
-            filter="blob:none",
-            single_branch=True,
-        )
-    yaml.dump(git_repos, repo_spec_file)
 
 
 def unzip_addons(zip_folder: Path, target_addon_folder: Path, remove_excess: bool = False):
@@ -118,30 +63,6 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
     LOGGER.info("Writing Addon Paths to Odoo Config.")
     LOGGER.debug(addon_paths)
     config.write(odoo_conf.open("w"))
-
-
-def _git_remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_folders: List[Path]):
-    """Remove folders that are not included in git_repos anymore
-
-    Parameters
-    ----------
-    thirdparty_addon_path : Path
-        Folder to check for deletions
-    thirdparty_repos : _type_
-        Dict of Prefix:[dict[url],..]
-    """
-    allowed_folders = []
-    keep_folders_absolute = [p.absolute() for p in keep_folders]
-    for prefix in thirdparty_repos:
-        for repo in thirdparty_repos[prefix]:
-            repo_url = GitUrl(repo["url"])
-            allowed_folders.append(f"{prefix}_{repo_url.name}")
-    for folder in thirdparty_addon_path.iterdir():
-        if not folder.is_dir() or folder.absolute() in keep_folders_absolute:
-            continue
-        if not folder.stem in allowed_folders:
-            LOGGER.info("Removing unspecified Addon Folder: %s", folder)
-            shutil.rmtree(folder)
 
 
 @typer_unpacker
@@ -196,7 +117,7 @@ def update_addons(
         unzip_addons(thirdparty_zip_source, zip_addon_path)
 
     if update_mode in ["all", "odoo"]:
-        clone_odoo(
+        git_ensure_odoo_repo(
             target_folder=ctx.obj.odoo_main_path,
             repo_spec_file=repospec_yml,
             force_fetch=force_fetch,
@@ -205,13 +126,14 @@ def update_addons(
         )
 
     if update_mode in ["all", "thirdparty"]:
-        git_repos = git_clone_thirdparty_repos(
+        git_repos = git_ensure_addon_repos(
             root_folder=thirdparty_addon_path,
             git_yml_path=repospec_yml,
             generate_yml_compare_comments=add_compare_comments,
+            download_archive=ctx.obj.source_download_archive,
         )
     if remove_unspecified_addons:
-        _git_remove_unused_folders(
+        remove_unused_folders(
             thirdparty_addon_path=thirdparty_addon_path,
             thirdparty_repos=git_repos.get("thirdparty", []),
             keep_folders=[zip_addon_path],

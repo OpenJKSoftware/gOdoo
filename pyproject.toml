@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{include = "open_wodoo"}]
 
 [tool.poetry.scripts]
-wodoo = "open_wodoo.cli:main_cli"
+wodoo = "open_wodoo.cli:launch_cli"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.11"
@@ -63,11 +63,11 @@ score="n"
 
 [tool.pylint.odoolint]
 readme-template-url="https://github.com/OCA/maintainer-tools/blob/master/template/module/README.rst"
-manifest-required-authors="WEMPE Elektronic GmbH"
+manifest-required-authors="Joshua Kreuder <Joshua_Kreuder@outlook.com>"
 manifest-required-keys="license"
 manifest-deprecated-keys="active"
 license-allowed="AGPL-3,GPL-2,GPL-2 or any later version,GPL-3,GPL-3 or any later version,LGPL-3,Other proprietary"
-valid-odoo-versions="14.0"
+valid-odoo-versions="16.0"
 
 [tool.pylint.'MESSAGES CONTROL']
 disable="all"
