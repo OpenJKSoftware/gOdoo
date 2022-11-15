@@ -267,7 +267,7 @@ def _git_clone_addon_repos(
 
 
 def git_ensure_branch_commit(
-    repo: Repo, branch: str = "master", commit: str = "", pull: str = "", retry_unshallow: bool = True
+    repo: Repo, branch: str = "master", commit: str = "", pull: str = "", reset_hard: bool = True
 ):
     """
     Ensure git Repo is on specific branch and commit.
@@ -283,8 +283,8 @@ def git_ensure_branch_commit(
         specific commitSHA to checkout, by default ""
     pull : str, optional
         specific target to pull. Usually used in conjunction with branch.
-    retry_unshallow : bool, optional
-        retry by unshallowing, by default True
+    reset_hard : bool, optional
+        will call reset --hard after checkout to ensure clean git repo, by default True
     """
 
     try:
@@ -299,6 +299,8 @@ def git_ensure_branch_commit(
         if branch:
             LOGGER.debug("Checking Out repo %s to Branch: %s", repo.git_dir, branch)
             repo.git.checkout(branch)
+        if reset_hard:
+            repo.git.reset("--hard")
     except Exception as e:
         raise Exception(
             str(f"Error while ensuring Git repo: {str(repo)}, branch='{branch}', commit='{commit}', fetch='{pull}'")
