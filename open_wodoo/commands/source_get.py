@@ -8,7 +8,6 @@ from typing import List
 
 import typer
 
-from ..git import git_ensure_addon_repos, git_ensure_odoo_repo
 from ..helpers.cli import typer_unpacker
 from ..helpers.odoo_files import get_odoo_addons_in_folder
 from ..helpers.repospec import remove_unused_folders
@@ -66,16 +65,16 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
 
 
 @typer_unpacker
-def update_addons(
+def get_source(
     ctx: typer.Context,
+    repospec_yml: Path = typer.Option(
+        ..., envvar="ODOO_GITSPEC", help="Git.yml file, that specified what to download with wich prefix"
+    ),
     thirdparty_addon_path: Path = typer.Option(
         ..., envvar="ODOO_THIRDPARTY_LOCATION", help="Root folder of the Thirdparty addon repos"
     ),
     thirdparty_zip_source: Path = typer.Option(
         ..., envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Source folder, where to look for Addon zips"
-    ),
-    repospec_yml: Path = typer.Option(
-        ..., envvar="ODOO_GITSPEC", help="Git.yml file, that specified what to download with wich prefix"
     ),
     update_mode: UpdateMode = typer.Option(UpdateMode.all, help="What to Update"),
     add_compare_comments: bool = typer.Option(
@@ -89,27 +88,7 @@ def update_addons(
         help="Forces origin fetch, regardless of current branch or commit sha (may be slow)",
     ),
 ):
-    """Update Odoo Source and Thirdparty source
-
-    Parameters
-    ----------
-    ctx : typer.Context
-        Typer Context
-    thirdparty_addon_path : Path, optional
-        Root folder of the Thirdparty addon repos, by default envvar="ODOO_THIRDPARTY_LOCATION"
-    thirdparty_zip_source : Path, optional
-        Source folder, where to look for Addon zips, by default envvar="ODOO_THIRDPARTY_ZIP_LOCATION"
-    repospec_yml : Path, optional
-        Git.yml file, that specified what to download with wich prefix, by default envvar="ODOO_GITSPEC"
-    update_mode : UpdateMode, optional
-        What to Update, by default UpdateMode.all
-    add_compare_comments : bool, optional
-        Wether to add github.com three dot compare links as comments., by default False
-    remove_unspecified_addons : bool, optional
-        Remove Addon folders that are not in YML or thirdparty.zip, by default False
-    force_fetch : bool, optional
-        Forces origin fetch, regardless of current branch or commit sha, by default False
-    """
+    """Update Odoo Source and Thirdparty source."""
     LOGGER.info("Updating Addon Repos")
     zip_addon_path = thirdparty_addon_path / "custom"
 

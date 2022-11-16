@@ -10,13 +10,13 @@ from rich.logging import RichHandler
 
 from .commands import (
     bootstrap_odoo,
+    get_source,
     launch_odoo,
     makedec_cli_app,
     odoo_shell,
     odoo_test,
     rpc_cli_app,
     uninstall_modules,
-    update_addons,
 )
 from .helpers import set_logging
 
@@ -67,7 +67,9 @@ def main_cli():
     # Normal Subcommands
     app.command("launch", help="Launch Odoo, Bootstrap if bootstrapflag is not present")(launch_odoo)
     app.command("bootstrap", help="Bootstrap Odoo")(bootstrap_odoo)
-    app.command("update", help="Update Odoo, Thirdparty addons and Zip Addons ")(update_addons)
+    app.command("get-source", help="Update Odoo, Thirdparty addons and Zip Addons according to repospec.yml file")(
+        get_source
+    )
     app.command("test", help="Bootstrap or Launch odoo in Testing Mode")(odoo_test)
     app.command("shell", help="Shell into Odoo")(odoo_shell)
     app.command("uninstall", help="Uninstall Modules")(uninstall_modules)

@@ -7,7 +7,7 @@ import typer
 
 from ..helpers.cli import typer_retuner, typer_unpacker
 from ..helpers.odoo_files import get_odoo_addons_in_folder
-from . import update
+from .source_get import get_source
 
 LOGGER = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ def bootstrap_odoo(
 ):
     """Bootstrap Odoo."""
     if update_source:
-        update.update_addons(ctx=ctx, remove_unspecified_addons=addons_remove_unspecified)
+        get_source(ctx=ctx, remove_unspecified_addons=addons_remove_unspecified)
 
     cmd_string = _boostrap_command(
         odoo_main_path=ctx.obj.odoo_main_path,

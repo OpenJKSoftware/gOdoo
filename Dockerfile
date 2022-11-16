@@ -93,14 +93,15 @@ ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
 FROM python_workspace as odoo_source
 RUN set -x ; \
-    poetry run wodoo update --update-mode odoo \
+    wodoo get-source --update-mode odoo \
     && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
+
 
 FROM python_workspace as oodo_addon_source
 RUN --mount=type=ssh set -x; \
     mkdir -p /odoo/thirdparty \
-    && poetry run wodoo update --update-mode thirdparty \
-    && poetry run wodoo update --update-mode zip
+    && wodoo get-source --update-mode thirdparty \
+    && wodoo get-source --update-mode zip
 
 # Copies Source to image and installs Odoo Depends.
 # I'd really like to somehow get the Requirements.Txt in another Parralel Task next to the Clone.
