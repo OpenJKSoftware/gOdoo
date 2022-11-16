@@ -4,7 +4,11 @@
   "name": "Open-Wodoo-Odoo-DevStack",
   "workspaceFolder": "/odoo/workspace",
   // Container Settings
-  "dockerComposeFile": [],
+  "dockerComposeFile": [
+    "../docker-compose.base.yml",
+    "../docker-compose.devcontainer.yml",
+    "../docker-compose.traefik.yml"
+  ],
   "service": "app",
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
