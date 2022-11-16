@@ -1,5 +1,7 @@
 #!/bin/bash
-# This Script needs to be executed from outside of the App container.
+# This script resets the Odoo environment.
+# If executed from within the container, it just drops the DB and removes some files
+# If executed from outside of the container, it will remove the Docker containers and volumes.
 # Pass --hard to also delete Thirdparty addons and the devcontainer extension caches
 
 PROJ_FOLDER=$(dirname $(readlink -f $0))
@@ -7,33 +9,72 @@ PROJ_FOLDER=$(dirname $PROJ_FOLDER)
 
 source $PROJ_FOLDER/.env
 
-conf_path="${ODOO_CONF_PATH:-config/odoo.conf}"
+[ "$1" = "--hard"  ] && RESET_ALL=true || RESET_ALL=false
 
-if [ "$PROJ_FOLDER" == "/odoo/workspace" ] # Check if Current Project folder matches .devcontainer workspacefolder
-then
+remove_odoo_config() {
+    conf_path="${ODOO_CONF_PATH:-config/odoo.conf}"
+    echo "Deleting Config file: $conf_path"
+    rm -f $conf_path
+}
 
-        [ -z "$ODOO_DB_HOST" ] && echo "Env Var ODOO_DB_HOST missing" && exit 1
-        [ -z "$ODOO_DB_PASSWORD" ] && echo "Env Var ODOO_DB_PASSWORD missing" && exit 1
-        [ -z "$ODOO_DB_USER" ] && echo "Env Var ODOO_DB_USER missing" && exit 1
-        [ -z "$ODOO_DB_PORT" ] && echo "Env Var ODOO_DB_PORT missing" && exit 1
-        [ -z "$ODOO_MAIN_DB" ] && echo "Env Var ODOO_MAIN_DB missing" && exit 1
+reset_docker () {
+    # Get running Docker containers and Volumes and then delete them.
+    [ -z "$COMPOSE_PROJECT_NAME" ] && echo "Env Var COMPOSE_PROJECT_NAME missing" && exit 1
+    PROJ_NAME=$COMPOSE_PROJECT_NAME
+    echo Deleting Containers with ProjName: $PROJ_NAME
 
-        set -e
+    CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep ^$PROJ_NAME)
 
-        echo "Dropping DB if exist"
-        PGPASSWORD=$ODOO_DB_PASSWORD dropdb -p $ODOO_DB_PORT -h $ODOO_DB_HOST -U $ODOO_DB_USER $ODOO_MAIN_DB --if-exists
+    if [ "$RESET_ALL" = "true" ]; then
+        VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME)
+    else
+        VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME | grep -Ev '(_vscode_cache$|_odoo_thirdparty$)')
+    fi
 
-        echo "Recreating DB"
-        PGPASSWORD=$ODOO_DB_PASSWORD createdb -U $ODOO_DB_USER -h $ODOO_DB_HOST -p $ODOO_DB_PORT $ODOO_MAIN_DB --owner=$ODOO_DB_USER
+    remove_odoo_config
 
-        echo "Deleting Valib"
-        sudo rm -rf /var/lib/odoo/*
+    if [ ! -z "$CONTAINERS" ]; then
+        echo Removing Devcontainers for Project: $PROJ_NAME ...
+        docker rm -f $CONTAINERS
+    fi
 
-        echo "Deleting Config File $conf_path"
-        rm -f $conf_path
+    if [ ! -z "$VOLUMES" ]; then
+        echo Removing Devvolumes
+        docker volume rm -f $VOLUMES
+    fi
 
-        exit 0
-fi
+    if [ "$RESET_ALL" = "true" ]; then
+        echo "Rebuilding Devcontainer Image"
+        docker compose build --no-cache --parallel --pull
+    fi
+}
+
+reset_native () {
+    [ -z "$ODOO_DB_HOST" ] && echo "Env Var ODOO_DB_HOST missing" && exit 1
+    [ -z "$ODOO_DB_PASSWORD" ] && echo "Env Var ODOO_DB_PASSWORD missing" && exit 1
+    [ -z "$ODOO_DB_USER" ] && echo "Env Var ODOO_DB_USER missing" && exit 1
+    [ -z "$ODOO_DB_PORT" ] && echo "Env Var ODOO_DB_PORT missing" && exit 1
+    [ -z "$ODOO_MAIN_DB" ] && echo "Env Var ODOO_MAIN_DB missing" && exit 1
+
+    set -e
+
+    echo "Dropping DB if exist"
+    PGPASSWORD=$ODOO_DB_PASSWORD dropdb -p $ODOO_DB_PORT -h $ODOO_DB_HOST -U $ODOO_DB_USER $ODOO_MAIN_DB --if-exists
+
+    echo "Recreating DB"
+    PGPASSWORD=$ODOO_DB_PASSWORD createdb -U $ODOO_DB_USER -h $ODOO_DB_HOST -p $ODOO_DB_PORT $ODOO_MAIN_DB --owner=$ODOO_DB_USER
+
+    echo "Deleting Valib"
+    sudo rm -rf /var/lib/odoo/*
+
+    remove_odoo_config
+
+    if [ "$RESET_ALL" = "true"  ] && [ ! -z $ODOO_THIRDPARTY_LOCATION]; then
+        rm -rf $ODOO_THIRDPARTY_LOCATION/*
+    fi
+
+}
+
 
 if [ ! "$WORKSPACE_IS_DEV" = true ]  ; then
     read -p "This is not a Dev Env. Continue (y/n)?" choice
@@ -44,32 +85,8 @@ if [ ! "$WORKSPACE_IS_DEV" = true ]  ; then
     esac
 fi
 
-[ -z "$COMPOSE_PROJECT_NAME" ] && echo "Env Var COMPOSE_PROJECT_NAME missing" && exit 1
-PROJ_NAME=$COMPOSE_PROJECT_NAME
-echo Deleting Containers with ProjName: $PROJ_NAME
-
-CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep ^$PROJ_NAME)
-
-if [ "$1" = "--hard" ]
+if [ "$PROJ_FOLDER" == "/odoo/workspace" ] # Check if Current Project folder matches .devcontainer workspacefolder
 then
-    VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME)
-    echo "Rebuilding Devcontainer Image"
-    docker compose build --no-cache --parallel --pull
-else
-    VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME | grep -Ev '(_vscode_cache$|_odoo_thirdparty$)')
-fi
-
-echo "Deleting Config file: $conf_path"
-rm -f $conf_path
-
-if [ ! -z "$CONTAINERS" ]
-then
-    echo Removing Devcontainers for Project: $PROJ_NAME ...
-    docker rm -f $CONTAINERS
-fi
-
-if [ ! -z "$VOLUMES" ]
-then
-    echo Removing Devvolumes
-    docker volume rm -f $VOLUMES
+    reset_native
+    exit 0
 fi
