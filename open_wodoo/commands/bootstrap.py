@@ -178,4 +178,6 @@ def bootstrap_odoo(
     ret = os.system(cmd_string)
     if ret == 0:
         ctx.obj.bootstrap_flag_location.touch()
+    else:
+        LOGGER.error("Odoo-Bin Returned %d", ret)
     return typer_retuner(ret)

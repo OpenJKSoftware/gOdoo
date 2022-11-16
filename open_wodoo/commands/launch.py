@@ -135,7 +135,10 @@ def launch_odoo(
             addons_remove_unspecified=addons_remove_unspecified,
         )
         install_workspace_addons = False
-        bootstraped = True
+        bootstraped = ret == 0
+        if not bootstraped:
+            LOGGER.error("Wodoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
+            return typer_retuner(ret)
 
     if ea := extra_args:
         extra_odoo_args += ea
