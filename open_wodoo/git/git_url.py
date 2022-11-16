@@ -123,9 +123,9 @@ class GitUrl:
             raise ValueError("Missing either download ref (e.g. branch or commit) to generate Archive URL.")
         http_url = self._clean_http_url()
         remote_type = self._git_type()
-        if remote_type == "github":
+        if remote_type == GitRemoteType.github:
             return f"{http_url}/archive/{ref }.zip"
-        if remote_type == "gitlab":
+        if remote_type == GitRemoteType.gitlab:
             return f"{http_url}/-/archive/{ref}/{self.name}.zip"
 
     def get_file_raw_url(self, ref: str, file_path: str) -> str:
