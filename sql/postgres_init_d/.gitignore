@@ -1,4 +1,0 @@
-*
-!.gitignore
-# Place SQL or SH scripts in here for them to be loaded directly into Psql when starting Devcontainer.
-# See https://hub.docker.com/_/postgres

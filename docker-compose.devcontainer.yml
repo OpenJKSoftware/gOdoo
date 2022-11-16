@@ -4,16 +4,10 @@ services:
   app:
     build:
       target: devcontainer
-    command: ""
     volumes:
-      - vscode_cache:/home/odoo/.vscode-server
       - ./:/odoo/workspace:cached # Mount vscode Workspace
     cap_add:
       - SYS_PTRACE
-
-  db:
-    volumes:
-      - ./sql/postgres_init_d:/docker-entrypoint-initdb.d
 
 volumes:
   vscode_cache:
