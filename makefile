@@ -2,7 +2,7 @@
 
 launch: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
-	wodoo --verbose launch --dev-mode --odoo-demo
+	wodoo launch --dev-mode --odoo-demo
 
 quick: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
