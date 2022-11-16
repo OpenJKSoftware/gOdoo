@@ -1,7 +1,7 @@
 default:
   tags:
-      - "amd64"
-      - "docker"
+    - "amd64"
+    - "docker"
 
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
@@ -12,6 +12,7 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
   ODOO_DB_HOST: postgres
   ODOO_TEST_SKIP_MODULES: ""
+  DOCKER_DRIVER: overlay2
 
 stages:
   - lint
@@ -37,7 +38,6 @@ workflow:
   - eval $(ssh-agent -s)
   # - ssh-add <(echo "$SSH_PRIVATE_KEY") # Add Private keys here
 
-
 pylint:
   stage: lint
   image: python:3.8-alpine
@@ -45,9 +45,9 @@ pylint:
     - pip install pylint-odoo==8.0.16 pylint-gitlab==1.1.0
   script:
     - pylint --version
-    - pylint --exit-zero --output-format=pylint_gitlab.GitlabCodeClimateReporter addons wodoo > codeclimate.json
-    - pylint --exit-zero --output-format=pylint_gitlab.GitlabPagesHtmlReporter addons wodoo > pylint.html
-    - pylint addons wodoo
+    - pylint --exit-zero --output-format=pylint_gitlab.GitlabCodeClimateReporter addons open_wodoo > codeclimate.json
+    - pylint --exit-zero --output-format=pylint_gitlab.GitlabPagesHtmlReporter addons open_wodoo > pylint.html
+    - pylint addons open_wodoo
   artifacts:
     when: always
     paths:
@@ -55,22 +55,22 @@ pylint:
     reports:
       codequality: codeclimate.json
 
-build:
+build test image:
   stage: build
   image: docker:20.10.21
   services:
-  - docker:20.10.21-dind
+    - docker:20.10.21-dind
   variables:
     GIT_STRATEGY: clone
     GIT_DEPTH: full
   before_script:
     - *docker_login
     - *ssh_config
-    - docker pull $CI_REGISTRY_IMAGE:$CI_DEFAULT_BRANCH || true
+    - docker pull $IMAGE_TAG_TESTING || true
   script:
     - echo "Building Image and tagging as '$IMAGE_TAG_TESTING'"
-    - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --ssh default --pull --progress=plain --tag $IMAGE_TAG_TESTING
-      --target test --build-arg SOURCE_CLONE_ARCHIVE=true --cache-from $CI_REGISTRY_IMAGE:main .
+    - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --ssh default --progress=plain --tag $IMAGE_TAG_TESTING
+      --target test --build-arg SOURCE_CLONE_ARCHIVE=true --cache-from $IMAGE_TAG_TESTING .
     - docker push $IMAGE_TAG_TESTING
 
 test:
@@ -99,7 +99,7 @@ test:
       fi
   script:
     - echo Testing with Target $TEST_TARGET
-    - "python3 -m wodoo --verbose test $TEST_TARGET"
+    - wodoo --verbose test "$TEST_TARGET"
 
 push image:
   stage: push

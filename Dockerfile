@@ -125,6 +125,7 @@ USER ${USERNAME}
 FROM base_odoo as server
 ARG USERNAME
 ARG WORKSPACE
+USER root
 RUN rm -rf {/tmp/*,/var/cache/apt}
 COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
 COPY --chown=${USERNAME}:${USERNAME} ./scripts $WORKSPACE/scripts
@@ -158,7 +159,7 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,$WORKSPACE/*} \
 
-    USER ${USERNAME}
+USER ${USERNAME}
 RUN set -x; \
     sudo mkdir -p -m 0770 ~/.vscode-server/extensions \
     && sudo chown -R ${USERNAME} ~/.vscode-server \
