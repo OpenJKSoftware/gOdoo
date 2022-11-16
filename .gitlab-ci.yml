@@ -58,8 +58,6 @@ pylint:
 build test image:
   stage: build
   image: docker:20.10.21
-  services:
-    - docker:20.10.21-dind
   variables:
     GIT_STRATEGY: clone
     GIT_DEPTH: full
@@ -69,7 +67,7 @@ build test image:
     - docker pull $IMAGE_TAG_TESTING || true
   script:
     - echo "Building Image and tagging as '$IMAGE_TAG_TESTING'"
-    - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --ssh default --progress=plain --tag $IMAGE_TAG_TESTING
+    - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --pull --ssh default --progress=plain --tag $IMAGE_TAG_TESTING
       --target test --build-arg SOURCE_CLONE_ARCHIVE=true --cache-from $IMAGE_TAG_TESTING .
     - docker push $IMAGE_TAG_TESTING
 
@@ -104,8 +102,6 @@ test:
 push image:
   stage: push
   image: docker:20.10.21
-  services:
-    - docker:20.10.21-dind
   only:
     - branches
   before_script:
