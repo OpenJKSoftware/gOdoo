@@ -68,7 +68,8 @@ def main_cli():
     # Normal Subcommands
     app.command("launch", help="Launch Odoo, Bootstrap if bootstrapflag is not present")(launch_odoo)
     app.command("bootstrap", help="Bootstrap Odoo")(bootstrap_odoo)
-    app.command("update", help="Update Odoo, Thirdparty addons and Zip Addons ")(update_addons)
+    app.command("get-source-file", help="Get Raw file from odoo git remote or specific git remote.")(get_source_file)
+    app.command("get-source", help="Download/Unzip Odoo Source and thirdparty addons.")(get_source)
     app.command("test", help="Bootstrap or Launch odoo in Testing Mode")(odoo_test)
     app.command("shell", help="Shell into Odoo")(odoo_shell)
     app.command("uninstall", help="Uninstall Modules")(uninstall_modules)
