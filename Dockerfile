@@ -60,16 +60,6 @@ ENV NODE_PATH=$NVM_DIR/v$NODE_VERSION/lib/node_modules \
 FROM node_npm as python_workspace
 ARG WORKSPACE
 WORKDIR $WORKSPACE
-# RUN echo "alias wodoo='python3 -m wodoo'" >> /etc/bash.bashrc
-# Copy everything to $WORKSPACE. Installs Wodoo from there. In the Devcontainer stage we remove all the files and replace the folder with a Bind-Mount
-COPY odoo_repospec.yml pyproject.toml poetry.lock README.md $WORKSPACE/
-COPY open_wodoo ${WORKSPACE}/open_wodoo
-COPY thirdparty ${WORKSPACE}/thirdparty
-USER root
-RUN set -x; \
-    chown -R $USERNAME:$USERNAME $WORKSPACE \
-    && poetry config virtualenvs.create false \
-    && poetry install
 # Wodoo Default Env Vars:
 ENV ODOO_MAIN_FOLDER=/odoo/odoo \
     ODOO_GITSPEC=$WORKSPACE/odoo_repospec.yml \
@@ -90,6 +80,26 @@ ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
 ARG SOURCE_CLONE_ARCHIVE=False
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
+# Copy everything for wodoo to $WORKSPACE. Installs Wodoo from there.
+# In the Devcontainer stage we remove all the files and replace the folder with a Bind-Mount
+COPY odoo_repospec.yml pyproject.toml poetry.lock README.md $WORKSPACE/
+COPY open_wodoo ${WORKSPACE}/open_wodoo
+COPY thirdparty ${WORKSPACE}/thirdparty
+USER root
+RUN set -x; \
+    chown -R $USERNAME:$USERNAME $WORKSPACE \
+    && poetry config virtualenvs.create false \
+    && poetry install
+
+
+FROM python_workspace as odoo_requirements
+ARG USERNAME
+ARG WORKSPACE
+USER ${USERNAME}
+RUN set -x; \
+    wodoo get-source-file --file-path requirements.txt --save-path $WORKSPACE/odoo_requirements.txt \
+    && pip3 install -r $WORKSPACE/odoo_requirements.txt --no-warn-script-location --upgrade
+
 
 FROM python_workspace as odoo_source
 RUN set -x ; \
@@ -99,13 +109,12 @@ RUN set -x ; \
 
 FROM python_workspace as oodo_addon_source
 RUN --mount=type=ssh set -x; \
-    mkdir -p /odoo/thirdparty \
+    mkdir -p $ODOO_THIRDPARTY_LOCATION \
     && wodoo get-source --update-mode thirdparty \
     && wodoo get-source --update-mode zip
 
 # Copies Source to image and installs Odoo Depends.
-# I'd really like to somehow get the Requirements.Txt in another Parralel Task next to the Clone.
-FROM python_workspace as base_odoo
+FROM odoo_requirements as base_odoo
 ARG USERNAME
 ARG WORKSPACE
 COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
@@ -113,14 +122,10 @@ COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_L
 EXPOSE 8069 8071 8072
 USER root
 RUN set -x; \
-    mkdir -p /etc/odoo/ \
-    && chown -R ${USERNAME}:${USERNAME} /etc/odoo/ \
-    && mkdir -p /var/lib/odoo/ \
-    && chown -R ${USERNAME}:${USERNAME} /var/lib/odoo/ \
-    && sudo -u ${USERNAME} pip3 install -r $ODOO_MAIN_FOLDER/requirements.txt --no-warn-script-location --upgrade \
-    && mkdir -p {$ODOO_THIRDPARTY_LOCATION, $(basename $ODOO_CONF_PATH)} \
-    && chown ${USERNAME}:${USERNAME} {$ODOO_THIRDPARTY_LOCATION, $(basename $ODOO_CONF_PATH)}
+    mkdir -p {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
+    && chown -R ${USERNAME}:${USERNAME} {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
 USER ${USERNAME}
+
 
 # Image for Devserver (Start in Entrypoint)
 FROM base_odoo as server
@@ -129,9 +134,8 @@ ARG WORKSPACE
 USER root
 RUN rm -rf {/tmp/*,/var/cache/apt}
 COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
-COPY --chown=${USERNAME}:${USERNAME} ./scripts $WORKSPACE/scripts
 USER ${USERNAME}
-ENTRYPOINT [ "poetry run wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
+ENTRYPOINT [ "wodoo launch --conf-path ${ODOO_CONF_PATH}" ]
 
 
 # Stage for testing, because we need the workspace with git available for delta checking
@@ -140,7 +144,7 @@ ARG USERNAME
 ARG WORKSPACE
 ADD --chown=${USERNAME}:${USERNAME} . $WORKSPACE
 USER ${USERNAME}
-ENTRYPOINT [ "poetry run wodoo test all" ]
+ENTRYPOINT [ "wodoo test all" ]
 
 
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
@@ -149,20 +153,19 @@ ARG USERNAME
 ARG WORKSPACE
 USER root
 COPY ./requirements.dev.txt $WORKSPACE
+VOLUME ["~/.vscode-server"]
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
-    && pip install -r $WORKSPACE/requirements.dev.txt
-
+    && pip install -r $WORKSPACE/requirements.dev.txt \
+    && mkdir -p -m 0770 ~/.vscode-server/extensions \
+    && chown -R ${USERNAME} ~/.vscode-server
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
-RUN rm -rf {/tmp/*,/var/cache/apt,$WORKSPACE/*} \
+RUN rm -rf {/tmp/*,/var/cache/apt,$WORKSPACE/*,/var/lib/apt/lists/*}
 
 USER ${USERNAME}
-RUN set -x; \
-    sudo mkdir -p -m 0770 ~/.vscode-server/extensions \
-    && sudo chown -R ${USERNAME} ~/.vscode-server \
-    && npm install -g prettier eslint
+RUN npm install -g prettier eslint
 CMD [ "sleep", "infinity" ]
