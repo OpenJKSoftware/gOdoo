@@ -1,5 +1,11 @@
 import re
+from enum import Enum
 from typing import Literal
+
+
+class GitRemoteType(Enum):
+    gitlab = "gitlab"
+    github = "github"
 
 
 class GitUrl:
@@ -51,7 +57,7 @@ class GitUrl:
         """
         return f"https://{self.domain}/{self.path}"
 
-    def _git_type(self) -> Literal["github", "gitlab"]:
+    def _git_type(self) -> GitRemoteType:
         """Get git Remote type.
 
         Returns
@@ -65,9 +71,9 @@ class GitUrl:
             If Type cannot be determined.
         """
         if "gitlab" in self.domain:
-            return "gitlab"
+            return GitRemoteType.gitlab
         elif "github" in self.domain:
-            return "github"
+            return GitRemoteType.github
         else:
             raise ValueError(f"Cant get Git Service type from {self.domain}")
 
@@ -90,15 +96,57 @@ class GitUrl:
         if from_compare == to_compare:
             return  # Nothing to Compare here
         http_url = self._clean_http_url()
-        if remote_type in ["github", "gitlab"]:
+        if remote_type in [GitRemoteType.github, GitRemoteType.gitlab]:
             return f"{http_url}/compare/{from_compare}...{to_compare}"
 
-    def get_archive_url(self, branch: str = "", commit: str = ""):
-        if not branch and not commit:
-            raise ValueError("Missing either branch or commit to generate Archive URL.")
+    def get_archive_url(self, ref: str) -> str:
+        """Get Download Url for Zip file.
+
+        Parameters
+        ----------
+        branch : str, optional
+            Repo Branch, by default ""
+        commit : str, optional
+            Repo download ref, by default ""
+
+        Returns
+        -------
+        str
+            Url from which to download a zip file
+
+        Raises
+        ------
+        ValueError
+            if ref is not specified
+        """
+        if not ref:
+            raise ValueError("Missing either download ref (e.g. branch or commit) to generate Archive URL.")
         http_url = self._clean_http_url()
         remote_type = self._git_type()
         if remote_type == "github":
-            return f"{http_url}/archive/{commit or branch }.zip"
+            return f"{http_url}/archive/{ref }.zip"
         if remote_type == "gitlab":
-            return f"{http_url}/-/archive/{commit or branch }/{self.name}.zip"
+            return f"{http_url}/-/archive/{ref}/{self.name}.zip"
+
+    def get_file_raw_url(self, ref: str, file_path: str) -> str:
+        """Gets the URL Pointing to the Raw file contents on the Remote.
+
+        Parameters
+        ----------
+        ref : str
+            Branch, Commit, Tag ,...
+        file_path : str
+            Relative file path in Repository
+
+        Returns
+        -------
+        str
+            URL Pointing to the Raw file contents on the Remote
+        """
+
+        http_url = self._clean_http_url()
+        remote_type = self._git_type()
+        if remote_type == GitRemoteType.github:
+            return f"{http_url.replace(self.domain,'raw.githubusercontent.com')}/{ref}/{file_path}"
+        if remote_type == GitRemoteType.gitlab:
+            return f"{http_url}/-/raw/{ref}/{file_path}"

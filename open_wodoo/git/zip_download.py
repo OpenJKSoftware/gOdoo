@@ -30,7 +30,7 @@ def git_download_zip(repo_url: str, target_folder: Path, branch: str, commit: st
         If Download failed
     """
     git_url = GitUrl(repo_url)
-    download_url = git_url.get_archive_url(branch=branch, commit=commit)
+    download_url = git_url.get_archive_url(ref=commit or branch)
     with tempfile.TemporaryDirectory() as tdir:
         zip_path = Path(tdir) / f"{git_url.name}.zip"
         LOGGER.info("Downloading GitRepo Zip: '%s'", download_url)

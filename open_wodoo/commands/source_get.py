@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import List
 
 import typer
+from ruamel.yaml import YAML
 
+from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
+from ..helpers import download_file
 from ..helpers.cli import typer_unpacker
 from ..helpers.odoo_files import get_odoo_addons_in_folder
 from ..helpers.repospec import remove_unused_folders
@@ -62,6 +65,37 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
     LOGGER.info("Writing Addon Paths to Odoo Config.")
     LOGGER.debug(addon_paths)
     config.write(odoo_conf.open("w"))
+
+
+@typer_unpacker
+def get_source_file(
+    repospec_yml: Path = typer.Option(
+        "", envvar="ODOO_GITSPEC", help="Wodoo Repospec path, when downloading odoo source (skip repo_url)"
+    ),
+    repo_url: str = typer.Option("", help="git repo url, for specific repo (skip repospec_yml)"),
+    file_ref: str = typer.Option("", help="When not using repospec. File Branch, Commit, Tag..."),
+    file_path: str = typer.Option(..., help="Relative Filepath in Repository"),
+    save_path: Path = typer.Option(..., file_okay=True, dir_okay=False, help="Where to write the file"),
+):
+    """Get Raw file from git remote.
+    Either from the Odoo Repo defined in repospec file or from a custom Git remote.
+    """
+
+    if not repo_url and not repospec_yml:
+        raise ValueError("Need to provide either repospec_yml or repo_url")
+    if repospec_yml and not repo_url:
+        repospec = YAML().load(repospec_yml.resolve())
+        odoo_spec = repospec["odoo"]
+        repo_url = odoo_spec["url"]
+        file_ref = odoo_spec.get("commit") or odoo_spec.get("branch")
+    if not file_ref:
+        raise ValueError(
+            "Need to provide file ref. If you provided a repospec, make sure there is a branch or commit key in the odoo section"
+        )
+    git_url = GitUrl(repo_url)
+    file_url = git_url.get_file_raw_url(ref=file_ref, file_path=file_path)
+
+    return download_file(url=file_url, save_path=save_path)
 
 
 @typer_unpacker
