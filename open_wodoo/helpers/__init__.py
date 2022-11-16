@@ -51,7 +51,7 @@ def set_logging(verbose: bool = False) -> None:
             level=logging.DEBUG,
             format="{message}",
             style="{",
-            handlers=[RichHandler(level=logging.DEBUG)],
+            handlers=[RichHandler(level=logging.DEBUG, rich_tracebacks=True)],
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     else:
@@ -59,7 +59,7 @@ def set_logging(verbose: bool = False) -> None:
             level=logging.INFO,
             format="{message}",
             style="{",
-            handlers=[RichHandler(level=logging.INFO)],
+            handlers=[RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)],
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
