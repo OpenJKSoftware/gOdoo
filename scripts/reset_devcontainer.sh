@@ -90,3 +90,5 @@ then
     reset_native
     exit 0
 fi
+
+reset_docker
