@@ -1,4 +1,5 @@
 default:
+  image: registry.gitlab.com/jksoftware1/docker-python:main
   tags:
     - "amd64"
     - "docker"
@@ -13,6 +14,13 @@ variables:
   ODOO_DB_HOST: postgres
   ODOO_TEST_SKIP_MODULES: ""
   DOCKER_DRIVER: overlay2
+  PY_PACKAGE_PATH: open_wodoo
+  BUMP_VERSION:
+    value: ""
+    description: Specifies how to Bump the Package version. https://python-poetry.org/docs/cli/#version
+  TAG_NOTE:
+    value: ""
+    description: Note that will be added to the Release Tag when using BUMP_VERSION
 
 stages:
   - lint
@@ -40,7 +48,6 @@ workflow:
 
 pylint:
   stage: lint
-  image: python:3.8-alpine
   before_script:
     - pip install pylint-odoo==8.0.16 pylint-gitlab==1.1.0
   script:
@@ -111,3 +118,44 @@ push image:
     - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --progress=plain --tag $IMAGE_TAG --target server --build-arg
       SOURCE_CLONE_ARCHIVE=true --cache-from $IMAGE_TAG_TESTING .
     - docker push $IMAGE_TAG
+
+bump version:
+  stage: build
+  cache: []
+  variables:
+    GIT_STRATEGY: clone # Ensure we start with a clean Repo here
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $BUMP_VERSION"
+  before_script:
+    - git remote set-url origin "https://gitlab-ci-token:${GITLAB_CI_PUSH_TOKEN}@$CI_SERVER_HOST/$CI_PROJECT_PATH.git"
+    - git config --global user.email "${GITLAB_USER_EMAIL}"
+    - git config --global user.name "${GITLAB_USER_NAME}"
+  script:
+    - |
+      VERSION=$(poetry version --short)
+      poetry version $BUMP_VERSION
+      BUMPED_VERSION=$(poetry version --short)
+    - |
+      git add --all
+      git commit -m "[BUMP] Package $VERSION to $BUMPED_VERSION"
+    - |
+      TAG_MESSAGE="CI Release for $BUMPED_VERSION"
+      [ ! -z "$TAG_NOTE" ] && TAG_MESSAGE=$(echo -e "$TAG_MESSAGE\n\n$TAG_NOTE")
+      TAG_NAME="Version-$BUMPED_VERSION"
+      echo "Creating Tag '$TAG_NAME' with Message '$TAG_MESSAGE'"
+      git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"
+    - git push -o ci.skip origin HEAD:$CI_COMMIT_REF_NAME
+    - git push origin -o ci.variable="CI_BUILD_AND_PUSH=true" -o ci.variable="CACHE_KEY=$CI_COMMIT_REF_SLUG" --tags
+
+build_and_push:
+  stage: build
+  rules:
+    - if: '$CI_BUILD_AND_PUSH=="true"'
+  before_script:
+    - poetry config pypi-token.pypi $PYPI_API_TOKEN
+  script:
+    - poetry build
+    - poetry publish
+  artifacts:
+    paths:
+      - dist/*
