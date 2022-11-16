@@ -43,7 +43,8 @@
     "redhat.vscode-xml",
     "yzhang.markdown-all-in-one",
     "mechatroner.rainbow-csv",
-    "janisdd.vscode-edit-csv"
+    "janisdd.vscode-edit-csv",
+    "ms-azuretools.vscode-docker"
   ],
   "settings": {
     "files.insertFinalNewline": true,
