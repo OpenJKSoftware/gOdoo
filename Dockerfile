@@ -165,6 +165,7 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
     && pip install -r ./requirements.dev.txt \
     && mkdir -p -m 0770 /home/${USERNAME}/.vscode-server/extensions \
     && chown -R ${USERNAME} /home/${USERNAME}/.vscode-server
+COPY ./scripts/bash_completion /home/${USERNAME}/.bash_completions/wodoo.sh
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}

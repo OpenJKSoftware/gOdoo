@@ -12,7 +12,7 @@
   "service": "app",
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
-  "postCreateCommand": "pre-commit install && wodoo --install-completion",
+  "postCreateCommand": "pre-commit install",
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}/" // For Docker compose workspace bindmount
   },
