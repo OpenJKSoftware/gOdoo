@@ -107,7 +107,7 @@ COPY --chown=$USERNAME:$USERNAME odoo_repospec.yml ./
 FROM python_workspace as odoo_requirements
 RUN set -x; \
     wodoo get-source-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
-    && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --upgrade
+    && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade
 
 # Download Odoo Source Code
 FROM python_workspace as odoo_source
@@ -156,15 +156,15 @@ FROM base_odoo as devcontainer
 ARG USERNAME
 USER root
 COPY ./requirements.dev.txt .
-VOLUME ["~/.vscode-server"]
+VOLUME ["/home/${USERNAME}/.vscode-server"]
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
     && pip install -r ./requirements.dev.txt \
-    && mkdir -p -m 0770 ~/.vscode-server/extensions \
-    && chown -R ${USERNAME} ~/.vscode-server
+    && mkdir -p -m 0770 /home/${USERNAME}/.vscode-server/extensions \
+    && chown -R ${USERNAME} /home/${USERNAME}/.vscode-server
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
