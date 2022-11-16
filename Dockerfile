@@ -80,16 +80,28 @@ ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
 ARG SOURCE_CLONE_ARCHIVE=False
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
-# Copy everything for wodoo to $WORKSPACE. Installs Wodoo from there.
-# In the Devcontainer stage we remove all the files and replace the folder with a Bind-Mount
-COPY odoo_repospec.yml pyproject.toml poetry.lock README.md $WORKSPACE/
-COPY open_wodoo ${WORKSPACE}/open_wodoo
-COPY thirdparty ${WORKSPACE}/thirdparty
+# ------------------------------------------------------------------------------------------------------
+# Install wodoo from this workspace.
+# This workspace is made to be reused as a Odoo Workspace, Wodoo installed as a Package.
+# Remove whats between the ----- and replace with: RUN pip install open-wodoo
+COPY pyproject.toml poetry.lock ./
 USER root
 RUN set -x; \
-    chown -R $USERNAME:$USERNAME $WORKSPACE \
+    chown -R $USERNAME:$USERNAME . \
     && poetry config virtualenvs.create false \
+    # A little bit of caching magic below
+    # installs all dependencies on an empty package first since wodoo source changes more often than the files copied above
+    # empty __init__.py gets overwritten by COPY below
+    && mkdir ./open_wodoo && touch ./{open_wodoo/__init__.py,README.md} \
     && poetry install
+# The following COPYs are below poetry install for better caching
+COPY open_wodoo open_wodoo
+# Now install wodoo for real. Way faster now, because deps are already cached.
+RUN poetry install
+# In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
+# ---------------------------------------------------------------------------------------------------------
+
+COPY odoo_repospec.yml ./
 
 
 FROM python_workspace as odoo_requirements
@@ -108,6 +120,7 @@ RUN set -x ; \
 
 
 FROM python_workspace as oodo_addon_source
+COPY thirdparty thirdparty
 RUN --mount=type=ssh set -x; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
     && wodoo get-source --update-mode thirdparty \
