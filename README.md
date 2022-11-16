@@ -1,6 +1,6 @@
 # Wodoo Dev Environment
 
-![OdooLogo](assets/odoo_logo.png)
+![OdooLogo](https://gitlab.com/jksoftware1/open-wodoo/-/raw/main/assets/odoo_logo.png)
 
 [Vscode Devcontainer](https://code.visualstudio.com/docs/remote/containers) Environment for [Odoo](.odoo.com/)
 
@@ -27,7 +27,8 @@ Made Possible by: [WEMPE Elektronic GmbH](https://wetech.de)
 
 1. For Docker on windows: Clone the repo into the WSL2 Filesystem for better IO performance
 2. Have [Traefik](https://github.com/traefik/traefik) Running on `docker.localhost`
-   [Example](https://github.com/joshkreud/traefik_devproxy)
+   [Example](https://github.com/joshkreud/traefik_devproxy) \
+   There must be a Docker network called `traefik` that can reach traefik.
 3. Create `.env` file (see [.env.sample](.env.sample))
 4. Open Devcontianer:
    1. If you have the Devcontainer CLI: `devcontainer open .`
