@@ -13,10 +13,19 @@ services:
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=${TRAEFIK_HOST_RULE}
       - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=8069
 
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.service=${COMPOSE_PROJECT_NAME}_longpoll
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.entrypoints=websecure
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.rule=(${TRAEFIK_HOST_RULE}) && PathPrefix(`/longpolling`)
-      - traefik.http.services.${COMPOSE_PROJECT_NAME}_longpoll.loadbalancer.server.port=8072
+      # Odoo <=15 Longpolling Config
+      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.service=${COMPOSE_PROJECT_NAME}_longpoll
+      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.entrypoints=websecure
+      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.rule=(${TRAEFIK_HOST_RULE}) && PathPrefix(`/longpolling`)
+      # - traefik.http.services.${COMPOSE_PROJECT_NAME}_longpoll.loadbalancer.server.port=8072
+
+      # Odoo >=16 Websocket Config
+      - traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.service=${COMPOSE_PROJECT_NAME}_websocket
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.entrypoints=websecure
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.rule=(${TRAEFIK_HOST_RULE}) && PathPrefix(`/websocket`)
+      - traefik.http.services.${COMPOSE_PROJECT_NAME}_websocket.loadbalancer.server.port=8072
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.middlewares=sslheader
 
 networks:
   traefik:
