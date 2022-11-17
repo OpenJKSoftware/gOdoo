@@ -88,6 +88,7 @@ ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 COPY pyproject.toml poetry.lock ./
 USER root
 RUN set -x; \
+    # Yes I know the following is kinda bad. But since we're also dealing with Odoos Requirements, a venv just overcomplicates things.
     poetry config virtualenvs.create false \
     # A little bit of caching magic below
     # installs all dependencies on an empty package first since wodoo source changes more often than the files copied above
