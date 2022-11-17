@@ -11,12 +11,10 @@
 # The Odoo section describes where to Clone the odoo source code form. (the one with odoo-bin)
 odoo:
   url: https://github.com/odoo/odoo/
-  branch: 16.0
-  commit: "0a766557bcf95e0b9fc3363103fce8277b0fa835"
+  branch: 16.0 # Branch is mandatory on Odoo Repo but not on OCA Repos
 # In the thirdparty section we can add more Repos to download.
 # This can also be an ssh style Url for Odoo Enterprise for example.
-#
-# thirdparty:
-#   OCA: # This repo folder will be called "OCA_social" when downloading.
-#     - url: https://github.com/OCA/social.git
-#       commit: da880bd6bae77bec6ec1954b8fcef9b5bcb901ad
+thirdparty:
+  OCA: # This repo folder will be called "OCA_server-tools" when downloading.
+    - url: https://github.com/OCA/server-tools
+      branch: 16.0
