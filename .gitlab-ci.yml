@@ -1,5 +1,5 @@
 default:
-  image: registry.gitlab.com:3.8
+  image: registry.gitlab.com/open-jk-soft/docker-python:3.8
   tags:
     - "amd64"
     - "docker"
