@@ -82,7 +82,7 @@ def _git_clone_addon_repos(
                     executor.submit(
                         git_ensure_repo,
                         target_folder=Path(root_folder / name),
-                        remote_src=repo_url.url,
+                        repo_src=repo_url.url,
                         branch=repo.get("branch", default_branch),
                         commit=repo.get("commit"),
                         zip_mode=download_archive,
