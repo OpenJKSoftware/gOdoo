@@ -48,7 +48,11 @@ def update_yml(
         add github compare links as comment to repo yml, by default False
     """
     thirdparty_repos = repo_yml["thirdparty"]
-    odoo_default_branch = repo_yml["odoo"]["branch"]
+    odoo_default_branch = repo_yml["odoo"].get("branch")
+    if not odoo_default_branch:
+        LOGGER.error("Repospec Odoo Key missing Branch argument.")
+        return
+
     for prefix in thirdparty_repos:
         for repo in thirdparty_repos[prefix]:
             if generate_yml_compare_comments:

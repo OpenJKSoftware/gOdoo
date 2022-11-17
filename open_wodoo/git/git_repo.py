@@ -82,7 +82,7 @@ def git_ensure_ref(
         repo = Repo(target_folder)
         current = repo.head.commit
 
-        if not pull and commit and str(commit) != str(repo.head.commit):
+        if not pull and commit and str(commit) != str(current):
             pull = str(commit)
 
         if not pull and branch and not commit:

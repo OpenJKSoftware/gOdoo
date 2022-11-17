@@ -3,13 +3,11 @@ version: "3.8"
 services:
   app:
     build:
-      pull: true
       context: .
       ssh:
         - default
       target: server
     init: true
-    command: ""
     env_file:
       - .env
     depends_on:
