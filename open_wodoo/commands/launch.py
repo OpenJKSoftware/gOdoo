@@ -9,7 +9,9 @@ import typer
 from ..commands.rpc.cli import rpc_callback
 from ..helpers.cli import typer_retuner, typer_unpacker
 from ..helpers.odoo_files import get_odoo_addons_in_folder
-from . import bootstrap, makedev, rpc
+from .bootstrap import bootstrap_odoo
+from .makedev import makedev_config, makedev_rpc
+from .rpc import import_to_odoo
 
 LOGGER = logging.getLogger(__name__)
 
@@ -113,7 +115,7 @@ def launch_odoo(
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
     if ctx.obj.odoo_conf_path.exists() and prep_stage:
-        makedev.makedev_config(ctx)
+        makedev_config(ctx)
 
     LOGGER.info("Bootstrap Flag Status: %s", ctx.obj.bootstrap_flag_location.exists())
     bootstraped = False
@@ -125,7 +127,7 @@ def launch_odoo(
         if not odoo_demo:
             extra_odoo_args_bootstrap += ["--without-demo all"]
 
-        ret = bootstrap.bootstrap_odoo(
+        ret = bootstrap_odoo(
             ctx=ctx,
             extra_cmd_args=extra_odoo_args_bootstrap,
             install_base=install_modules,
@@ -154,7 +156,7 @@ def launch_odoo(
     if prep_stage:
         LOGGER.info("Starting Stage Prepper Thread")
         loader_thread = threading.Thread(
-            target=makedev.makedev_rpc,
+            target=makedev_rpc,
             args=(ctx,),
             name="Stage Cutter",
         )
@@ -163,8 +165,9 @@ def launch_odoo(
     if load_data_path:
         LOGGER.info("Starting Data Importer Thread")
         loader_thread = threading.Thread(
-            target=rpc.folder,
+            target=import_to_odoo,
             name="DataLoader",
+            args=(ctx,),
             kwargs={"read_path": load_data_path.absolute()},
         )
         loader_thread.start()
