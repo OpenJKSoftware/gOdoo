@@ -59,7 +59,7 @@ def set_logging(verbose: bool = False) -> None:
             level=logging.INFO,
             format="{message}",
             style="{",
-            handlers=[RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)],
+            handlers=[RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=False)],
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
