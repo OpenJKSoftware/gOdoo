@@ -65,7 +65,7 @@ docker-compose up
 5. From **within the container** start Odoo using one of the following commands:
    - `make` -> Loads Odoo + Workspace Addons
    - `make bare` -> Loads Odoo with ony `web` installed.
-   - `make stg` -> Loads copy of staging Odoo Server
+   - `make enterprise` -> Wodoo launch with install script for web_enterprise
    - The full init script is available via "`wodoo`". (See --help for Options)
 6. Open Odoo `https://$COMPOSE_PROJECT_NAME.docker.localhost`\
    For example `COMPOSE_PROJECT_NAME=wodoo` --> [https://wodoo.docker.localhost](https://wodoo.docker.localhost)

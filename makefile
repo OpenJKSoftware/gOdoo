@@ -4,6 +4,9 @@ launch: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
 	wodoo launch --dev-mode --odoo-demo
 
+enterprise:
+	wodoo launch --dev-mode --odoo-demo --load-data-path ./odoo_import_scripts/install_enterprise.py
+
 quick: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
 	wodoo launch --dev-mode --no-install-workspace-addons --no-update-source
