@@ -1,12 +1,9 @@
 """Main CLI for the Wodoo Odoo Wrapper, Wodoo."""
-import logging
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import typer
 from dotenv import load_dotenv
-from rich.logging import RichHandler
 
 from .commands import (
     bootstrap_odoo,
@@ -52,7 +49,7 @@ def main_callback(
 def main_cli():
     load_dotenv(".env", override=True)
 
-    app = typer.Typer(callback=main_callback)
+    app = typer.Typer(callback=main_callback, no_args_is_help=True)
     # Nested Subcommands
     app.add_typer(
         typer_instance=rpc_cli_app(),

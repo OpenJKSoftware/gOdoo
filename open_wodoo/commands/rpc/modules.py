@@ -70,7 +70,7 @@ def install_modules(
 
 
 def modules_cli_app():
-    app = typer.Typer(callback=rpc_callback)
+    app = typer.Typer(callback=rpc_callback, no_args_is_help=True)
 
     app.command(name="install")(install_modules)
     return app

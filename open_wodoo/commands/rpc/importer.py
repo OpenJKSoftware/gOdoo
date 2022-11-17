@@ -14,7 +14,7 @@ from wodoo_rpc.login import wait_for_odoo
 
 from .cli import rpc_callback
 
-app = typer.Typer(callback=rpc_callback)
+app = typer.Typer(callback=rpc_callback, no_args_is_help=True)
 LOGGER = logging.getLogger(__name__)
 
 

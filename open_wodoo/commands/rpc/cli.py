@@ -1,33 +1,19 @@
 import typer
 
-from ...helpers.cli import typer_unpacker
+from .cli_callbacks import rpc_callback
+from .importer import wodoo_import_folder
+from .modules import modules_cli_app
+from .translations import dump_translations
 
 
-@typer_unpacker
-def rpc_callback(
-    ctx: typer.Context,
-    odoo_rpc_host: str = typer.Option(
-        ...,
-        envvar="ODOO_RPC_HOST",
-        help="Odoo RPC Host",
-    ),
-    odoo_main_db: str = typer.Option(
-        ...,
-        envvar="ODOO_MAIN_DB",
-        help="Odoo Database for RPC Calls",
-    ),
-    odoo_rpc_user: str = typer.Option(
-        ...,
-        envvar="ODOO_RPC_USER",
-        help="User for RPC login",
-    ),
-    odoo_rpc_password: str = typer.Option(
-        ...,
-        envvar="ODOO_RPC_PASSWORD",
-        help="Password RPC Login Password",
-    ),
-):
-    ctx.obj.odoo_rpc_host = odoo_rpc_host
-    ctx.obj.odoo_main_db = odoo_main_db
-    ctx.obj.odoo_rpc_user = odoo_rpc_user
-    ctx.obj.odoo_rpc_password = odoo_rpc_password
+def rpc_cli_app():
+    app = typer.Typer(no_args_is_help=True, callback=rpc_callback)
+
+    app.add_typer(
+        typer_instance=modules_cli_app(), name="modules", help="Wrapper around Odoo modules. (Install/upgrade, etc)"
+    )
+    app.command("import_folder", help="Imports all files in a Folder according to a regex")(wodoo_import_folder)
+    app.command(help="Upgrades or Installs Modules in Odoo via RPC.")
+    app.command(help="Upgrades Addons and Exports Translation .pot file")(dump_translations)
+
+    return app

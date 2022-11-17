@@ -132,7 +132,7 @@ def makedev_rpc(
 
 
 def makedec_cli_app():
-    app = typer.Typer(callback=rpc_callback)
+    app = typer.Typer(callback=rpc_callback, no_args_is_help=True)
     app.command("rpc", help="Set odoo.conf values for Staging Env.")(makedev_rpc)
     app.command("config", help="Set some Odoo Options via RPC to disable prod features.")(makedev_config)
     return app

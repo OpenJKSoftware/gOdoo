@@ -10,7 +10,7 @@ from ...helpers.odoo_files import get_odoo_addons_in_folder
 from .cli import rpc_callback
 from .modules import rpc_get_modules
 
-app = typer.Typer(callback=rpc_callback)
+app = typer.Typer(callback=rpc_callback, no_args_is_help=True)
 LOGGER = logging.getLogger(__name__)
 
 

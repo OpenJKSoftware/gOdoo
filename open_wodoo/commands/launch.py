@@ -180,6 +180,6 @@ def launch_odoo(
 
 
 def launch_cli_app():
-    app = typer.Typer()
+    app = typer.Typer(no_args_is_help=True)
     app.command()(launch_odoo)
     return app
