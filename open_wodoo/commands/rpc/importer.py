@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 import typer
-from wodoo_rpc import import_folder
+from wodoo_rpc import import_data
 from wodoo_rpc.login import wait_for_odoo
 
 from ...helpers.cli import typer_unpacker
@@ -22,7 +22,7 @@ LOGGER = logging.getLogger(__name__)
 @typer_unpacker
 def import_to_odoo(
     ctx: typer.Context,
-    read_path: Path = typer.Option(
+    read_path: Path = typer.Argument(
         ...,
         readable=True,
         exists=True,
@@ -59,12 +59,13 @@ def import_to_odoo(
 
     if read_path.is_file():
         product_image_regex = ""
+        file_regex = ""
 
-    import_folder(
+    import_data(
         odoo_api=odoo_api,
         read_path=read_path.absolute(),
-        data_regex=re.compile(file_regex),
-        product_image_regex=re.compile(product_image_regex),
+        data_regex=file_regex,
+        product_image_regex=product_image_regex,
         check_dataset_timestamp=check_data_timestamp,
         skip_existing_ids=skip_existing_ids,
     )

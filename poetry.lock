@@ -1001,7 +1001,7 @@ python-versions = "*"
 
 [[package]]
 name = "wodoo-datalib"
-version = "0.0.1"
+version = "0.0.4"
 description = "Dataabstractionlayer For Pandas"
 category = "main"
 optional = false
@@ -1012,7 +1012,7 @@ pandas = ">=1.0.0,<1.4.0"
 
 [[package]]
 name = "wodoo-rpc"
-version = "0.0.2"
+version = "0.0.7"
 description = "Helper Functions around OdooRPC"
 category = "main"
 optional = false
@@ -1024,7 +1024,7 @@ openpyxl = ">=3.0.10,<4.0.0"
 pylint-gitlab = ">=1.1.0,<2.0.0"
 python-dotenv = ">=0.20.0,<0.21.0"
 requests = ">=2.25.1,<3.0.0"
-wodoo-datalib = ">=0.0.1,<0.0.2"
+wodoo-datalib = ">=0.0.4,<0.0.5"
 
 [[package]]
 name = "wrapt"
@@ -1049,7 +1049,7 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "16982c918d8fd50e03bf1e832434d3bf008bd7260001b29a8406e9d40c6d9c7f"
+content-hash = "518382b17a7faef4bdc9e69355d8bbbc6e030afe0b54361812df860b268d49a0"
 
 [metadata.files]
 anybadge = [
@@ -1700,12 +1700,12 @@ wcwidth = [
     {file = "wcwidth-0.2.5.tar.gz", hash = "sha256:c4d647b99872929fdb7bdcaa4fbe7f01413ed3d98077df798530e5b04f116c83"},
 ]
 wodoo-datalib = [
-    {file = "wodoo_datalib-0.0.1-py3-none-any.whl", hash = "sha256:7b133e8430eea37a3e990f0d28ebe0ec05e1233791b1fb6309049835c860c7f3"},
-    {file = "wodoo_datalib-0.0.1.tar.gz", hash = "sha256:d4254af0288ce069d47c56cbbbd7603f2287f50451f31ed0453fefb6fbca89da"},
+    {file = "wodoo_datalib-0.0.4-py3-none-any.whl", hash = "sha256:178e6b9f897dec5b7e9d03f81ef217c46e71a1553f3b91c61c6db4883a4a0d3d"},
+    {file = "wodoo_datalib-0.0.4.tar.gz", hash = "sha256:ca50984fabb5bb3b89bb22f6c04de4d5d6c565c37077ed0ed99899a82e8d13fc"},
 ]
 wodoo-rpc = [
-    {file = "wodoo_rpc-0.0.2-py3-none-any.whl", hash = "sha256:2285a8e6c685f7b5f186ec670a89251423ed46181b13d9bab4d147c0cf95d316"},
-    {file = "wodoo_rpc-0.0.2.tar.gz", hash = "sha256:61f10f6c1ffa0e57c2ba27698c3c61a597de219b8b4447f29e72dfb69e0c37b1"},
+    {file = "wodoo_rpc-0.0.7-py3-none-any.whl", hash = "sha256:d199d8c249867962f7bf8af92cfcc5f497b8fc8af3454ac1f447123fd19b253f"},
+    {file = "wodoo_rpc-0.0.7.tar.gz", hash = "sha256:5fbd6ba0c653119a3be24cfcde8c2089a061071ba7f6713586837b551c85dc7d"},
 ]
 wrapt = [
     {file = "wrapt-1.14.1-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:1b376b3f4896e7930f1f772ac4b064ac12598d1c38d04907e696cc4d794b43d3"},
