@@ -3,11 +3,13 @@
 
 ARG USERNAME=ContainerUser
 ARG WORKSPACE=/odoo/workspace
+ARG PYTHONVERSION=3.8
 
-FROM registry.gitlab.com/jksoftware1/docker-python:main as odoo_system_depends
+FROM registry.gitlab.com/open-jk-soft/docker-python:$PYTHONVERSION as odoo_system_depends
+USER root
 
 # Install Dependencies
-USER root
+
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     apt-get update \
     && apt-get -y install --no-install-recommends  \

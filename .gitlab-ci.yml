@@ -1,11 +1,12 @@
 default:
-  image: registry.gitlab.com/jksoftware1/docker-python:main
+  image: registry.gitlab.com:3.8
   tags:
     - "amd64"
     - "docker"
 
 variables:
-  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  MAIN_IMAGE_TAG: $CI_REGISTRY_IMAGE:CI_DEFAULT_BRANCH
   IMAGE_TAG_TESTING: $IMAGE_TAG-testing
   POSTGRES_DB: postgres
   POSTGRES_USER: odoo_user
@@ -71,11 +72,11 @@ build test image:
   before_script:
     - *docker_login
     - *ssh_config
-    - docker pull $IMAGE_TAG_TESTING || true
+    - docker pull $MAIN_IMAGE_TAG || true
   script:
     - echo "Building Image and tagging as '$IMAGE_TAG_TESTING'"
     - DOCKER_BUILDKIT=1 PROGRESS_NO_TRUNC=1 docker build --pull --ssh default --progress=plain --tag $IMAGE_TAG_TESTING
-      --target test --build-arg SOURCE_CLONE_ARCHIVE=true --cache-from $IMAGE_TAG_TESTING .
+      --target test --build-arg SOURCE_CLONE_ARCHIVE=true --cache-from $MAIN_IMAGE_TAG .
     - docker push $IMAGE_TAG_TESTING
 
 test:
