@@ -103,6 +103,9 @@ COPY --chown=$USERNAME:$USERNAME src src
 # Now install godoo for real. Way faster now, because deps are already cached.
 RUN poetry install
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
+# Install Bash Completion:
+COPY --chown=$USERNAME:$USERNAME ./scripts/bash_completion /home/${USERNAME}/.bash_completions/godoo.sh
+COPY --chown=$USERNAME:$USERNAME ./scripts/zsh_completion /home/${USERNAME}/.zfunc/_godoo
 # ---------------------------------------------------------------------------------------------------------
 
 COPY --chown=$USERNAME:$USERNAME odoo_repospec.yml ./
@@ -167,8 +170,6 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
     && mkdir -p -m 0770 /home/${USERNAME}/.vscode-server/extensions \
     && chown -R ${USERNAME} /home/${USERNAME}/.vscode-server
-COPY --chown=$USERNAME:$USERNAME ./scripts/bash_completion /home/${USERNAME}/.bash_completions/godoo.sh
-COPY --chown=$USERNAME:$USERNAME ./scripts/zsh_completion /home/${USERNAME}/.zfunc/_godoo
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
