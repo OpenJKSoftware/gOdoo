@@ -123,7 +123,7 @@ def get_source(
     ),
 ):
     """Update Odoo Source and Thirdparty source."""
-    LOGGER.info("Updating Addon Repos")
+    LOGGER.info("Updating Source Repos")
     zip_addon_path = thirdparty_addon_path / "custom"
 
     if update_mode in ["all", "zip"]:
