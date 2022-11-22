@@ -1,0 +1,29 @@
+name: Version tag
+
+on:
+  pull_request_target:
+    types:
+      - closed
+
+jobs:
+  tag:
+    name: Tag Version if Pullrequest Bumped
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+      - name: Is last commit bump version
+        id: version_number
+        continue-on-error: true
+        run: |
+          BUMP_VERSION=$(echo "${{ github.event.pull_request.title }}" | grep ":shipit: Bump to Version: " | awk '{print $5}')
+          echo "BUMP_VERSION=$BUMP_VERSION" >> $GITHUB_OUTPUT
+      - name: Git tag & push
+        if: steps.version_number.outputs.BUMP_VERSION != ''
+        run: |
+          git tag ${{ steps.version_number.outputs.BUMP_VERSION }}
+          git push --tags
