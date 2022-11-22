@@ -137,9 +137,7 @@ EXPOSE 8069 8071 8072
 USER root
 RUN set -x; \
     mkdir -p {$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
-    && chown -R ${USERNAME}:${USERNAME} {$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
-    && bash -c 'godoo --install-completion' \
-    && zsh -c 'godoo --install-completion'
+    && chown -R ${USERNAME}:${USERNAME} {$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
 USER ${USERNAME}
 
 
