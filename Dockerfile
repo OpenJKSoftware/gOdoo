@@ -158,14 +158,12 @@ ENTRYPOINT [ "/usr/local/bin/godoo", "test" ,"all" ]
 FROM base_odoo as devcontainer
 ARG USERNAME
 USER root
-COPY ./requirements.dev.txt .
 VOLUME ["/home/${USERNAME}/.vscode-server"]
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
-    && pip install -r ./requirements.dev.txt \
     && mkdir -p -m 0770 /home/${USERNAME}/.vscode-server/extensions \
     && chown -R ${USERNAME} /home/${USERNAME}/.vscode-server
 COPY --chown=$USERNAME:$USERNAME ./scripts/bash_completion /home/${USERNAME}/.bash_completions/godoo.sh
