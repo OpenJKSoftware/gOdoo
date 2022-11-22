@@ -70,21 +70,22 @@
     "sqltools.highlightQuery": true,
     // Python Settings:
     "python.pythonPath": "/usr/local/bin/python",
+    "python.defaultInterpreterPath": "/usr/local/bin/python",
     "python.languageServer": "Pylance",
     "python.linting.enabled": true,
     "python.formatting.provider": "black",
     "python.linting.pylintEnabled": true,
-    "odoo.dev.OdooRemoteUrl": "http://localhost",
-    "odoo.dev.OdooRemotePort": "8069",
-    "odoo.dev.OdooRemoteDb": "odoo",
-    "odoo.dev.OdooRemoteUser": "admin",
-    "odoo.dev.OdooRemotePassword": "admin",
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
     "[python]": {
       "editor.codeActionsOnSave": {
         "source.organizeImports": true
       },
       "editor.defaultFormatter": "ms-python.python"
-    }
+    },
+    "odoo.dev.OdooRemoteUrl": "http://localhost",
+    "odoo.dev.OdooRemotePort": "8069",
+    "odoo.dev.OdooRemoteDb": "odoo",
+    "odoo.dev.OdooRemoteUser": "admin",
+    "odoo.dev.OdooRemotePassword": "admin",
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   }
 }
