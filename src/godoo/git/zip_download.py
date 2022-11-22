@@ -1,5 +1,4 @@
 import logging
-import re
 import tempfile
 import zipfile
 from pathlib import Path

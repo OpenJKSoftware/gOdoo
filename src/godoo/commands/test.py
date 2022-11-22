@@ -49,7 +49,7 @@ def odoo_test(
     skip_test_modules = [m for m in skip_test_modules if m in test_modules]  # Filter out skip mods that arent requested
     if skip_test_modules:
         LOGGER.info("Skipping Tests for Modules:\n%s", ", ".join(["\t" + m for m in skip_test_modules]))
-        test_modules = [m for m in test_modules if not m in skip_test_modules]
+        test_modules = [m for m in test_modules if m not in skip_test_modules]
 
     if not test_modules:
         LOGGER.info("Nothing to Test. Skipping.")

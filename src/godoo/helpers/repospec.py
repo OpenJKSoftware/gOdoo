@@ -29,7 +29,7 @@ def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_fo
     for folder in thirdparty_addon_path.iterdir():
         if not folder.is_dir() or folder.absolute() in keep_folders_absolute:
             continue
-        if not folder.stem in allowed_folders:
+        if folder.stem not in allowed_folders:
             LOGGER.info("Removing unspecified Addon Folder: %s", folder)
             shutil.rmtree(folder)
 

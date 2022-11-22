@@ -5,7 +5,6 @@ Places Systemparam to Track if import was already done.
 """
 
 import logging
-import re
 from pathlib import Path
 
 import typer

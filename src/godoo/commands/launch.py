@@ -110,7 +110,7 @@ def launch_odoo(
     LOGGER.info("Starting godoo Init Script")
 
     extra_odoo_args = []
-    if not log_file_path is None:
+    if log_file_path is not None:
         log_file_path.unlink(missing_ok=True)
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 

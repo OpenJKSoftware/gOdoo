@@ -6,8 +6,6 @@ from typing import List
 
 from git import Repo
 
-from ..git import GitUrl
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -55,8 +53,8 @@ def get_changed_modules(
     repo = Repo(addon_path, search_parent_directories=True)
     git_root = Path(repo.git.rev_parse("--show-toplevel"))
     changed_module_files = []
-    for l in repo.git.diff("--name-status", diff_branch).split("\n"):
-        path = git_root / l.split("\t")[1]
+    for change in repo.git.diff("--name-status", diff_branch).split("\n"):
+        path = git_root / change.split("\t")[1]
         if addon_path in path.parents:
             changed_module_files.append(path)
     changed_module_folders = list(set([f.parent.absolute() for f in changed_module_files]))
