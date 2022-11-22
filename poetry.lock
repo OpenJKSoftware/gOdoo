@@ -242,7 +242,7 @@ gitdb = ">=4.0.1,<5"
 
 [[package]]
 name = "godoo-rpc"
-version = "0.0.2"
+version = "0.0.3"
 description = "Helper Functions around OdooRPC"
 category = "main"
 optional = false
@@ -1079,7 +1079,7 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "6e8e7297297efffa5177f736acc3cebe091f6b72550b96ce0c1b1c3ba85ada77"
+content-hash = "303856d6c75361f5840d2c5b17eea14dd865b92a34d6352487757bd2446e3a28"
 
 [metadata.files]
 anybadge = [
@@ -1210,8 +1210,8 @@ gitpython = [
     {file = "GitPython-3.1.27.tar.gz", hash = "sha256:1c885ce809e8ba2d88a29befeb385fcea06338d3640712b59ca623c220bb5704"},
 ]
 godoo-rpc = [
-    {file = "godoo_rpc-0.0.2-py3-none-any.whl", hash = "sha256:b817229c3fb2958334d24bdac747aafaf70c94b8736f8c00ec81fa80e9283c04"},
-    {file = "godoo_rpc-0.0.2.tar.gz", hash = "sha256:89563a4cf793f05d4b93da580dff77372bb68de39c769210c3dc651e21370ff0"},
+    {file = "godoo_rpc-0.0.3-py3-none-any.whl", hash = "sha256:c6672868ef6299b1e96b249982a0c32eef98291469dc9e51d236f9d1ca25b6a7"},
+    {file = "godoo_rpc-0.0.3.tar.gz", hash = "sha256:5bcf8e694ff0ab4adc159598d0d83d02ec671ceae01dfaac953832b48010cf87"},
 ]
 identify = [
     {file = "identify-2.5.9-py2.py3-none-any.whl", hash = "sha256:a390fb696e164dbddb047a0db26e57972ae52fbd037ae68797e5ae2f4492485d"},
