@@ -53,8 +53,8 @@ jobs:
           cache-from: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
           push: true
-          build-args:
-            - SOURCE_CLONE_ARCHIVE=true
+          build-args: |
+            SOURCE_CLONE_ARCHIVE=true
           target: test
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -62,8 +62,7 @@ jobs:
   test:
     name: Run Test Image
     runs-on: ubuntu-latest
-    container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-testing
+    container: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-testing"
     services:
       postgres:
         image: postgres:15

@@ -28,8 +28,6 @@ jobs:
           poetry install
       - name: Check poetry.lock
         run: poetry lock --check
-      - name: mypy
-        run: poetry run mypy src --junit-xml=junit/mypy-${{ matrix.python-version }}.xml
       - name: Pylint
         run: poetry run pylint --version && poetry run pylint src addons
       - name: Flake8
