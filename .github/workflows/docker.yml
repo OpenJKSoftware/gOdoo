@@ -1,5 +1,9 @@
 name: Docker
 
+concurrency:
+  group: ${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_run:
     workflows: ["Quality"]
