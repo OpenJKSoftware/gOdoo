@@ -95,7 +95,8 @@ RUN set -x; \
     # A little bit of caching magic below
     # installs all dependencies on an empty package first since godoo source changes more often than the files copied above
     # empty __init__.py gets overwritten by COPY below
-    && mkdir -p ./src/godoo && touch ./{src/godoo/__init__.py,README.md} \
+    && mkdir -p ./src/godoo_cli \
+    && touch ./{src/godoo_cli/__init__.py,README.md} \
     && poetry install
 # The following COPYs are below poetry install for better caching
 COPY --chown=$USERNAME:$USERNAME src src
