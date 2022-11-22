@@ -10,11 +10,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: "${{ github.repository }}"
-  POSTGRES_DB: postgres
-  POSTGRES_USER: odoo_user
-  POSTGRES_PASSWORD: odoo
-  TEST_TARGET:
-    "${{ github.event_name == 'pull_request' && 'changes:${{ github.event.pull_request.base.ref }}' || 'all' }}"
 
 jobs:
   build-and-push-image:
@@ -55,33 +50,6 @@ jobs:
           push: true
           build-args: |
             SOURCE_CLONE_ARCHIVE=true
-          target: test
+          target: server
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-  test:
-    name: Run Test Image
-    runs-on: ubuntu-latest
-    container: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-testing"
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-          POSTGRES_USER: ${{ env.POSTGRES_USER }}
-          POSTGRES_DB: ${{ env.POSTGRES_DB }}
-        options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
-    steps:
-      - name: Checkout PR Target branch
-        uses: actions/checkout@v3
-        if: ${{ github.event_name == 'pull_request' }}
-        with:
-          ref: ${{ github.event.pull_request.base.ref }}
-      - name: Checkout repository Branch
-        uses: actions/checkout@v3
-
-      - name: run Tests
-        run: |
-          echo "Testing with Target $TEST_TARGET"
-          godoo --verbose test "$TEST_TARGET"

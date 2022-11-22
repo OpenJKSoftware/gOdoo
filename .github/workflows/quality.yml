@@ -28,6 +28,8 @@ jobs:
           poetry install
       - name: Check poetry.lock
         run: poetry lock --check
+      - name: Ensure Junit Dir
+        run: mkdir -p junit
       - name: Pylint
         run: poetry run pylint --version && poetry run pylint src addons
       - name: Flake8
