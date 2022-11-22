@@ -106,6 +106,7 @@ RUN poetry install
 COPY --chown=$USERNAME:$USERNAME ./scripts/bash_completion /home/${USERNAME}/.bash_completions/godoo.sh
 COPY --chown=$USERNAME:$USERNAME ./scripts/zsh_completion /home/${USERNAME}/.zfunc/_godoo
 # ---------------------------------------------------------------------------------------------------------
+
 COPY --chown=$USERNAME:$USERNAME odoo_repospec.yml ./
 
 # Install everything from Odoo requirements.txt, by downloading its raw contents
@@ -126,7 +127,7 @@ ARG USERNAME
 COPY thirdparty thirdparty
 RUN --mount=type=ssh set -x; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
-    && [ ! -z "$SSH_AUTH_SOCK" ] && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK \
+    && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK || true \
     && godoo get-source --update-mode thirdparty \
     && godoo get-source --update-mode zip
 
@@ -137,8 +138,8 @@ COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_
 COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
 EXPOSE 8069 8071 8072
 RUN set -x; \
-    mkdir -p {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
-    && chown -R ${USERNAME}:${USERNAME} {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
+    sudo mkdir -p {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
+    && sudo chown -R ${USERNAME}:${USERNAME} {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
 USER ${USERNAME}
 
 
