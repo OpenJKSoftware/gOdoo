@@ -7,8 +7,7 @@ license = "LGPL-3"
 readme = "README.md"
 packages = [{include = "godoo_cli",  from = "src"}]
 
-[tool.poetry_bumpversion]
-file ="src/godoo_cli/__init__.py"
+[tool.poetry_bumpversion.file."src/godoo_cli/__init__.py"]
 
 [tool.poetry.scripts]
 godoo = "godoo_cli:launch_cli"
