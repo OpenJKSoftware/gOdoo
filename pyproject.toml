@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "gOdoo-cli"
-version = "0.0.2"
+version = "0.0.3"
 description = "Wrapper around Odoo-Bin with some convinience RPC functions."
 authors = ["Joshua Kreuder <Joshua_Kreuder@outlook.com>"]
 license = "LGPL-3"
 readme = "README.md"
-packages = [{include = "godoo_cli" , from = "src"}]
+packages = [{include = "godoo_cli",  from = "src"}]
 
 [tool.poetry_bumpversion]
 file ="src/godoo_cli/__init__.py"
