@@ -9,7 +9,6 @@ FROM ghcr.io/openjksoftware/python-devcontainer:$PYTHONVERSION as odoo_system_de
 USER root
 
 # Install Dependencies
-
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     apt-get update \
     && apt-get -y install --no-install-recommends  \
@@ -107,7 +106,6 @@ RUN poetry install
 COPY --chown=$USERNAME:$USERNAME ./scripts/bash_completion /home/${USERNAME}/.bash_completions/godoo.sh
 COPY --chown=$USERNAME:$USERNAME ./scripts/zsh_completion /home/${USERNAME}/.zfunc/_godoo
 # ---------------------------------------------------------------------------------------------------------
-
 COPY --chown=$USERNAME:$USERNAME odoo_repospec.yml ./
 
 # Install everything from Odoo requirements.txt, by downloading its raw contents
@@ -124,9 +122,11 @@ RUN set -x ; \
 
 # Download Odoo Addons and unpack .zip Addons
 FROM python_workspace as oodo_addon_source
+ARG USERNAME
 COPY thirdparty thirdparty
 RUN --mount=type=ssh set -x; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
+    && [ ! -z "$SSH_AUTH_SOCK" ] && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK \
     && godoo get-source --update-mode thirdparty \
     && godoo get-source --update-mode zip
 
