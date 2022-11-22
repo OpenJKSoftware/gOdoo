@@ -7,8 +7,11 @@ license = "LGPL-3"
 readme = "README.md"
 packages = [{include = "godoo_cli" , from = "src"}]
 
+[tool.poetry_bumpversion]
+file ="src/godoo_cli/__init__.py"
+
 [tool.poetry.scripts]
-godoo = "src.godoo_cli:launch_cli"
+godoo = "godoo_cli:launch_cli"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.11"
