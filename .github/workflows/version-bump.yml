@@ -28,6 +28,8 @@ jobs:
         uses: actions/setup-python@v4
       - name: Install Poetry
         run: pipx install poetry
+      - name: Add Poetry Version for __init__.py
+        run: poetry self add poetry-bumpversion
       - name: Set up Python
         uses: actions/setup-python@v4
         with:

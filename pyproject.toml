@@ -19,7 +19,7 @@ ruamel-yaml = "0.17.21"
 typer = {extras = ["all"], version = "^0.7.0"}
 gitpython = "3.1.27"
 rich = "12.6.0"
-godoo-rpc = "0.0.2"
+godoo-rpc = "0.0.3"
 openupgradelib = "3.3.4"
 
 [tool.poetry.group.dev.dependencies]
