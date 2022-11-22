@@ -1,4 +1,4 @@
-name: Quality
+name: Test Build Push
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -10,6 +10,10 @@ on:
       - main
   pull_request:
     types: [opened, synchronize]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: "${{ github.repository }}"
 
 jobs:
   QualitChecks:
@@ -44,3 +48,46 @@ jobs:
           name: Lint-results-${{ matrix.python-version }}
           path: junit/*.xml
         if: ${{ always() }} # Also run when steps before failed
+
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    needs: QualitChecks
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          platforms: linux/amd64
+          cache-from: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          push: ${{ github.ref == 'refs/heads/master' && 'true' ||  'false'  }}
+          build-args: |
+            SOURCE_CLONE_ARCHIVE=true
+          target: server
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
