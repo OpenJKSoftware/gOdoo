@@ -102,9 +102,6 @@ COPY --chown=$USERNAME:$USERNAME src src
 # Now install godoo for real. Way faster now, because deps are already cached.
 RUN poetry install
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
-# Install Bash Completion:
-COPY --chown=$USERNAME:$USERNAME ./scripts/bash_completion /home/${USERNAME}/.bash_completions/godoo.sh
-COPY --chown=$USERNAME:$USERNAME ./scripts/zsh_completion /home/${USERNAME}/.zfunc/_godoo
 # ---------------------------------------------------------------------------------------------------------
 
 COPY --chown=$USERNAME:$USERNAME odoo_repospec.yml ./
@@ -140,7 +137,9 @@ EXPOSE 8069 8071 8072
 USER root
 RUN set -x; \
     mkdir -p {$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
-    && chown -R ${USERNAME}:${USERNAME} {$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
+    && chown -R ${USERNAME}:${USERNAME} {$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
+    && bash -c 'godoo --install-completion' \
+    && zsh -c 'godoo --install-completion'
 USER ${USERNAME}
 
 
