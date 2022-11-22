@@ -1,5 +1,6 @@
 import
 config/odoo.conf
+*.pass
 .env
 *:Zone.Identifier
 *.xlsx
