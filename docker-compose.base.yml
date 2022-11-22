@@ -13,7 +13,6 @@ services:
     depends_on:
       - db
     volumes:
-      - "/etc/timezone:/etc/timezone:ro"
       - "/etc/localtime:/etc/localtime:ro"
       - "odoo_web:/var/lib/odoo"
       - "odoo_thirdparty:/odoo/thirdparty"
@@ -27,7 +26,6 @@ services:
       - POSTGRES_USER=${ODOO_DB_USER:-odoo_user}
     volumes:
       - "db:/var/lib/postgresql/data"
-      - "/etc/timezone:/etc/timezone:ro"
       - "/etc/localtime:/etc/localtime:ro"
       - "./config/postgresql.conf:/etc/postgresql/postgresql.conf"
 
