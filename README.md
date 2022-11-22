@@ -34,13 +34,15 @@ They are used to provide either easy Odoo instances where the source is pulled a
 - [Docker Compose](https://github.com/docker/compose)
 - [Traefik](https://doc.traefik.io/traefik/) container running with docker provider and "traefik" named docker network.
   Example: [Traefik Devproxy](https://github.com/joshkreud/traefik_devproxy)
+- SSH Agent running. (check `echo $SSH_AUTH_SOCK`)\
+  This gets passed trough in the Buildprocess to clone Thirdparty repos.
 
 ## Just wanna have a quick and easy Odoo Instance?
 
 ```bash
 git clone https://github.com/OpenJKSoftware/gOdoo
 cd godoo
-cp .env.sample .env # Change this to your liking or pass the env vars directly to the app container.
+. scripts/container_requirements.sh # Check Requirements
 docker-compose build
 docker-compose up
 # wait......
@@ -79,20 +81,18 @@ docker-compose up
 2. Have [Traefik](https://github.com/traefik/traefik) Running on `docker.localhost`
    [Example](https://github.com/joshkreud/traefik_devproxy) \
    There must be a Docker network called `traefik` that can reach traefik.
-3. Create `.env` file (see [.env.sample](.env.sample))
-4. Open Devcontianer:
+3. Open Devcontianer:
    - If you have the Devcontainer CLI: `devcontainer open .`
-   - If not open the workspace in Local Vscode. In the Command pallete search for
-     `Devcontainers: Rebuild and Reopen in container`
-5. From **within the container** start Odoo using one of the following commands:
+   - If not open the workspace in Local Vscode. In the Command pallete search for `Reopen in container`
+4. From **within the container** start Odoo using one of the following commands:
    - `make` -> Loads Odoo + Workspace Addons
    - `make bare` -> Loads Odoo with ony `web` installed.
    - `make enterprise` -> godoo launch with install script for web_enterprise
    - The full init script is available via "`godoo`". (See --help for Options)
-6. Open Odoo `https://$COMPOSE_PROJECT_NAME.docker.localhost`\
+5. Open Odoo `https://$COMPOSE_PROJECT_NAME.docker.localhost`\
    For example `COMPOSE_PROJECT_NAME=godoo` --> [https://godoo.docker.localhost](https://godoo.docker.localhost)
-7. Login with `admin:admin`
-8. Profit!
+6. Login with `admin:admin`
+7. Profit!
 
 ### Access to Odoo and Thirdparty addon Source
 

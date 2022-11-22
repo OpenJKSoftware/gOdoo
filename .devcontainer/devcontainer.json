@@ -10,6 +10,7 @@
     "../docker-compose.traefik.yml"
   ],
   "service": "app",
+  "initializeCommand": "./scripts/container_requirements.sh",
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
   "postCreateCommand": "pre-commit install && poetry config virtualenvs.create false",
