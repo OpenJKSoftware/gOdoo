@@ -178,4 +178,4 @@ RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
 
 USER ${USERNAME}
 RUN npm install -g prettier eslint
-CMD [ "sleep", "infinity" ]
+ENTRYPOINT [ "sleep", "infinity" ]
