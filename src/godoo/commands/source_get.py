@@ -70,7 +70,7 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
 @typer_unpacker
 def get_source_file(
     repospec_yml: Path = typer.Option(
-        "", envvar="ODOO_GITSPEC", help="Wodoo Repospec path, when downloading odoo source (skip repo_url)"
+        "", envvar="ODOO_GITSPEC", help="godoo Repospec path, when downloading odoo source (skip repo_url)"
     ),
     repo_url: str = typer.Option("", help="git repo url, for specific repo (skip repospec_yml)"),
     file_ref: str = typer.Option("", help="When not using repospec. File Branch, Commit, Tag..."),

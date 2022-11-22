@@ -2,8 +2,8 @@ import logging
 from typing import Any, List
 
 import typer
-from wodoo_rpc import OdooApiWrapper
-from wodoo_rpc.login import wait_for_odoo
+from godoo_rpc import OdooApiWrapper
+from godoo_rpc.login import wait_for_odoo
 
 from ...helpers.cli import typer_retuner
 from .cli import rpc_callback

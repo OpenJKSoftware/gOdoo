@@ -3,7 +3,7 @@ from base64 import b64decode
 from pathlib import Path
 
 import typer
-from wodoo_rpc.login import wait_for_odoo
+from godoo_rpc.login import wait_for_odoo
 
 from ...helpers.cli import typer_retuner
 from ...helpers.odoo_files import get_odoo_addons_in_folder

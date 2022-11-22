@@ -1,4 +1,4 @@
-"""Main CLI for the Wodoo Odoo Wrapper, Wodoo."""
+"""Main CLI."""
 from pathlib import Path
 from types import SimpleNamespace
 

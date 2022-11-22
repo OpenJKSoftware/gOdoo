@@ -1,17 +1,18 @@
 # This is the default repospec.yml
 # Here we can specify which Version of odoo to Clone and which Thirdparty libraries we want to clone from git.
 # a "Repo" always consists of an "url" and "branch" or "commit". where "commit" can basicallly be every valid Git ref.
-# When only selecting "branch" and no "commit" this causes wodoo to always pull changes form the remote.
+# When only selecting "branch" and no "commit" this causes godoo to always pull changes form the remote.
 # On big repos like Odoo this can be really slow.
 # Specifying a more specific ref in the "commit" section, we can pin the Version.
-# This also causes wodoo get-source to skip over already matching Repos. (Big speed bump on launches.)
+# This also causes godoo get-source to skip over already matching Repos. (Big speed bump on launches.)
 
-# When `--source-download-archive` or it's envvar is passed to wodoo, Downloads will be even faster for big repos, because Zip Blobs will directly be downloaded.
+# When `--source-download-archive` or it's envvar is passed to godoo, Downloads will be even faster for big repos, because Zip Blobs will directly be downloaded.
 
 # The Odoo section describes where to Clone the odoo source code form. (the one with odoo-bin)
 odoo:
   url: https://github.com/odoo/odoo/
   branch: 16.0 # Branch is mandatory on Odoo Repo but not on OCA Repos
+  commit: f501c25a9d33399cfbb45526d95038266d91686e
 # In the thirdparty section we can add more Repos to download.
 # This can also be an ssh style Url for Odoo Enterprise for example.
 thirdparty:

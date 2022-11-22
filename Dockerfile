@@ -5,7 +5,7 @@ ARG USERNAME=ContainerUser
 ARG WORKSPACE=/odoo/workspace
 ARG PYTHONVERSION=3.8
 
-FROM registry.gitlab.com/open-jk-soft/docker-python:$PYTHONVERSION as odoo_system_depends
+FROM ghcr.io/openjksoftware/python-devcontainer:$PYTHONVERSION as odoo_system_depends
 USER root
 
 # Install Dependencies
@@ -63,7 +63,7 @@ FROM node_npm as python_workspace
 ARG WORKSPACE
 ARG USERNAME
 WORKDIR $WORKSPACE
-# Wodoo Default Env Vars:
+# godoo Default Env Vars:
 ENV ODOO_MAIN_FOLDER=/odoo/odoo \
     ODOO_GITSPEC=$WORKSPACE/odoo_repospec.yml \
     ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
@@ -79,27 +79,27 @@ ENV ODOO_MAIN_FOLDER=/odoo/odoo \
     ODOO_DB_PORT=5432
 # Path Env Vars:
 ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
-    PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:/odoo/wodoo:$PATH"
+    PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$PATH"
 ARG SOURCE_CLONE_ARCHIVE=False
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
 # ------------------------------------------------------------------------------------------------------
-# Install wodoo from this workspace.
-# This workspace is made to be reused as a Odoo Workspace, Wodoo installed as a Package.
-# Remove whats between the ----- and replace with: RUN pip install open-wodoo
+# Install godoo from this workspace.
+# This workspace is made to be reused as a Odoo Workspace, godoo installed as a Package.
+# Remove whats between the ----- and replace with: RUN pip install godoo
 COPY pyproject.toml poetry.lock ./
 USER root
 RUN set -x; \
     # Yes I know the following is kinda bad. But since we're also dealing with Odoos Requirements, a venv just overcomplicates things.
     poetry config virtualenvs.create false \
     # A little bit of caching magic below
-    # installs all dependencies on an empty package first since wodoo source changes more often than the files copied above
+    # installs all dependencies on an empty package first since godoo source changes more often than the files copied above
     # empty __init__.py gets overwritten by COPY below
-    && mkdir ./open_wodoo && touch ./{open_wodoo/__init__.py,README.md} \
+    && mkdir -p ./src/godoo && touch ./{src/godoo/__init__.py,README.md} \
     && poetry install
 # The following COPYs are below poetry install for better caching
-COPY --chown=$USERNAME:$USERNAME open_wodoo open_wodoo
-# Now install wodoo for real. Way faster now, because deps are already cached.
+COPY --chown=$USERNAME:$USERNAME src src
+# Now install godoo for real. Way faster now, because deps are already cached.
 RUN poetry install
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ---------------------------------------------------------------------------------------------------------
@@ -109,13 +109,13 @@ COPY --chown=$USERNAME:$USERNAME odoo_repospec.yml ./
 # Install everything from Odoo requirements.txt, by downloading its raw contents
 FROM python_workspace as odoo_requirements
 RUN set -x; \
-    wodoo get-source-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
+    godoo get-source-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
     && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade
 
 # Download Odoo Source Code
 FROM python_workspace as odoo_source
 RUN set -x ; \
-    wodoo get-source --update-mode odoo \
+    godoo get-source --update-mode odoo \
     && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
 
 # Download Odoo Addons and unpack .zip Addons
@@ -123,8 +123,8 @@ FROM python_workspace as oodo_addon_source
 COPY thirdparty thirdparty
 RUN --mount=type=ssh set -x; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
-    && wodoo get-source --update-mode thirdparty \
-    && wodoo get-source --update-mode zip
+    && godoo get-source --update-mode thirdparty \
+    && godoo get-source --update-mode zip
 
 # Copy Addons and Odoo Source into image with requirements.
 FROM odoo_requirements as base_odoo
@@ -143,7 +143,7 @@ FROM base_odoo as server
 ARG USERNAME
 RUN sudo rm -rf {/tmp/*,/var/cache/apt,/var/lib/apt/lists/*}
 COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
-ENTRYPOINT [ "/usr/local/bin/wodoo", "launch" ]
+ENTRYPOINT [ "/usr/local/bin/godoo", "launch" ]
 
 
 # Stage for testing, because we need the workspace with git available for delta checking
@@ -151,7 +151,7 @@ FROM base_odoo as test
 ARG USERNAME
 RUN sudo rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
 ADD --chown=${USERNAME}:${USERNAME} . .
-ENTRYPOINT [ "/usr/local/bin/wodoo", "test" ,"all" ]
+ENTRYPOINT [ "/usr/local/bin/godoo", "test" ,"all" ]
 
 
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
@@ -168,8 +168,8 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
     && pip install -r ./requirements.dev.txt \
     && mkdir -p -m 0770 /home/${USERNAME}/.vscode-server/extensions \
     && chown -R ${USERNAME} /home/${USERNAME}/.vscode-server
-COPY ./scripts/bash_completion /home/${USERNAME}/.bash_completions/wodoo.sh
-COPY ./scripts/zsh_completion /home/${USERNAME}/.zfunc/_wodoo
+COPY --chown=$USERNAME:$USERNAME ./scripts/bash_completion /home/${USERNAME}/.bash_completions/godoo.sh
+COPY --chown=$USERNAME:$USERNAME ./scripts/zsh_completion /home/${USERNAME}/.zfunc/_godoo
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}

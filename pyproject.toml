@@ -1,14 +1,14 @@
 [tool.poetry]
-name = "open-wodoo"
+name = "gOdoo"
 version = "0.0.2"
 description = "Wrapper around Odoo-Bin with some convinience RPC functions."
 authors = ["Joshua Kreuder <Joshua_Kreuder@outlook.com>"]
 license = "LGPL-3"
 readme = "README.md"
-packages = [{include = "open_wodoo"}]
+packages = [{include = "godoo" , from = "src"}]
 
 [tool.poetry.scripts]
-wodoo = "open_wodoo.cli:launch_cli"
+godoo = "src.godoo.cli:launch_cli"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.11"
@@ -17,7 +17,7 @@ ruamel-yaml = "0.17.21"
 typer = {extras = ["all"], version = "^0.7.0"}
 gitpython = "3.1.27"
 rich = "12.6.0"
-wodoo-rpc = "0.0.7"
+godoo-rpc = "0.0.2"
 openupgradelib = "3.3.4"
 
 [tool.poetry.group.dev.dependencies]

@@ -9,7 +9,7 @@ import logging
 from configparser import ConfigParser
 
 import typer
-from wodoo_rpc.login import wait_for_odoo
+from godoo_rpc.login import wait_for_odoo
 
 from ..commands.rpc.cli import rpc_callback
 from ..helpers.cli import typer_unpacker

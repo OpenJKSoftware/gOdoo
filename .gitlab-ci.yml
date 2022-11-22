@@ -15,7 +15,7 @@ variables:
   ODOO_DB_HOST: postgres
   ODOO_TEST_SKIP_MODULES: ""
   DOCKER_DRIVER: overlay2
-  PY_PACKAGE_PATH: open_wodoo
+  PY_PACKAGE_PATH: ""
   BUMP_VERSION:
     value: ""
     description: Specifies how to Bump the Package version. https://python-poetry.org/docs/cli/#version
@@ -53,9 +53,9 @@ pylint:
     - pip install pylint-odoo==8.0.16 pylint-gitlab==1.1.0
   script:
     - pylint --version
-    - pylint --exit-zero --output-format=pylint_gitlab.GitlabCodeClimateReporter addons open_wodoo > codeclimate.json
-    - pylint --exit-zero --output-format=pylint_gitlab.GitlabPagesHtmlReporter addons open_wodoo > pylint.html
-    - pylint addons open_wodoo
+    - pylint --exit-zero --output-format=pylint_gitlab.GitlabCodeClimateReporter addons src > codeclimate.json
+    - pylint --exit-zero --output-format=pylint_gitlab.GitlabPagesHtmlReporter addons src > pylint.html
+    - pylint addons src
   artifacts:
     when: always
     paths:
@@ -105,7 +105,7 @@ test:
       fi
   script:
     - echo Testing with Target $TEST_TARGET
-    - wodoo --verbose test "$TEST_TARGET"
+    - godoo --verbose test "$TEST_TARGET"
 
 push image:
   stage: push

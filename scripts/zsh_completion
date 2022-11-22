@@ -1,8 +1,8 @@
 #!/usr/bin/zsh
-#compdef wodoo
+#compdef godoo
 
-_wodoo_completion() {
-  eval $(env _TYPER_COMPLETE_ARGS="${words[1,$CURRENT]}" _WODOO_COMPLETE=complete_zsh wodoo)
+_godoo_completion() {
+  eval $(env _TYPER_COMPLETE_ARGS="${words[1,$CURRENT]}" _GODOO_COMPLETE=complete_zsh godoo)
 }
 
-compdef _wodoo_completion wodoo
+compdef _godoo_completion godoo

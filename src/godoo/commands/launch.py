@@ -107,7 +107,7 @@ def launch_odoo(
     """
     Bootstrap Odoo and Launch with set options.
     """
-    LOGGER.info("Starting Wodoo Odoo Init Script")
+    LOGGER.info("Starting godoo Init Script")
 
     extra_odoo_args = []
     if not log_file_path is None:
@@ -139,7 +139,7 @@ def launch_odoo(
         install_workspace_addons = False
         bootstraped = ret == 0
         if not bootstraped:
-            LOGGER.error("Wodoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
+            LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
             return typer_retuner(ret)
 
     if ea := extra_args:

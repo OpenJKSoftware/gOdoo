@@ -1,9 +1,9 @@
 #!/bin/bash
-_wodoo_completion() {
+_godoo_completion() {
     local IFS=$'
 '
     COMPREPLY=( $( env COMP_WORDS="${COMP_WORDS[*]}" \
                    COMP_CWORD=$COMP_CWORD \
-                   _WODOO_COMPLETE=complete_bash $1 ) )
+                   _GODOO_COMPLETE=complete_bash $1 ) )
     return 0
 }

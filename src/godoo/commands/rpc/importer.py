@@ -9,8 +9,8 @@ import re
 from pathlib import Path
 
 import typer
-from wodoo_rpc import import_data
-from wodoo_rpc.login import wait_for_odoo
+from godoo_rpc import import_data
+from godoo_rpc.login import wait_for_odoo
 
 from ...helpers.cli import typer_unpacker
 from .cli import rpc_callback

@@ -48,11 +48,11 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "Wodoo",
+      "name": "godoo",
       "type": "python",
       "request": "launch",
       "justMyCode": false,
-      "module": "open_wodoo",
+      "module": "godoo",
       "args": ["--help"],
       "console": "integratedTerminal"
     },

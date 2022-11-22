@@ -2,24 +2,24 @@
 
 launch: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
-	wodoo launch --dev-mode --odoo-demo
+	godoo launch --dev-mode --odoo-demo
 
-enterprise:
-	wodoo launch --dev-mode --odoo-demo --load-data-path ./odoo_import_scripts/install_enterprise.py
+enterprise: # Only works if web_enterprise is available as module
+	godoo launch --dev-mode --odoo-demo --extra-bootstrap-args="-i web_enterprise"
 
 quick: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
-	wodoo launch --dev-mode --no-install-workspace-addons --no-update-source
+	godoo launch --dev-mode --no-install-workspace-addons --no-update-source
 
 kill: # to be called from inside the devcontainer
 	kill $(ps aux | grep 'odoo-bin -' | awk '{print $2}')
 
 offline:
 # Bootstrap, but without git clone/pull
-	wodoo launch --dev-mode --no-update-source
+	godoo launch --dev-mode --no-update-source
 
 bare:
-	wodoo launch --no-install-modules
+	godoo launch --no-install-modules
 
 reset:
 # Deletes Devcontainer Volumes and Restarts devcontainer
@@ -31,7 +31,7 @@ reset-hard: # To be called from Outside the Devcontainer
 
 stg:
 	scripts/pull_remote_odoo_instance.sh
-	wodoo launch --prep-stage --dev-mode --no-install-modules --extra-bootstrap-args="-u all"
+	godoo launch --prep-stage --dev-mode --no-install-modules --extra-bootstrap-args="-u all"
 
 rebuild:
 	DOCKER_BUILDKIT=1 docker build --ssh default --target devcontainer . --no-cache

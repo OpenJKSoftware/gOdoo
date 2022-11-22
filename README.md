@@ -1,10 +1,10 @@
-# Wodoo Dev Environment
+# gOdoo Dev Environment
 
-![OdooLogo](https://gitlab.com/jksoftware1/open-wodoo/-/raw/main/assets/odoo_logo.png)
+![OdooLogo](https://raw.githubusercontent.com/OpenJKSoftware/gOdoo/main/assets/odoo_logo.png)
 ![ComposeLogo](https://raw.githubusercontent.com/docker/compose/v2/logo.png)
 
-[Vscode Devcontainer](https://code.visualstudio.com/docs/remote/containers) Environment for [Odoo](.odoo.com/) with
-Python CLI convenience wrapper around `odoo-bin`
+[Vscode Devcontainer](https://code.visualstudio.com/docs/remote/containers) Environment for [Odoo](https://odoo.com/)
+with Python CLI `godoo` convenience wrapper around `odoo-bin`
 
 Made Possible by: [WEMPE Elektronic GmbH](https://wetech.de)
 
@@ -17,8 +17,8 @@ Made Possible by: [WEMPE Elektronic GmbH](https://wetech.de)
 # Just wanna have a quick and easy Odoo Instance?
 
 ```bash
-git clone https://gitlab.com/jksoftware1/open-wodoo
-cd open-odoo
+git clone https://github.com/OpenJKSoftware/gOdoo
+cd godoo
 cp .env.sample .env # Change this to your liking or pass the env vars directly to the app container.
 docker-compose build
 docker-compose up
@@ -26,7 +26,7 @@ docker-compose up
 # wait a bit mode ...
 # just a little bit longer ..
 # There we go.
-# Odoo should be reachable on 'https://wodoo.docker.localhost' assuming you didn't change .env TRAEFIK_HOST_RULE or COMPOSE_PROJECT_NAME
+# Odoo should be reachable on 'https://godoo.docker.localhost' assuming you didn't change .env TRAEFIK_HOST_RULE or COMPOSE_PROJECT_NAME
 ```
 
 # Devcontainer
@@ -35,7 +35,7 @@ docker-compose up
 
 - Devcontainer workspace [full.code-workspace](full.code-workspace) with Odoo source, Workspace and Thirdparty Source.
 - Easy fully working Odoo instances by `docker-compose up` with https access.
-- `wodoo` CLI wrapper around Odoo. (Most flags can be configured by Environment Variables and are already preconfigured
+- `godoo` CLI wrapper around Odoo. (Most flags can be configured by Environment Variables and are already preconfigured
   in the Containers. See [.env.sample](./.env.sample))
 - `odoo-bin` is added to PATH and can thus be invoked from every folder.
 - Odoo will run in Proxy_Mode behind a Traefik reverse proxy for easy access on
@@ -65,10 +65,10 @@ docker-compose up
 5. From **within the container** start Odoo using one of the following commands:
    - `make` -> Loads Odoo + Workspace Addons
    - `make bare` -> Loads Odoo with ony `web` installed.
-   - `make enterprise` -> Wodoo launch with install script for web_enterprise
-   - The full init script is available via "`wodoo`". (See --help for Options)
+   - `make enterprise` -> godoo launch with install script for web_enterprise
+   - The full init script is available via "`godoo`". (See --help for Options)
 6. Open Odoo `https://$COMPOSE_PROJECT_NAME.docker.localhost`\
-   For example `COMPOSE_PROJECT_NAME=wodoo` --> [https://wodoo.docker.localhost](https://wodoo.docker.localhost)
+   For example `COMPOSE_PROJECT_NAME=godoo` --> [https://godoo.docker.localhost](https://godoo.docker.localhost)
 7. Login with `admin:admin`
 8. Profit!
 
@@ -76,10 +76,11 @@ docker-compose up
 
 You can access the Odoo source by opening the VsCode workspace [full.code-workspace](full.code-workspace) from within
 the Container. This will open a [Multi-Root Workspace](https://code.visualstudio.com/docs/editor/multi-root-workspaces).
+Really waiting for https://github.com/microsoft/vscode-remote-release/issues/3665 here.
 
 ## Reset Devcontainer Data
 
-When you screwed up so bad its time to just start Over wodoo has you covered:
+When you screwed up so bad its time to just start Over godoo has you covered:
 
 ### Automatic Reset
 
@@ -110,14 +111,14 @@ The container ships with a Vscode Debug profile, that sets `--workers 0` to allo
 
 ### Interactive Shell
 
-Use `wodoo shell` to enter an interactive shell on the Database.
+Use `godoo shell` to enter an interactive shell on the Database.
 
 # Odoo Modules
 
 ## Third Party Modules (repospec.yml)
 
-The `wodoo` bootstrap function, will download some modules using git. \
+The `godoo` bootstrap function, will download some modules using git. \
 Which Repos to download is specified in `odoo_repospec.yml` ([Default](./odoo_repospec.yml)) \
 Not all of the cloned addons are automatically installed. \
-Install them via the Apps Page in Odoo using `wodoo rpc modules install` or using `odoo-bin`.\
+Install them via the Apps Page in Odoo using `godoo rpc modules install` or using `odoo-bin`.\
 Modules downloaded on the Odoo Marketplace can be dropped as a `.zip` archive in [./thirdparty](./thirdparty)
