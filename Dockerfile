@@ -137,9 +137,10 @@ ARG USERNAME
 COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
 COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
 EXPOSE 8069 8071 8072
+USER root
 RUN set -x; \
-    sudo mkdir -p {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
-    && sudo chown -R ${USERNAME}:${USERNAME} {$ODOO_THIRDPARTY_LOCATION,$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
+    mkdir -p {$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
+    && chown -R ${USERNAME}:${USERNAME} {$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
 USER ${USERNAME}
 
 
