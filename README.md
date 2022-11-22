@@ -3,18 +3,39 @@
 ![OdooLogo](https://raw.githubusercontent.com/OpenJKSoftware/gOdoo/main/assets/odoo_logo.png)
 ![ComposeLogo](https://raw.githubusercontent.com/docker/compose/v2/logo.png)
 
-[Vscode Devcontainer](https://code.visualstudio.com/docs/remote/containers) Environment for [Odoo](https://odoo.com/)
-with Python CLI `godoo` convenience wrapper around `odoo-bin`
+**gOdoo** is short for **go Odoo**. \
+It is a [Vscode Devcontainer](https://code.visualstudio.com/docs/remote/containers) Environment for [Odoo](https://odoo.com/)
+with Python CLI `godoo` convenience wrapper around `odoo-bin`.
+
+This repository is the base source for the Python package [godoo-cli](https://pypi.org/project/godoo-cli/) and serves as
+an all batteries included development environment.
 
 Made Possible by: [WEMPE Elektronic GmbH](https://wetech.de)
 
-# Requirements
+# gOdoo-cli
+
+Python package that provides `godoo` command line interface around `odoo-bin`.
+
+It's build with [Typer](https://github.com/tiangolo/typer) to provide some convenience Wrappers for Odoo development and
+Deployment.
+
+Most flags can be configured by Env variables. \
+Use `godoo --help` to find out more.
+
+# Docker
+
+This workspace also contains Docker and Docker-Compose files. \
+
+They are used to provide either easy Odoo instances where the source is pulled according to
+[odoo_repospec.yml](./odoo_repospec.yml), or as a all batteries included devcontainer for VScode.
+
+## Requirements
 
 - [Docker Compose](https://github.com/docker/compose)
-- [Traefik](https://doc.traefik.io/traefik/) Container running and "traefik" named docker network. Example:
-  [Traefik Devproxy](https://github.com/joshkreud/traefik_devproxy)
+- [Traefik](https://doc.traefik.io/traefik/) container running with docker provider and "traefik" named docker network.
+  Example: [Traefik Devproxy](https://github.com/joshkreud/traefik_devproxy)
 
-# Just wanna have a quick and easy Odoo Instance?
+## Just wanna have a quick and easy Odoo Instance?
 
 ```bash
 git clone https://github.com/OpenJKSoftware/gOdoo
@@ -33,8 +54,9 @@ docker-compose up
 
 ## Features
 
-- Devcontainer workspace [full.code-workspace](full.code-workspace) with Odoo source, Workspace and Thirdparty Source.
-- Easy fully working Odoo instances by `docker-compose up` with https access.
+- All batteries included [Devcontainer](https://code.visualstudio.com/docs/remote/containers) with postgres service
+  Container and local DNS resolvig managed by [Traefik](https://doc.traefik.io/traefik/).
+- Easy fully working Odoo instance by `docker-compose up` with https access.
 - `godoo` CLI wrapper around Odoo. (Most flags can be configured by Environment Variables and are already preconfigured
   in the Containers. See [.env.sample](./.env.sample))
 - `odoo-bin` is added to PATH and can thus be invoked from every folder.
