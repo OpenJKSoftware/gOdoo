@@ -13,8 +13,8 @@ packaging = "*"
 name = "appnope"
 version = "0.1.3"
 description = "Disable App Nap on macOS >= 10.9"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -34,8 +34,8 @@ wrapt = {version = ">=1.11,<2", markers = "python_version < \"3.11\""}
 name = "asttokens"
 version = "2.1.0"
 description = "Annotate AST trees with source code positions"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -48,16 +48,16 @@ test = ["astroid (<=2.5.3)", "pytest"]
 name = "backcall"
 version = "0.2.0"
 description = "Specifications for callback functions passed in to an API"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
 name = "black"
 version = "22.10.0"
 description = "The uncompromising code formatter."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -86,8 +86,8 @@ python-versions = ">=3.6"
 name = "cfgv"
 version = "3.3.1"
 description = "Validate configuration and produce human readable error messages."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6.1"
 
 [[package]]
@@ -143,16 +143,16 @@ python-versions = ">=3.7"
 name = "debugpy"
 version = "1.6.0"
 description = "An implementation of the Debug Adapter Protocol for Python"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [[package]]
 name = "decorator"
 version = "5.1.1"
 description = "Decorators for Humans"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.5"
 
 [[package]]
@@ -170,8 +170,8 @@ graph = ["objgraph (>=1.7.2)"]
 name = "distlib"
 version = "0.3.6"
 description = "Distribution utilities"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -186,8 +186,8 @@ python-versions = ">=3.6"
 name = "executing"
 version = "1.2.0"
 description = "Get the currently executing AST node of a frame, and other information"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.extras]
@@ -197,8 +197,8 @@ tests = ["asttokens", "littleutils", "pytest", "rich"]
 name = "filelock"
 version = "3.8.0"
 description = "A platform independent file lock."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.extras]
@@ -209,8 +209,8 @@ testing = ["covdefaults (>=2.2)", "coverage (>=6.4.2)", "pytest (>=7.1.2)", "pyt
 name = "flake8"
 version = "5.0.4"
 description = "the modular source code checker: pep8 pyflakes and co"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6.1"
 
 [package.dependencies]
@@ -260,8 +260,8 @@ requests = ">=2.25.1,<3.0.0"
 name = "identify"
 version = "2.5.9"
 description = "File identification library for Python"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.extras]
@@ -292,22 +292,11 @@ perf = ["ipython"]
 testing = ["flake8 (<5)", "flufl.flake8", "importlib-resources (>=1.3)", "packaging", "pyfakefs", "pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=1.3)", "pytest-flake8", "pytest-mypy (>=0.9.1)", "pytest-perf (>=0.9.2)"]
 
 [[package]]
-name = "inotify"
-version = "0.2.10"
-description = "An adapter to Linux kernel support for inotify directory-watching."
-category = "dev"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-nose = "*"
-
-[[package]]
 name = "ipdb"
 version = "0.13.9"
 description = "IPython-enabled pdb"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=2.7"
 
 [package.dependencies]
@@ -320,8 +309,8 @@ toml = {version = ">=0.10.2", markers = "python_version > \"3.6\""}
 name = "ipython"
 version = "8.6.0"
 description = "IPython: Productive Interactive Computing"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.8"
 
 [package.dependencies]
@@ -380,8 +369,8 @@ pandas = ">=1.0.0,<1.4.0"
 name = "jedi"
 version = "0.18.2"
 description = "An autocompletion tool for Python that can be used for text editors."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -440,8 +429,8 @@ python-versions = ">=3.7"
 name = "matplotlib-inline"
 version = "0.1.6"
 description = "Inline Matplotlib backend for Jupyter"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.5"
 
 [package.dependencies]
@@ -459,28 +448,20 @@ python-versions = ">=3.6"
 name = "mypy-extensions"
 version = "0.4.3"
 description = "Experimental type system extensions for programs checked with the mypy typechecker."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
 name = "nodeenv"
 version = "1.7.0"
 description = "Node.js virtual environment builder"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*"
 
 [package.dependencies]
 setuptools = "*"
-
-[[package]]
-name = "nose"
-version = "1.3.7"
-description = "nose extends unittest to make testing easier"
-category = "dev"
-optional = false
-python-versions = "*"
 
 [[package]]
 name = "numpy"
@@ -557,8 +538,8 @@ test = ["hypothesis (>=3.58)", "pytest (>=6.0)", "pytest-xdist"]
 name = "parso"
 version = "0.8.3"
 description = "A Python Parser"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -569,16 +550,16 @@ testing = ["docopt", "pytest (<6.0.0)"]
 name = "pathspec"
 version = "0.10.2"
 description = "Utility library for gitignore style pattern matching of file paths."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [[package]]
 name = "pexpect"
 version = "4.8.0"
 description = "Pexpect allows easy control of interactive console applications."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -588,8 +569,8 @@ ptyprocess = ">=0.5"
 name = "pickleshare"
 version = "0.7.5"
 description = "Tiny 'shelve'-like database with concurrency support"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -608,8 +589,8 @@ test = ["appdirs (==1.4.4)", "pytest (>=7.2)", "pytest-cov (>=4)", "pytest-mock 
 name = "pre-commit"
 version = "2.20.0"
 description = "A framework for managing and maintaining multi-language pre-commit hooks."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -624,8 +605,8 @@ virtualenv = ">=20.0.8"
 name = "prompt-toolkit"
 version = "3.0.33"
 description = "Library for building powerful interactive command lines in Python"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6.2"
 
 [package.dependencies]
@@ -635,16 +616,16 @@ wcwidth = "*"
 name = "ptyprocess"
 version = "0.7.0"
 description = "Run a subprocess in a pseudo terminal"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
 name = "pure-eval"
 version = "0.2.2"
 description = "Safely evaluate AST nodes without side effects"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.extras]
@@ -654,24 +635,24 @@ tests = ["pytest"]
 name = "py-spy"
 version = "0.3.11"
 description = "Sampling profiler for Python programs"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
 name = "pycodestyle"
 version = "2.9.1"
 description = "Python style guide checker"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
 name = "pyflakes"
 version = "2.5.0"
 description = "passive checker of Python programs"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -739,8 +720,8 @@ zipp = "*"
 name = "pylint-odoo"
 version = "8.0.16"
 description = "Pylint plugin for Odoo"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -752,8 +733,8 @@ validators = "0.20.0"
 name = "pylint-plugin-utils"
 version = "0.7"
 description = "Utilities and helpers for writing Pylint plugins"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6.2"
 
 [package.dependencies]
@@ -804,8 +785,8 @@ python-versions = "*"
 name = "pyyaml"
 version = "6.0"
 description = "YAML parser and emitter for Python"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -846,8 +827,8 @@ jupyter = ["ipywidgets (>=7.5.1,<8.0.0)"]
 name = "rope"
 version = "0.23.0"
 description = "a python refactoring library..."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.extras]
@@ -917,8 +898,8 @@ python-versions = ">=3.6"
 name = "stack-data"
 version = "0.6.1"
 description = "Extract data from python stack frames and tracebacks for informative displays"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -957,8 +938,8 @@ python-versions = ">=3.6"
 name = "traitlets"
 version = "5.5.0"
 description = ""
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.extras]
@@ -1010,8 +991,8 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 name = "validators"
 version = "0.20.0"
 description = "Python Data Validation for Humans™."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.4"
 
 [package.dependencies]
@@ -1024,8 +1005,8 @@ test = ["flake8 (>=2.4.0)", "isort (>=4.2.2)", "pytest (>=2.2.3)"]
 name = "virtualenv"
 version = "20.16.7"
 description = "Virtual Python Environment builder"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -1041,8 +1022,8 @@ testing = ["coverage (>=6.2)", "coverage-enable-subprocess (>=1)", "flaky (>=3.7
 name = "watchdog"
 version = "2.1.7"
 description = "Filesystem events monitoring"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -1052,8 +1033,8 @@ watchmedo = ["PyYAML (>=3.10)"]
 name = "wcwidth"
 version = "0.2.5"
 description = "Measures the displayed width of unicode strings in a terminal"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -1076,10 +1057,14 @@ python-versions = ">=3.7"
 docs = ["furo", "jaraco.packaging (>=9)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)"]
 testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools", "more-itertools", "pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=1.3)", "pytest-flake8", "pytest-mypy (>=0.9.1)"]
 
+[extras]
+codequality = ["pylint-odoo", "black", "isort", "flake8"]
+devcontainer = ["ipdb", "debugpy", "pre-commit", "watchdog", "rope", "py-spy"]
+
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "303856d6c75361f5840d2c5b17eea14dd865b92a34d6352487757bd2446e3a28"
+content-hash = "e7be68609d2302d4bdaffd151facb108319b01d7a1b60b15ff268694eba48863"
 
 [metadata.files]
 anybadge = [
@@ -1224,10 +1209,6 @@ idna = [
 importlib-metadata = [
     {file = "importlib_metadata-5.0.0-py3-none-any.whl", hash = "sha256:ddb0e35065e8938f867ed4928d0ae5bf2a53b7773871bfe6bcc7e4fcdc7dea43"},
     {file = "importlib_metadata-5.0.0.tar.gz", hash = "sha256:da31db32b304314d044d3c12c79bd59e307889b287ad12ff387b3500835fc2ab"},
-]
-inotify = [
-    {file = "inotify-0.2.10-py2-none-any.whl", hash = "sha256:397f8785450e41f606fe4eb6f5e8e0a1c70b354b56495225fc6c6fe7e07db0c9"},
-    {file = "inotify-0.2.10.tar.gz", hash = "sha256:974a623a338482b62e16d4eb705fb863ed33ec178680fc3e96ccdf0df6c02a07"},
 ]
 ipdb = [
     {file = "ipdb-0.13.9.tar.gz", hash = "sha256:951bd9a64731c444fd907a5ce268543020086a697f6be08f7cc2c9a752a278c5"},
@@ -1402,11 +1383,6 @@ mypy-extensions = [
 nodeenv = [
     {file = "nodeenv-1.7.0-py2.py3-none-any.whl", hash = "sha256:27083a7b96a25f2f5e1d8cb4b6317ee8aeda3bdd121394e5ac54e498028a042e"},
     {file = "nodeenv-1.7.0.tar.gz", hash = "sha256:e0e7f7dfb85fc5394c6fe1e8fa98131a2473e04311a45afb6508f7cf1836fa2b"},
-]
-nose = [
-    {file = "nose-1.3.7-py2-none-any.whl", hash = "sha256:dadcddc0aefbf99eea214e0f1232b94f2fa9bd98fa8353711dacb112bfcbbb2a"},
-    {file = "nose-1.3.7-py3-none-any.whl", hash = "sha256:9ff7c6cc443f8c51994b34a667bbcf45afd6d945be7477b52e97516fd17c53ac"},
-    {file = "nose-1.3.7.tar.gz", hash = "sha256:f1bffef9cbc82628f6e7d7b40d7e255aefaa1adb6a1b1d26c69a8b79e6208a98"},
 ]
 numpy = [
     {file = "numpy-1.23.5-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:9c88793f78fca17da0145455f0d7826bcb9f37da4764af27ac945488116efe63"},

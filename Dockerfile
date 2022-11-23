@@ -96,11 +96,11 @@ RUN set -x; \
     # empty __init__.py gets overwritten by COPY below
     && mkdir -p ./src/godoo_cli \
     && touch ./{src/godoo_cli/__init__.py,README.md} \
-    && poetry install
+    && poetry install --extras "devcontainer codequality"
 # The following COPYs are below poetry install for better caching
 COPY --chown=$USERNAME:$USERNAME src src
 # Now install godoo for real. Way faster now, because deps are already cached.
-RUN poetry install
+RUN poetry install --extras "devcontainer codequality"
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ---------------------------------------------------------------------------------------------------------
 
