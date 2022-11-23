@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from ..helpers.repospec import yaml_add_compare_commit, yaml_remove_compare_commit, yaml_roundtrip_loader
+from ..helpers.odoo_manifest import yaml_add_compare_commit, yaml_remove_compare_commit, yaml_roundtrip_loader
 from .git_repo import git_ensure_repo
 
 LOGGER = logging.getLogger(__name__)
@@ -9,19 +9,19 @@ LOGGER = logging.getLogger(__name__)
 
 def git_ensure_odoo_repo(
     target_folder: Path,
-    repo_spec_file: Path,
+    manifest_file: Path,
     force_fetch: bool,
     add_compare_comment: bool,
     download_archive: bool,
 ):
     yaml = yaml_roundtrip_loader()
-    git_repos = yaml.load(repo_spec_file.resolve())
+    git_repos = yaml.load(manifest_file.resolve())
     if not git_repos:
-        raise FileNotFoundError(f"Couldnt load yml file from: {str(repo_spec_file)}")
+        raise FileNotFoundError(f"Couldnt load yml file from: {str(manifest_file)}")
 
     odoo_data = git_repos.get("odoo")
     if not odoo_data:
-        raise KeyError(f"Could not find key 'odoo' in {str(repo_spec_file)}")
+        raise KeyError(f"Could not find key 'odoo' in {str(manifest_file)}")
 
     odoo_url = odoo_data["url"]
     odoo_branch = odoo_data.get("branch", "master")
@@ -42,4 +42,4 @@ def git_ensure_odoo_repo(
         single_branch=True,
     )
 
-    yaml.dump(git_repos, repo_spec_file)
+    yaml.dump(git_repos, manifest_file)

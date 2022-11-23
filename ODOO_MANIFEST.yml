@@ -1,4 +1,4 @@
-# This is the default repospec.yml
+# This is the default manifest.yml
 # Here we can specify which Version of odoo to Clone and which Thirdparty libraries we want to clone from git.
 # a "Repo" always consists of an "url" and "branch" or "commit". where "commit" can basicallly be every valid Git ref.
 # When only selecting "branch" and no "commit" this causes godoo to always pull changes form the remote.

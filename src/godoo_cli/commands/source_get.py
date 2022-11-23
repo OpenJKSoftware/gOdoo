@@ -13,7 +13,7 @@ from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
 from ..helpers import download_file
 from ..helpers.cli import typer_unpacker
 from ..helpers.odoo_files import get_odoo_addons_in_folder
-from ..helpers.repospec import remove_unused_folders
+from ..helpers.odoo_manifest import remove_unused_folders
 
 LOGGER = logging.getLogger(__name__)
 
@@ -69,28 +69,28 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
 
 @typer_unpacker
 def get_source_file(
-    repospec_yml: Path = typer.Option(
-        "", envvar="ODOO_GITSPEC", help="godoo Repospec path, when downloading odoo source (skip repo_url)"
+    manifest_yml: Path = typer.Option(
+        "", envvar="ODOO_GITSPEC", help="godoo manifest path, when downloading odoo source (skip repo_url)"
     ),
-    repo_url: str = typer.Option("", help="git repo url, for specific repo (skip repospec_yml)"),
-    file_ref: str = typer.Option("", help="When not using repospec. File Branch, Commit, Tag..."),
+    repo_url: str = typer.Option("", help="git repo url, for specific repo (skip manifest_yml)"),
+    file_ref: str = typer.Option("", help="When not using manifest. File Branch, Commit, Tag..."),
     file_path: str = typer.Option(..., help="Relative Filepath in Repository"),
     save_path: Path = typer.Option(..., file_okay=True, dir_okay=False, help="Where to write the file"),
 ):
     """Get Raw file from git remote.
-    Either from the Odoo Repo defined in repospec file or from a custom Git remote.
+    Either from the Odoo Repo defined in manifest file or from a custom Git remote.
     """
 
-    if not repo_url and not repospec_yml:
-        raise ValueError("Need to provide either repospec_yml or repo_url")
-    if repospec_yml and not repo_url:
-        repospec = YAML().load(repospec_yml.resolve())
-        odoo_spec = repospec["odoo"]
+    if not repo_url and not manifest_yml:
+        raise ValueError("Need to provide either manifest_yml or repo_url")
+    if manifest_yml and not repo_url:
+        manifest = YAML().load(manifest_yml.resolve())
+        odoo_spec = manifest["odoo"]
         repo_url = odoo_spec["url"]
         file_ref = odoo_spec.get("commit") or odoo_spec.get("branch")
     if not file_ref:
         raise ValueError(
-            "Need to provide file ref. If you provided a repospec, make sure there is a branch or commit key in the odoo section"
+            "Need to provide file ref. If you provided a manifest, make sure there is a branch or commit key in the odoo section"
         )
     git_url = GitUrl(repo_url)
     file_url = git_url.get_file_raw_url(ref=file_ref, file_path=file_path)
@@ -101,7 +101,7 @@ def get_source_file(
 @typer_unpacker
 def get_source(
     ctx: typer.Context,
-    repospec_yml: Path = typer.Option(
+    manifest_yml: Path = typer.Option(
         ..., envvar="ODOO_GITSPEC", help="Git.yml file, that specified what to download with wich prefix"
     ),
     thirdparty_addon_path: Path = typer.Option(
@@ -132,7 +132,7 @@ def get_source(
     if update_mode in ["all", "odoo"]:
         git_ensure_odoo_repo(
             target_folder=ctx.obj.odoo_main_path,
-            repo_spec_file=repospec_yml,
+            manifest_file=manifest_yml,
             force_fetch=force_fetch,
             add_compare_comment=add_compare_comments,
             download_archive=ctx.obj.source_download_archive,
@@ -141,7 +141,7 @@ def get_source(
     if update_mode in ["all", "thirdparty"]:
         git_repos = git_ensure_addon_repos(
             root_folder=thirdparty_addon_path,
-            git_yml_path=repospec_yml,
+            git_yml_path=manifest_yml,
             generate_yml_compare_comments=add_compare_comments,
             download_archive=ctx.obj.source_download_archive,
         )

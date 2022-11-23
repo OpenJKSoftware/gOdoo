@@ -50,7 +50,7 @@ def update_yml(
     thirdparty_repos = repo_yml["thirdparty"]
     odoo_default_branch = repo_yml["odoo"].get("branch")
     if not odoo_default_branch:
-        LOGGER.error("Repospec Odoo Key missing Branch argument.")
+        LOGGER.error("Odoo Key in manifest missing branch argument.")
         return
 
     for prefix in thirdparty_repos:

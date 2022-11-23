@@ -5,7 +5,7 @@ from typing import Dict
 
 from git import Commit
 
-from ..helpers.repospec import update_yml, yaml_roundtrip_loader
+from ..helpers.odoo_manifest import update_yml, yaml_roundtrip_loader
 from .git_repo import git_ensure_repo
 from .git_url import GitUrl
 
@@ -72,7 +72,7 @@ def _git_clone_addon_repos(
         futures = []
         thirdparty_repos = git_repos.get("thirdparty")
         if not thirdparty_repos:
-            LOGGER.info("No Thirdparty Key in Repospec. Skipping...")
+            LOGGER.info("No Thirdparty Key in manifest. Skipping...")
             return
         for prefix, repos in thirdparty_repos.items():
             for repo in repos:

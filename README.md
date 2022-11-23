@@ -27,7 +27,7 @@ Use `godoo --help` to find out more. HINT: Install tab-completion with `godoo --
 This workspace also contains Docker and Docker-Compose files. \
 
 They are used to provide either easy Odoo instances where the source is pulled according to
-[odoo_repospec.yml](./odoo_repospec.yml), or as a all batteries included devcontainer for VScode.
+[ODOO_MANIFEST.yml](./ODOO_MANIFEST.yml), or as a all batteries included devcontainer for VScode.
 
 ## Requirements
 
@@ -140,10 +140,10 @@ Use `godoo shell` to enter an interactive shell on the Database.
 
 # Odoo Modules
 
-## Third Party Modules (repospec.yml)
+## Third Party Modules (manifest.yml)
 
 The `godoo` bootstrap function, will download some modules using git. \
-Which Repos to download is specified in `odoo_repospec.yml` ([Default](./odoo_repospec.yml)) \
+Which Repos to download is specified in `ODOO_MANIFEST.yml` ([Default](./ODOO_MANIFEST.yml)) \
 Not all of the cloned addons are automatically installed. \
 Install them via the Apps Page in Odoo using `godoo rpc modules install` or using `odoo-bin`.\
 Modules downloaded on the Odoo Marketplace can be dropped as a `.zip` archive in [./thirdparty](./thirdparty)

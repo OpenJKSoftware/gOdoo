@@ -65,7 +65,7 @@ ARG USERNAME
 WORKDIR $WORKSPACE
 # godoo Default Env Vars:
 ENV ODOO_MAIN_FOLDER=/odoo/odoo \
-    ODOO_GITSPEC=$WORKSPACE/odoo_repospec.yml \
+    ODOO_GITSPEC=$WORKSPACE/ODOO_MANIFEST.yml \
     ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
     ODOO_THIRDPARTY_ZIP_LOCATION=$WORKSPACE/thirdparty \
     ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
@@ -105,7 +105,7 @@ RUN poetry install --extras "devcontainer codequality"
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ---------------------------------------------------------------------------------------------------------
 
-COPY --chown=$USERNAME:$USERNAME odoo_repospec.yml ./
+COPY --chown=$USERNAME:$USERNAME ODOO_MANIFEST.yml ./
 
 # Install everything from Odoo requirements.txt, by downloading its raw contents
 FROM python_workspace as odoo_requirements
