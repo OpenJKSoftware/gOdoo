@@ -1,33 +1,29 @@
-name: Version tag
+name: Git tag
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
-
-on:
-  pull_request_target:
-    types:
-      - closed
+# We call this at the end of the quality Workflow
+on: workflow_call
 
 jobs:
   tag:
-    name: Tag Version if Pullrequest Bumped
-    if: github.event.pull_request.merged == true
+    name: Git Tag
     runs-on: ubuntu-latest
+    if:
+      "github.event.pull_request.merged == true && startsWith( github.event.pull_request.title, ':shipit: Bump to
+      Version: ' )"
     steps:
       - uses: actions/checkout@v3
       - name: setup git config
         run: |
           git config user.name "GitHub Actions Bot"
           git config user.email "<>"
-      - name: Is last commit bump version
+
+      - name: Parse Tag name
         id: version_number
-        continue-on-error: true
         run: |
-          BUMP_VERSION=$(echo "${{ github.event.pull_request.title }}" | grep ":shipit: Bump to Version: " | awk '{print $5}')
-          echo "BUMP_VERSION=$BUMP_VERSION" >> $GITHUB_OUTPUT
+          TAG_NAME=$(echo "${{ github.event.pull_request.title }}" | awk '{print $5}')
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
+
       - name: Git tag & push
-        if: steps.version_number.outputs.BUMP_VERSION != ''
         run: |
-          git tag ${{ steps.version_number.outputs.BUMP_VERSION }}
+          git tag ${{ steps.version_number.outputs.TAG_NAME }}
           git push --tags
