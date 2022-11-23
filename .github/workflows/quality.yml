@@ -51,7 +51,7 @@ jobs:
 
   build-and-push-image:
     runs-on: ubuntu-latest
-    run-name: ${{ github.ref == 'refs/heads/master' && 'Build and push Docker image' ||  'test Build Docker Image'  }}
+    name: ${{ github.ref == 'refs/heads/master' && 'Build and push Docker image' ||  'test Build Docker Image'  }}
     needs: QualitChecks
     permissions:
       contents: read
