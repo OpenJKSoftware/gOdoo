@@ -20,7 +20,7 @@ It's build with [Typer](https://github.com/tiangolo/typer) to provide some conve
 Deployment.
 
 Most flags can be configured by Env variables. \
-Use `godoo --help` to find out more.
+Use `godoo --help` to find out more. HINT: Install tab-completion with `godoo --install-completion`
 
 # Docker
 
@@ -85,9 +85,12 @@ docker-compose up
    - If you have the Devcontainer CLI: `devcontainer open .`
    - If not open the workspace in Local Vscode. In the Command pallete search for `Reopen in container`
 4. From **within the container** start Odoo using one of the following commands:
+   - You can enable godoo tab-completion by `godoo --install-completion`
    - `make` -> Loads Odoo + Workspace Addons
    - `make bare` -> Loads Odoo with ony `web` installed.
-   - `make enterprise` -> godoo launch with install script for web_enterprise
+   - `make enterprise` -> godoo launch with `-i web_enterprise` parameter
+   - `make kill` -> Search for `odoo-bin` processes and kill them
+   - `make reset` -> Drops DB, deletes config file and datafolder
    - The full init script is available via "`godoo`". (See --help for Options)
 5. Open Odoo `https://$COMPOSE_PROJECT_NAME.docker.localhost`\
    For example `COMPOSE_PROJECT_NAME=godoo` --> [https://godoo.docker.localhost](https://godoo.docker.localhost)
