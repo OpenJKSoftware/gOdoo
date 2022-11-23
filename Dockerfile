@@ -4,8 +4,9 @@
 ARG USERNAME=ContainerUser
 ARG WORKSPACE=/odoo/workspace
 ARG PYTHONVERSION=3.8
+ARG BASE_IMAGE=ghcr.io/openjksoftware/python-devcontainer
 
-FROM ghcr.io/openjksoftware/python-devcontainer:$PYTHONVERSION as odoo_system_depends
+FROM ${BASE_IMAGE}:${PYTHONVERSION} as odoo_system_depends
 USER root
 
 # Install Dependencies
@@ -162,6 +163,7 @@ FROM base_odoo as devcontainer
 ARG USERNAME
 USER root
 VOLUME ["/home/${USERNAME}/.vscode-server"]
+VOLUME ["/home/${USERNAME}/.cache/pre-commit"]
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
