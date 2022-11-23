@@ -6,6 +6,8 @@ authors = ["Joshua Kreuder <Joshua_Kreuder@outlook.com>"]
 license = "LGPL-3"
 readme = "README.md"
 packages = [{include = "godoo_cli",  from = "src"}]
+repository = "https://github.com/OpenJKSoftware/gOdoo"
+keywords = ["odoo", "godoo","devcontainer"]
 
 [tool.poetry_bumpversion.file."src/godoo_cli/__init__.py"]
 
