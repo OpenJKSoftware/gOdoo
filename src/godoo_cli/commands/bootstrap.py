@@ -6,7 +6,7 @@ from typing import List
 import typer
 
 from ..helpers.cli import typer_retuner, typer_unpacker
-from ..helpers.odoo_files import get_odoo_addons_in_folder
+from ..helpers.odoo_files import get_addon_paths, get_odoo_addons_in_folder
 from .source_get import get_source
 
 LOGGER = logging.getLogger(__name__)
@@ -94,17 +94,15 @@ def _boostrap_command(
             init_modules += [f.name for f in workspace_addons]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
-    addon_paths = [str((odoo_main_path / "addons").absolute())]
-    if workspace_addons:
-        addon_paths.append(str(workspace_addon_path.absolute()))
-
-    thirdparty_addon_paths = [
-        str(p) for p in thirdparty_addon_path.glob("*") if p.is_dir() and get_odoo_addons_in_folder(p)
-    ]
-    if thirdparty_addon_paths:
-        addon_paths += thirdparty_addon_paths
-
+    addon_paths = get_addon_paths(
+        odoo_main_repo=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        zip_addon_path=thirdparty_addon_path / "custom",  #!Todo Pull out into variable
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
+    addon_paths = [str(p.absolute()) for p in addon_paths]
     addon_paths = ", ".join(list(filter(None, addon_paths)))
+
     base_cmds = [
         str(odoo_main_path.absolute()) + "/odoo-bin",
         init_cmd,

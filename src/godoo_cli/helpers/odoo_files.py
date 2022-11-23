@@ -103,3 +103,39 @@ def get_depends_of_modules(addon_path: Path, in_module_paths: List[Path]) -> Lis
                 added = True
     LOGGER.debug("Found Depends: %s", ", ".join([str(d) for d in out_depends if d not in in_module_paths]))
     return out_depends
+
+
+def get_addon_paths(
+    odoo_main_repo: Path,
+    workspace_addon_path: Path,
+    zip_addon_path: Path,
+    thirdparty_addon_path: Path,
+) -> List[Path]:
+    """Get Odoo Addon Paths for odoo.conf.
+
+    Parameters
+    ----------
+    odoo_main_repo : Path
+        Path to main odoo repo
+    workspace_addon_path : Path
+        Path to workspace addons
+    zip_addon_path : Path
+        path to zip addons
+    thirdparty_addon_path : Path
+        path to git cloned addon repos
+
+    Returns
+    -------
+    List[Path]
+        List of valid addon Paths
+    """
+    odoo_addon_paths = [odoo_main_repo / "addons"]
+    if get_odoo_addons_in_folder(workspace_addon_path):
+        odoo_addon_paths.append(workspace_addon_path)
+    zip_addon_repos = [f for f in zip_addon_path.iterdir() if f.is_dir() and get_odoo_addons_in_folder(f)]
+    odoo_addon_paths += zip_addon_repos
+    git_thirdparty_addon_repos = [
+        p for p in thirdparty_addon_path.iterdir() if p.is_dir() and not p.resolve() == zip_addon_path.resolve()
+    ]
+    odoo_addon_paths += git_thirdparty_addon_repos
+    return odoo_addon_paths
