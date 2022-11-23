@@ -3,6 +3,8 @@
 ![OdooLogo](https://raw.githubusercontent.com/OpenJKSoftware/gOdoo/main/assets/odoo_logo.png)
 ![ComposeLogo](https://raw.githubusercontent.com/docker/compose/v2/logo.png)
 
+[<img src="https://raw.githubusercontent.com/OpenJKSoftware/gOdoo/main/assets/godoo-main-cli.png" width="1000"/>](image.png)
+
 **gOdoo** is short for **go Odoo**. \
 It is a [Vscode Devcontainer](https://code.visualstudio.com/docs/remote/containers) Environment for [Odoo](https://odoo.com/)
 with Python CLI `godoo` convenience wrapper around `odoo-bin`.
