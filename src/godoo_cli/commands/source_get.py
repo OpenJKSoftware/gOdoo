@@ -70,7 +70,7 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
 @typer_unpacker
 def get_source_file(
     manifest_yml: Path = typer.Option(
-        "", envvar="ODOO_GITSPEC", help="godoo manifest path, when downloading odoo source (skip repo_url)"
+        "", envvar="ODOO_MANIFEST", help="godoo manifest path, when downloading odoo source (skip repo_url)"
     ),
     repo_url: str = typer.Option("", help="git repo url, for specific repo (skip manifest_yml)"),
     file_ref: str = typer.Option("", help="When not using manifest. File Branch, Commit, Tag..."),
@@ -102,7 +102,7 @@ def get_source_file(
 def get_source(
     ctx: typer.Context,
     manifest_yml: Path = typer.Option(
-        ..., envvar="ODOO_GITSPEC", help="Git.yml file, that specified what to download with wich prefix"
+        ..., envvar="ODOO_MANIFEST", help="Git.yml file, that specified what to download with wich prefix"
     ),
     thirdparty_addon_path: Path = typer.Option(
         ..., envvar="ODOO_THIRDPARTY_LOCATION", help="Root folder of the Thirdparty addon repos"
