@@ -97,7 +97,7 @@ def _boostrap_command(
     addon_paths = get_addon_paths(
         odoo_main_repo=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
-        zip_addon_path=thirdparty_addon_path / "custom",  #!Todo Pull out into variable
+        zip_addon_path=thirdparty_addon_path / "custom",  # !Todo Pull out into variable
         thirdparty_addon_path=thirdparty_addon_path,
     )
     addon_paths = [str(p.absolute()) for p in addon_paths]
