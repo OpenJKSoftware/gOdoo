@@ -3,6 +3,7 @@ from pathlib import Path
 
 from git import InvalidGitRepositoryError, Repo
 
+from .git_url import GitUrl
 from .zip_download import git_download_zip
 
 LOGGER = logging.getLogger(__name__)
@@ -139,6 +140,10 @@ def git_ensure_repo(
     if target_folder.exists() and any(target_folder.iterdir()) and not target_folder.glob(".git"):
         LOGGER.info("Assuming '%s' got pulled in .Zip mode. Skipping Clone and commit check.", target_folder)
         zip_mode = True
+
+    if zip_mode and GitUrl(repo_src).url_type == "ssh":
+        LOGGER.info("Zip downloading currently not supported for SSH type Urls")
+        zip_mode = False
 
     if zip_mode:
         return git_download_zip(
