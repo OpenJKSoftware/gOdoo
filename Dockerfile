@@ -101,7 +101,7 @@ RUN set -x; \
 # The following COPYs are below poetry install for better caching
 COPY --chown=$USERNAME:$USERNAME src src
 # Now install godoo for real. Way faster now, because deps are already cached.
-RUN poetry install --extras "devcontainer codequality"
+RUN poetry install --extras "devcontainer codequality" && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.cache
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ---------------------------------------------------------------------------------------------------------
 
