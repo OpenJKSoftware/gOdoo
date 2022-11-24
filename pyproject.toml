@@ -55,6 +55,9 @@ codequality = [
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.pyright]
+ignore="**/__manifest__.py"
+
 [tool.black]
 line-length = 120
 
