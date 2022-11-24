@@ -71,13 +71,13 @@ def get_changed_modules(
     return changed_module_folders
 
 
-def get_depends_of_modules(addon_path: Path, in_module_paths: List[Path]) -> List[Path]:
+def get_depends_of_modules(addon_paths: Union[Path, List[Path]], in_module_paths: List[Path]) -> List[Path]:
     """Get Modules which do depend on given modules. Recursive.
 
     Parameters
     ----------
-    addon_path : Path
-        Folder where to look for Depends of in_module_paths
+    addon_paths : Union[Path,List[Path]]
+        Folder(s) where to look for Depends of in_module_paths
     in_module_paths : List[Path]
         List of Module Paths of which we want to get the downstream dependencies
 
@@ -86,7 +86,7 @@ def get_depends_of_modules(addon_path: Path, in_module_paths: List[Path]) -> Lis
     List[Path]
         Union of in_module_paths and all their downstream depends.
     """
-    all_modules = get_odoo_module_paths(addon_path)
+    all_modules = get_odoo_module_paths(addon_paths)
     if not in_module_paths:
         return
     added = True
@@ -158,6 +158,7 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
     LOGGER.debug("Checking python requirements of Modules: %s", ", ".join(filter_module_names))
     available_modules = get_odoo_module_paths(addon_paths)
     available_module_names = [p.stem for p in available_modules]
+
     if not filter_module_names:
         filter_module_names = available_module_names
     filter_module_names = [f for f in filter_module_names if f not in ["base", "web"]]
@@ -166,6 +167,8 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
         LOGGER.warning("Couldn't search Python reqs for unavailable Modules: %s", ", ".join(unavailable_modules))
 
     check_modules = [mp for mp in available_modules if mp.stem in filter_module_names]
+    check_modules += get_depends_of_modules(addon_paths, check_modules)
+
     if not check_modules:
         LOGGER.debug("No Modules provided to check for python Requirements")
         return
