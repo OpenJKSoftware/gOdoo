@@ -12,21 +12,24 @@ from rich.logging import RichHandler
 LOGGER = logging.getLogger(__name__)
 
 
-def run_cmd(command: str) -> subprocess.CompletedProcess:
-    """Runs command via subprocess
+def run_cmd(command: str, **kwargs) -> subprocess.CompletedProcess:
+    """Runs command via subprocess.run
 
     Parameters
     ----------
     command : str
-        _description_
+        Command string
+    **kwargs
+        get passed down to Run
 
     Returns
     -------
-    _type_
-        _description_
+    CompletedProcess
     """
     LOGGER.debug("Launching Commandline: '%s'", command)
-    proc = subprocess.run(command, shell=True)
+    if not kwargs.get("shell"):
+        kwargs["shell"] = True
+    proc = subprocess.run(command, **kwargs)
     return proc
 
 

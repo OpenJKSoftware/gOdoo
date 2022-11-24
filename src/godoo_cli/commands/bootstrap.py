@@ -1,5 +1,7 @@
 import logging
 import re
+import subprocess
+from ast import literal_eval
 from pathlib import Path
 from typing import List
 
@@ -29,8 +31,13 @@ def _install_py_reqs_for_modules(addon_paths: List[Path], module_names: List[str
     """
     py_reqs = _get_python_requirements_of_modules(addon_paths=addon_paths, filter_module_names=module_names)
     if py_reqs:
-        LOGGER.info("Installing Python requirements: %s", ", ".join(py_reqs))
-        return run_cmd(f"pip install {' '.join(py_reqs)}")
+        installed_packages = run_cmd(
+            "pip list --format json --disable-pip-version-check", check=True, shell=True, stdout=subprocess.PIPE
+        ).stdout.decode("utf-8")
+        installed_packages = [m.get("name") for m in literal_eval(installed_packages)]
+        if missing_packages := [p for p in py_reqs if p not in installed_packages]:
+            LOGGER.info("Installing Python requirements: '%s'", ", ".join(missing_packages))
+            return run_cmd(f"pip install {' '.join(missing_packages)} --disable-pip-version-check", shell=True)
     LOGGER.debug("No py Requirements to be installed")
 
 
@@ -217,8 +224,7 @@ def bootstrap_odoo(
         languages=languages,
     )
 
-    if update_source:
-        _install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
+    _install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
 
     LOGGER.info("Launching Bootstrap Commandline")
     ret = run_cmd(cmd_string).returncode
