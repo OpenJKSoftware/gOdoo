@@ -1,5 +1,4 @@
 import logging
-import os
 import threading
 from pathlib import Path
 from typing import List
@@ -7,8 +6,9 @@ from typing import List
 import typer
 
 from ..commands.rpc.cli import rpc_callback
+from ..helpers import run_cmd
 from ..helpers.cli import typer_retuner, typer_unpacker
-from ..helpers.odoo_files import get_odoo_addons_in_folder
+from ..helpers.odoo_files import get_odoo_module_paths
 from .bootstrap import bootstrap_odoo
 from .makedev import makedev_config, makedev_rpc
 from .rpc import import_to_odoo
@@ -38,9 +38,7 @@ def _launch_command(
     upgrade_workspace_modules : bool, optional
         upgrade workspace addons, by default True
     """
-    upgrade_addons = (
-        [f.name for f in get_odoo_addons_in_folder(workspace_addon_path)] if upgrade_workspace_modules else []
-    )
+    upgrade_addons = [f.name for f in get_odoo_module_paths(workspace_addon_path)] if upgrade_workspace_modules else []
     if any(["-u" in i or "--update" in i for i in extra_cmd_args]):
         upgrade_addons = []
     update_addon_string = "--update " + ",".join(upgrade_addons) if upgrade_addons else ""
@@ -52,39 +50,6 @@ def _launch_command(
     ] + extra_cmd_args
     odoo_cmd = list(filter(None, odoo_cmd))
     return " ".join(odoo_cmd)
-
-
-def _launch(
-    odoo_path: Path,
-    odoo_conf_path: Path,
-    extra_cmd_args: List[str],
-    workspace_addon_path: Path,
-    upgrade_workspace_modules: bool = True,
-):
-    """Launches Odoo
-
-    Parameters
-    ----------
-    odoo_path : Path
-        Path to odoo-bin folder
-    odoo_conf_path : Path
-        Path to odoo.conf
-    extra_cmd_args : List[str]
-        extra args to pass to odoo-bin
-    workspace_addon_path : Path
-        Path to dev workspace addons folder
-    upgrade_workspace_modules : bool, optional
-        upgrade workspace addons, by default True
-    """
-    cmd_string = _launch_command(
-        odoo_path=odoo_path,
-        odoo_conf_path=odoo_conf_path,
-        extra_cmd_args=extra_cmd_args,
-        workspace_addon_path=workspace_addon_path,
-        upgrade_workspace_modules=upgrade_workspace_modules,
-    )
-    LOGGER.info("Launching Odoo: '%s'", cmd_string)
-    return os.system(cmd_string)
 
 
 @typer_unpacker
@@ -116,20 +81,19 @@ def launch_odoo(
 
     if ctx.obj.odoo_conf_path.exists() and prep_stage:
         makedev_config(ctx)
-
     LOGGER.info("Bootstrap Flag Status: %s", ctx.obj.bootstrap_flag_location.exists())
     bootstraped = False
     ret = ""
     if not ctx.obj.bootstrap_flag_location.exists():
-        extra_odoo_args_bootstrap = extra_odoo_args.copy()
+        _extra_bootstrap_args = extra_odoo_args.copy()
         if ea := extra_bootstrap_args:
-            extra_odoo_args_bootstrap += ea
+            _extra_bootstrap_args += ea
         if not odoo_demo:
-            extra_odoo_args_bootstrap += ["--without-demo all"]
+            _extra_bootstrap_args += ["--without-demo all"]
 
         ret = bootstrap_odoo(
             ctx=ctx,
-            extra_cmd_args=extra_odoo_args_bootstrap,
+            extra_cmd_args=_extra_bootstrap_args,
             install_base=install_modules,
             install_workspace_modules=install_workspace_addons and install_modules,
             multithread_worker_count=multithread_worker_count,
@@ -172,14 +136,15 @@ def launch_odoo(
         )
         loader_thread.start()
 
-    ret = _launch(
+    cmd_string = _launch_command(
         odoo_path=ctx.obj.odoo_main_path,
         odoo_conf_path=ctx.obj.odoo_conf_path,
         extra_cmd_args=extra_odoo_args,
         workspace_addon_path=ctx.obj.workspace_addon_path,
         upgrade_workspace_modules=install_workspace_addons,
     )
-    return typer_retuner(ret)
+    LOGGER.info("Launching Odoo")
+    return typer_retuner(run_cmd(cmd_string).returncode)
 
 
 def launch_cli_app():

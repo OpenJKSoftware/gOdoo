@@ -1,9 +1,9 @@
 import logging
-import os
 from typing import List
 
 import typer
 
+from ..helpers import run_cmd
 from ..helpers.cli import typer_retuner, typer_unpacker
 
 LOGGER = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ def uninstall_modules(
     uninstall_cmd = f"env['ir.module.module'].search([('name','in',{module_list_str})]).filtered(lambda m: m.state not in ['uninstallable','uninstalled']).button_immediate_uninstall()"
     uninstall_shell = f'echo "{uninstall_cmd}" | {str(ctx.obj.odoo_main_path.absolute())}/odoo-bin shell -c {str(ctx.obj.odoo_conf_path.absolute())} --no-http'
     LOGGER.info("Launching Uninstaller: '%s'", uninstall_shell)
-    ret = os.system(uninstall_shell)
+    ret = run_cmd(uninstall_shell).returncode
     return typer_retuner(ret)
 
 
@@ -39,4 +39,4 @@ def odoo_shell(
     if pipe_in_command:
         shell_cmd = f'echo "{pipe_in_command}" |' + shell_cmd
     LOGGER.debug("Running Command: %s", shell_cmd)
-    os.system(shell_cmd)
+    return typer_retuner(run_cmd(shell_cmd).returncode)

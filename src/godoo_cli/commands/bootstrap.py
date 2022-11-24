@@ -1,21 +1,64 @@
 import logging
-import os
+import re
 from pathlib import Path
 from typing import List
 
 import typer
 
+from ..helpers import run_cmd
 from ..helpers.cli import typer_retuner, typer_unpacker
-from ..helpers.odoo_files import get_addon_paths, get_odoo_addons_in_folder
+from ..helpers.odoo_files import _get_python_requirements_of_modules, get_addon_paths, get_odoo_module_paths
 from .source_get import get_source
 
 LOGGER = logging.getLogger(__name__)
 
 
+def _install_py_reqs_for_modules(addon_paths: List[Path], module_names: List[str] = None):
+    """Install Python Requirements mentioned in odoo module manifests of given modules
+
+    Parameters
+    ----------
+    addon_paths : List[Path]
+        odoo-bin addons path
+    module_names : List[str], Optional
+        List of modules to filter for, by default "all available modules"
+
+    Returns
+    -------
+    CompletedProcess
+    """
+    py_reqs = _get_python_requirements_of_modules(addon_paths=addon_paths, filter_module_names=module_names)
+    if py_reqs:
+        LOGGER.info("Installing Python requirements: %s", ", ".join(py_reqs))
+        return run_cmd(f"pip install {' '.join(py_reqs)}")
+    LOGGER.debug("No py Requirements to be installed")
+
+
+def _install_py_reqs_by_odoo_cmd(addon_paths: List[Path], odoo_bin_cmd: str):
+    """Install Python reqs for modules mentioned in odoo-bin commandline --init or -i directives.
+
+    Parameters
+    ----------
+    addon_paths : List[Path]
+        odoo-bin addons-path
+    odoo_bin_cmd : str
+        odoo-bin commandline
+
+    Returns
+    -------
+    CompletedProcess
+    """
+    install_modules = []
+    for m in re.finditer(r'(--init|-i) "?([^ \n]+)"?', odoo_bin_cmd):
+        install_modules += m.group(2).split(",")
+    if install_modules:
+        return _install_py_reqs_for_modules(addon_paths=addon_paths, module_names=install_modules)
+
+
 def _boostrap_command(
     odoo_main_path: Path,
     odoo_conf_path: Path,
-    thirdparty_addon_path: Path,
+    addon_paths: List[Path],
     workspace_addon_path: Path,
     db_host: str,
     db_filter: str,
@@ -38,8 +81,8 @@ def _boostrap_command(
         folder with odoo-bin
     odoo_conf_path : Path
         path to odoo.conf
-    thirdparty_addon_path : Path
-        path that contains thirdparty addon repo folders
+    addon_paths : List[Path]
+        odoo bin --addons-path
     workspace_addon_path : Path
         path to addons in dev repo
     db_host : str
@@ -85,8 +128,8 @@ def _boostrap_command(
 
     LOGGER.info("Getting Addon Paths")
 
-    workspace_addons = get_odoo_addons_in_folder(workspace_addon_path)
-    if any(["-i" in i or "--init" in i for i in extra_cmd_args]):
+    workspace_addons = get_odoo_module_paths(workspace_addon_path)
+    if any([re.match(r"( |^)(-i|--init)", i) for i in extra_cmd_args]):
         init_modules = []
     else:
         init_modules = ["base", "web"] if install_base else []
@@ -94,12 +137,6 @@ def _boostrap_command(
             init_modules += [f.name for f in workspace_addons]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
-    addon_paths = get_addon_paths(
-        odoo_main_repo=odoo_main_path,
-        workspace_addon_path=workspace_addon_path,
-        zip_addon_path=thirdparty_addon_path / "custom",  # !Todo Pull out into variable
-        thirdparty_addon_path=thirdparty_addon_path,
-    )
     addon_paths = [str(p.absolute()) for p in addon_paths]
     addon_paths = ", ".join(list(filter(None, addon_paths)))
 
@@ -155,11 +192,18 @@ def bootstrap_odoo(
     if update_source:
         get_source(ctx=ctx, remove_unspecified_addons=addons_remove_unspecified)
 
+    addon_paths = get_addon_paths(
+        odoo_main_repo=ctx.obj.odoo_main_path,
+        workspace_addon_path=ctx.obj.workspace_addon_path,
+        zip_addon_path=thirdparty_addon_path / "custom",  # !Todo Pull out into variable
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
+
     cmd_string = _boostrap_command(
         odoo_main_path=ctx.obj.odoo_main_path,
         odoo_conf_path=ctx.obj.odoo_conf_path,
-        thirdparty_addon_path=thirdparty_addon_path,
         workspace_addon_path=ctx.obj.workspace_addon_path,
+        addon_paths=addon_paths,
         db_host=db_host,
         db_name=db_name,
         db_filter=db_filter,
@@ -172,8 +216,12 @@ def bootstrap_odoo(
         multithread_worker_count=multithread_worker_count,
         languages=languages,
     )
-    LOGGER.info('Launching Bootstrap Commandline: "%s"', cmd_string)
-    ret = os.system(cmd_string)
+
+    if update_source:
+        _install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
+
+    LOGGER.info("Launching Bootstrap Commandline")
+    ret = run_cmd(cmd_string).returncode
     if ret == 0:
         ctx.obj.bootstrap_flag_location.touch()
     else:

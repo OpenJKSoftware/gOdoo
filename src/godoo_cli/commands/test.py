@@ -6,7 +6,7 @@ from typing import List
 import typer
 
 from ..helpers.cli import typer_retuner
-from ..helpers.odoo_files import get_changed_modules, get_depends_of_modules, get_odoo_addons_in_folder
+from ..helpers.odoo_files import get_changed_modules, get_depends_of_modules, get_odoo_module_paths
 from .launch import launch_odoo as launch_odoo
 
 LOGGER = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
         command = in_modules[0]
         out_modules = []
         if command == "all":
-            out_modules = get_odoo_addons_in_folder(workspace_addon_path)
+            out_modules = get_odoo_module_paths(workspace_addon_path)
 
         if re_match := re.match(r"changes\:(.*)", command):
             compare_branch = re_match.group(1)

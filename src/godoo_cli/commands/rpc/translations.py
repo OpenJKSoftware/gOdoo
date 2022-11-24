@@ -6,7 +6,7 @@ import typer
 from godoo_rpc.login import wait_for_odoo
 
 from ...helpers.cli import typer_retuner
-from ...helpers.odoo_files import get_odoo_addons_in_folder
+from ...helpers.odoo_files import get_odoo_module_paths
 from .cli import rpc_callback
 from .modules import rpc_get_modules
 
@@ -71,7 +71,7 @@ def dump_translations(
 ):
 
     addon_path = ctx.obj.workspace_addon_path
-    addon_folders = get_odoo_addons_in_folder(addon_path)
+    addon_folders = get_odoo_module_paths(addon_path)
     valid_module_names = [str(p.stem) for p in addon_folders]
     LOGGER.debug("Found modules:\n%s", "\n".join(["\t" + mn for mn in valid_module_names]))
 

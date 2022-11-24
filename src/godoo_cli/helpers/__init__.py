@@ -2,6 +2,7 @@
 
 import logging
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -9,6 +10,24 @@ import requests
 from rich.logging import RichHandler
 
 LOGGER = logging.getLogger(__name__)
+
+
+def run_cmd(command: str) -> subprocess.CompletedProcess:
+    """Runs command via subprocess
+
+    Parameters
+    ----------
+    command : str
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    LOGGER.debug("Launching Commandline: '%s'", command)
+    proc = subprocess.run(command, shell=True)
+    return proc
 
 
 def ensure_dotenv(varname: str) -> str:
