@@ -71,8 +71,36 @@ def get_changed_modules(
     return changed_module_folders
 
 
-def _get_depends_of_module(all_modules: List[Path], module_to_check: Path):
+def get_depends_of_module(
+    all_modules: List[Path],
+    module_to_check: Path,
+    already_done_modules: List[Path] = None,
+):
+    """Recursively Searches sub dependencies for Odoo modules.
+
+
+    Parameters
+    ----------
+    all_modules : List[Path]
+        List of Path objects pointing to odoo modules
+    module_to_check : Path
+        path with odoo module
+    already_done_modules : List[Path], optional
+        Only used internally for recursion caching, by default None
+
+    Returns
+    -------
+    List[Path]
+        Paths to dependency modules
+    """
     manifest_path = module_to_check / "__manifest__.py"
+
+    if not already_done_modules:
+        already_done_modules = []
+    if module_to_check.absolute() in already_done_modules:
+        return []
+    already_done_modules.append(module_to_check.absolute())
+
     LOGGER.debug("Loading Manifest: %s", manifest_path.absolute())
     manifest = literal_eval(manifest_path.read_text())
     module_depends = manifest.get("depends", [])
@@ -80,42 +108,15 @@ def _get_depends_of_module(all_modules: List[Path], module_to_check: Path):
     for dep in module_depends:
         dep_path = [p for p in all_modules if p.stem == dep]
         if dep_path:
+            dep_path = dep_path[0]
+            if dep_path.absolute() in already_done_modules:
+                continue
             sub_depends.append(dep_path.absolute())
-            LOGGER.debug("Getting sub depends for: %s", dep)
-            sub_depends += _get_depends_of_module(all_modules, dep)
-        else:
-            LOGGER.warn("Could not find Dependency: %s in available modules", dep)
+            sub_depends += get_depends_of_module(all_modules, dep_path, already_done_modules)
+        elif dep != "base":
+            LOGGER.warn("Could not find Dependency: '%s' in available modules", dep)
+
     return list(set(sub_depends))
-
-
-def get_depends_of_modules(addon_paths: Union[Path, List[Path]], in_module_paths: List[Path]) -> List[Path]:
-    """Get Modules which do depend on given modules. Recursive.
-
-    Parameters
-    ----------
-    addon_paths : Union[Path,List[Path]]
-        Folder(s) where to look for Depends of in_module_paths
-    in_module_paths : List[Path]
-        List of Module Paths of which we want to get the downstream dependencies
-
-    Returns
-    -------
-    List[Path]
-        Union of in_module_paths and all their downstream depends.
-    """
-    all_modules = get_odoo_module_paths(addon_paths)
-    if not in_module_paths:
-        return
-    LOGGER.debug("Searching Depends for: %s", ", ".join([str(p.stem) for p in in_module_paths]))
-    depends = []
-    for module in in_module_paths:
-        depends += _get_depends_of_module(all_modules, module)
-    LOGGER.debug(
-        "Found Depends '%s' for '%s'",
-        ", ".join([str(d) for d in depends if d not in in_module_paths]),
-        ", ".join([str(p) for p in in_module_paths]),
-    )
-    return depends
 
 
 def get_addon_paths(
@@ -170,13 +171,22 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
     if not filter_module_names:
         filter_module_names = available_module_names
     filter_module_names = [f for f in filter_module_names if f not in ["base", "web"]]
-    LOGGER.debug("Checking python requirements of Modules: %s", ", ".join(filter_module_names))
+    LOGGER.info("Checking python requirements of Modules: %s", ", ".join(sorted(filter_module_names)))
 
     if unavailable_modules := [m for m in filter_module_names if m not in available_module_names]:
         LOGGER.warning("Couldn't search Python reqs for unavailable Modules: %s", ", ".join(unavailable_modules))
 
     check_modules = [mp for mp in available_modules if mp.stem in filter_module_names]
-    check_modules += get_depends_of_modules(addon_paths, check_modules)
+    check_modules_dependencies = []
+    for module in check_modules:
+        check_modules_dependencies += get_depends_of_module(
+            available_modules, module, already_done_modules=check_modules_dependencies
+        )
+    LOGGER.debug(
+        "adding child modules to check list: %s", ", ".join(sorted([p.stem for p in check_modules_dependencies]))
+    )
+
+    check_modules += check_modules_dependencies
 
     if not check_modules:
         LOGGER.debug("No Modules provided to check for python Requirements")

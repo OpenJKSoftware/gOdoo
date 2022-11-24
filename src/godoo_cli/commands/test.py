@@ -6,7 +6,7 @@ from typing import List
 import typer
 
 from ..helpers.cli import typer_retuner
-from ..helpers.odoo_files import get_changed_modules, get_depends_of_modules, get_odoo_module_paths
+from ..helpers.odoo_files import get_changed_modules, get_depends_of_module, get_odoo_module_paths
 from .launch import launch_odoo as launch_odoo
 
 LOGGER = logging.getLogger(__name__)
@@ -24,7 +24,12 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
             changed_modules = get_changed_modules(addon_path=workspace_addon_path, diff_branch=compare_branch)
             if not changed_modules:
                 return []
-            out_modules = get_depends_of_modules(workspace_addon_path, changed_modules)
+            change_modules_depends = []
+            for module in changed_modules:
+                change_modules_depends += get_depends_of_module(
+                    out_modules, module, already_done_modules=change_modules_depends
+                )
+            out_modules = changed_modules + change_modules_depends
         if out_modules:
             out_modules_with_tests = [p for p in out_modules if any(p.rglob("tests/__init__.py"))]
             return [p.stem for p in out_modules_with_tests]
