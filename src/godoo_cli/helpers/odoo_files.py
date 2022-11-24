@@ -106,7 +106,7 @@ def get_depends_of_modules(addon_paths: Union[Path, List[Path]], in_module_paths
     all_modules = get_odoo_module_paths(addon_paths)
     if not in_module_paths:
         return
-    LOGGER.debug("Searching Depends for: %s", ", ".join([str(p) for p in in_module_paths]))
+    LOGGER.debug("Searching Depends for: %s", ", ".join([str(p.stem) for p in in_module_paths]))
     depends = []
     for module in in_module_paths:
         depends += _get_depends_of_module(all_modules, module)
@@ -164,13 +164,13 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
     filter_module_names : List[str], optional
         Modules to look for manifests, by default all available modules
     """
-    LOGGER.debug("Checking python requirements of Modules: %s", ", ".join(filter_module_names))
     available_modules = get_odoo_module_paths(addon_paths)
     available_module_names = [p.stem for p in available_modules]
 
     if not filter_module_names:
         filter_module_names = available_module_names
     filter_module_names = [f for f in filter_module_names if f not in ["base", "web"]]
+    LOGGER.debug("Checking python requirements of Modules: %s", ", ".join(filter_module_names))
 
     if unavailable_modules := [m for m in filter_module_names if m not in available_module_names]:
         LOGGER.warning("Couldn't search Python reqs for unavailable Modules: %s", ", ".join(unavailable_modules))
