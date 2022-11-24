@@ -1,7 +1,11 @@
 name: Git tag
 
-# We call this at the end of the quality Workflow
-on: workflow_call
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
 
 jobs:
   tag:

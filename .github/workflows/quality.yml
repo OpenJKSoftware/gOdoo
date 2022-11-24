@@ -5,6 +5,7 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -87,9 +88,3 @@ jobs:
           target: server
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-  call-tagger:
-    uses: ./.github/workflows/version-tag.yml
-    if: "github.event_name == 'pull_request'"
-    name: Call Tagger
-    needs: build-and-push-image
