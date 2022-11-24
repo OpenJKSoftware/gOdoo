@@ -90,7 +90,6 @@ docker-compose up
    - You can enable godoo tab-completion by `godoo --install-completion`
    - `make` -> Loads Odoo + Workspace Addons
    - `make bare` -> Loads Odoo with ony `web` installed.
-   - `make enterprise` -> godoo launch with `-i web_enterprise` parameter
    - `make kill` -> Search for `odoo-bin` processes and kill them
    - `make reset` -> Drops DB, deletes config file and datafolder
    - The full init script is available via "`godoo`". (See --help for Options)

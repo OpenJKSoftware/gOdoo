@@ -4,9 +4,6 @@ launch: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
 	godoo launch --dev-mode --odoo-demo
 
-enterprise: # Only works if web_enterprise is available as module
-	godoo launch --dev-mode --odoo-demo --extra-bootstrap-args="-i web_enterprise"
-
 quick: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
 	godoo launch --dev-mode --no-install-workspace-addons --no-update-source
