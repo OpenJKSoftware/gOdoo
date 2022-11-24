@@ -52,8 +52,7 @@
       "type": "python",
       "request": "launch",
       "justMyCode": false,
-      "module": "godoo",
-      "args": ["--help"],
+      "module": "src.godoo_cli",
       "console": "integratedTerminal"
     },
     {
