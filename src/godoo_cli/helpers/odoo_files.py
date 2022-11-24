@@ -71,6 +71,23 @@ def get_changed_modules(
     return changed_module_folders
 
 
+def _get_depends_of_module(all_modules: List[Path], module_to_check: Path):
+    manifest_path = module_to_check / "__manifest__.py"
+    LOGGER.debug("Loading Manifest: %s", manifest_path.absolute())
+    manifest = literal_eval(manifest_path.read_text())
+    module_depends = manifest.get("depends", [])
+    sub_depends = []
+    for dep in module_depends:
+        dep_path = [p for p in all_modules if p.stem == dep]
+        if dep_path:
+            sub_depends.append(dep_path.absolute())
+            LOGGER.debug("Getting sub depends for: %s", dep)
+            sub_depends += _get_depends_of_module(all_modules, dep)
+        else:
+            LOGGER.warn("Could not find Dependency: %s in available modules", dep)
+    return list(set(sub_depends))
+
+
 def get_depends_of_modules(addon_paths: Union[Path, List[Path]], in_module_paths: List[Path]) -> List[Path]:
     """Get Modules which do depend on given modules. Recursive.
 
@@ -89,24 +106,16 @@ def get_depends_of_modules(addon_paths: Union[Path, List[Path]], in_module_paths
     all_modules = get_odoo_module_paths(addon_paths)
     if not in_module_paths:
         return
-    added = True
     LOGGER.debug("Searching Depends for: %s", ", ".join([str(p) for p in in_module_paths]))
-    out_depends = in_module_paths.copy()
-    while added:
-        added = False
-        for module in all_modules:
-            manifest_path = module / "__manifest__.py"
-            current_module = module.absolute()
-            if current_module in out_depends:
-                continue
-            LOGGER.debug("Loading Manifest: %s", manifest_path.absolute())
-            manifest = literal_eval(manifest_path.read_text())
-            module_depends = manifest.get("depends", [])
-            if any(item.stem in module_depends for item in out_depends):
-                out_depends.append(module.absolute())
-                added = True
-    LOGGER.debug("Found Depends: %s", ", ".join([str(d) for d in out_depends if d not in in_module_paths]))
-    return out_depends
+    depends = []
+    for module in in_module_paths:
+        depends += _get_depends_of_module(all_modules, module)
+    LOGGER.debug(
+        "Found Depends '%s' for '%s'",
+        ", ".join([str(d) for d in depends if d not in in_module_paths]),
+        ", ".join([str(p) for p in in_module_paths]),
+    )
+    return depends
 
 
 def get_addon_paths(
@@ -180,4 +189,4 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
         if module_depends := manifest.get("external_dependencies", {}).get("python"):
             python_depends += module_depends
 
-    return python_depends
+    return list(set(python_depends))
