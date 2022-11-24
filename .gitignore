@@ -1,6 +1,7 @@
 import
 config/odoo.conf
 *.pass
+*.nogit.*
 .env
 *:Zone.Identifier
 *.xlsx
