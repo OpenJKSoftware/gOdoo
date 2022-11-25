@@ -116,7 +116,7 @@ RUN set -x; \
 # Download Odoo Source Code
 FROM python_workspace as odoo_source
 RUN set -x ; \
-    godoo source-get --update-mode odoo \
+    godoo source-get odoo \
     && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
 
 # Download Odoo Addons and unpack .zip Addons
@@ -126,8 +126,8 @@ COPY thirdparty thirdparty
 RUN --mount=type=ssh set -x; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
     && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK || true \
-    && godoo source-get --update-mode thirdparty \
-    && godoo source-get --update-mode zip
+    && godoo source-get  thirdparty \
+    && godoo source-get  zip
 
 # Copy Addons and Odoo Source into image with requirements.
 FROM odoo_requirements as base_odoo
