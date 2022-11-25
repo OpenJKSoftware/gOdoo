@@ -155,6 +155,27 @@ def get_addon_paths(
     return odoo_addon_paths
 
 
+def _get_odoo_main_path(addon_paths: List[Path]) -> Path:
+    """Get Odoo main path by location of odoo-bin from addon folders.
+
+    Parameters
+    ----------
+    addon_paths : List[Path]
+        List of possible paths
+
+    Returns
+    -------
+    Path
+        Path with odoo-bin and main addons folder
+    """
+    for path in addon_paths:
+        # The main odoo addon path is odoo/addons.
+        # so one up should be the launch script
+        bin_path = path.parent / "odoo-bin"
+        if bin_path.exists() and bin_path.is_file():
+            return path
+
+
 def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_names: List[str] = None):
     """Install python requirements mentioned in module manifests
 
@@ -170,13 +191,20 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
 
     if not filter_module_names:
         filter_module_names = available_module_names
-    filter_module_names = [f for f in filter_module_names if f not in ["base", "web"]]
     LOGGER.info("Checking python requirements of Modules: %s", ", ".join(sorted(filter_module_names)))
 
     if unavailable_modules := [m for m in filter_module_names if m not in available_module_names]:
         LOGGER.warning("Couldn't search Python reqs for unavailable Modules: %s", ", ".join(unavailable_modules))
 
     check_modules = [mp for mp in available_modules if mp.stem in filter_module_names]
+
+    if odoo_main_path := _get_odoo_main_path(addon_paths):
+        # When the Odoo main path is in the supplied path, exclude those modules.
+        # Usuall odoos requirements .txt will already be installed anyhow
+        # And there is a weird Pip depend to "ldap" in auth_ldap/__manifest__.
+        LOGGER.debug("Py install: Excluding Odoo main Modules in: '%s'", odoo_main_path)
+        check_modules = [mp for mp in check_modules if odoo_main_path not in mp.parents]
+
     check_modules_dependencies = []
     for module in check_modules:
         check_modules_dependencies += get_depends_of_module(
