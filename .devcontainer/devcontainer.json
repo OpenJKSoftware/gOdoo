@@ -68,6 +68,7 @@
         "password": "odoo"
       }
     ],
+    "sqltools.autoOpenSessionFiles": false,
     "sqltools.highlightQuery": true,
     // Python Settings:
     "python.pythonPath": "/usr/local/bin/python",
