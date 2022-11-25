@@ -202,7 +202,6 @@ def bootstrap_odoo(
     addon_paths = get_addon_paths(
         odoo_main_repo=ctx.obj.odoo_main_path,
         workspace_addon_path=ctx.obj.workspace_addon_path,
-        zip_addon_path=thirdparty_addon_path / "custom",  # !Todo Pull out into variable
         thirdparty_addon_path=thirdparty_addon_path,
     )
 

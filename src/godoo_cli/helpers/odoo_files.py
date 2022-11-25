@@ -9,6 +9,10 @@ from git import Repo
 LOGGER = logging.getLogger(__name__)
 
 
+def get_zip_addon_path(thirdparty_path: Path) -> Path:
+    return thirdparty_path / "custom"
+
+
 def get_odoo_module_paths(search_folders: Union[List[Path], Path]) -> List[Path]:
     """List all Valid odoo module names in one or many Odoo addons folder.
 
@@ -122,7 +126,6 @@ def get_depends_of_module(
 def get_addon_paths(
     odoo_main_repo: Path,
     workspace_addon_path: Path,
-    zip_addon_path: Path,
     thirdparty_addon_path: Path,
 ) -> List[Path]:
     """Get Odoo Addon Paths for odoo.conf.
@@ -133,8 +136,6 @@ def get_addon_paths(
         Path to main odoo repo
     workspace_addon_path : Path
         Path to workspace addons
-    zip_addon_path : Path
-        path to zip addons
     thirdparty_addon_path : Path
         path to git cloned addon repos
 
@@ -146,6 +147,7 @@ def get_addon_paths(
     odoo_addon_paths = [odoo_main_repo / "addons"]
     if get_odoo_module_paths(workspace_addon_path):
         odoo_addon_paths.append(workspace_addon_path)
+    zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
     zip_addon_repos = [f for f in zip_addon_path.iterdir() if f.is_dir() and get_odoo_module_paths(f)]
     odoo_addon_paths += zip_addon_repos
     git_thirdparty_addon_repos = [

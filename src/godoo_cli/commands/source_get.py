@@ -12,7 +12,7 @@ from ruamel.yaml import YAML
 from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
 from ..helpers import download_file
 from ..helpers.cli import typer_unpacker
-from ..helpers.odoo_files import get_addon_paths
+from ..helpers.odoo_files import get_addon_paths, get_zip_addon_path
 from ..helpers.odoo_manifest import remove_unused_folders
 
 LOGGER = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ def get_source(
 ):
     """Update Odoo Source and Thirdparty source."""
     LOGGER.info("Updating Source Repos")
-    zip_addon_path = thirdparty_addon_path / "custom"  # !Todo Pull out into variable (same in bootstrap)
+    zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
 
     if update_mode in ["all", "zip"]:
         unzip_addons(thirdparty_zip_source, zip_addon_path)
@@ -156,7 +156,6 @@ def get_source(
         odoo_addon_paths = get_addon_paths(
             odoo_main_repo=ctx.obj.odoo_main_path,
             workspace_addon_path=ctx.obj.workspace_addon_path,
-            zip_addon_path=zip_addon_path,
             thirdparty_addon_path=thirdparty_addon_path,
         )
         update_odoo_conf_addon_paths(odoo_conf=conf_path, addon_paths=odoo_addon_paths)
