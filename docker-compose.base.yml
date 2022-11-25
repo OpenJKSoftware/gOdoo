@@ -19,7 +19,6 @@ services:
 
   db:
     image: postgres:15-alpine
-    pull_policy: always
     environment:
       - POSTGRES_DB=postgres
       - POSTGRES_PASSWORD=${ODOO_DB_PASSWORD:-odoo}
