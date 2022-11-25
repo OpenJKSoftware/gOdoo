@@ -4,7 +4,7 @@
 # When only selecting "branch" and no "commit" this causes godoo to always pull changes form the remote.
 # On big repos like Odoo this can be really slow.
 # Specifying a more specific ref in the "commit" section, we can pin the Version.
-# This also causes godoo get-source to skip over already matching Repos. (Big speed bump on launches.)
+# This also causes godoo source-get to skip over already matching Repos. (Big speed bump on launches.)
 
 # When `--source-download-archive` or it's envvar is passed to godoo, Downloads will be even faster for big repos, because Zip Blobs will directly be downloaded.
 

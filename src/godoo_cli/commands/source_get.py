@@ -101,6 +101,7 @@ def get_source_file(
 @typer_unpacker
 def get_source(
     ctx: typer.Context,
+    update_mode: UpdateMode = typer.Argument(UpdateMode.all, help="What to Update"),
     manifest_yml: Path = typer.Option(
         ..., envvar="ODOO_MANIFEST", help="Git.yml file, that specified what to download with wich prefix"
     ),
@@ -110,7 +111,6 @@ def get_source(
     thirdparty_zip_source: Path = typer.Option(
         ..., envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Source folder, where to look for Addon zips"
     ),
-    update_mode: UpdateMode = typer.Option(UpdateMode.all, help="What to Update"),
     add_compare_comments: bool = typer.Option(
         False, help="Wether to add github.com three dot compare links as comments."
     ),
