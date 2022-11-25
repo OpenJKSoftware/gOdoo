@@ -10,8 +10,9 @@ import typer
 from ruamel.yaml import YAML
 
 from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
+from ..helpers.bootstrap import _install_py_reqs_for_modules
 from ..helpers.cli import typer_unpacker
-from ..helpers.odoo_files import get_addon_paths, get_zip_addon_path
+from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths, get_zip_addon_path
 from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
 
@@ -65,6 +66,30 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
     LOGGER.info("Writing Addon Paths to Odoo Config.")
     LOGGER.debug(addon_paths)
     config.write(odoo_conf.open("w"))
+
+
+@typer_unpacker
+def install_module_dependencies(
+    ctx: typer.Context,
+    thirdparty_addon_path: Path = typer.Option(
+        ...,
+        envvar="ODOO_THIRDPARTY_LOCATION",
+        help="Root folder of the Thirdparty addon repos",
+    ),
+    module_list: List[str] = typer.Argument(
+        ...,
+        help="Modules to check for dependencies (can use all for all available addons)",
+    ),
+):
+    odoo_addon_paths = get_addon_paths(
+        odoo_main_repo=ctx.obj.odoo_main_path,
+        workspace_addon_path=ctx.obj.workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
+    if len(module_list) == 1 and module_list[0] == "all":
+        search_addon_paths = [p for p in odoo_addon_paths if ctx.obj.odoo_main_path not in p.parents]
+        module_list = [p.stem for p in get_odoo_module_paths(search_addon_paths)]
+    _install_py_reqs_for_modules(odoo_addon_paths, module_list)
 
 
 @typer_unpacker

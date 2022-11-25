@@ -105,7 +105,6 @@ def get_depends_of_module(
         return []
     already_done_modules.append(module_to_check.absolute())
 
-    LOGGER.debug("Loading Manifest: %s", manifest_path.absolute())
     manifest = literal_eval(manifest_path.read_text())
     module_depends = manifest.get("depends", [])
     sub_depends = []
@@ -193,17 +192,18 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
 
     if not filter_module_names:
         filter_module_names = available_module_names
-    LOGGER.info("Checking python requirements of Modules: %s", ", ".join(sorted(filter_module_names)))
+    filter_module_names = [f for f in filter_module_names if f != "base"]
 
-    if unavailable_modules := [m for m in filter_module_names if m not in available_module_names]:
-        LOGGER.warning("Couldn't search Python reqs for unavailable Modules: %s", ", ".join(unavailable_modules))
+    LOGGER.info("Checking python requirements of Modules:\n%s", "\n".join(sorted(filter_module_names)))
+    if unavailable_modules := set(filter_module_names).difference(available_module_names):
+        LOGGER.warning("Could not find __manifest__ for:\n%s", "\n".join(unavailable_modules))
+        LOGGER.debug("Search Paths:\n%s", "\n".join(map(str, addon_paths)))
 
     check_modules = [mp for mp in available_modules if mp.stem in filter_module_names]
 
     if odoo_main_path := _get_odoo_main_path(addon_paths):
         # When the Odoo main path is in the supplied path, exclude those modules.
-        # Usuall odoos requirements .txt will already be installed anyhow
-        # And there is a weird Pip depend to "ldap" in auth_ldap/__manifest__.
+        # Odoos base requirements are set in their requirements.txt
         LOGGER.debug("Py install: Excluding Odoo main Modules in: '%s'", odoo_main_path)
         check_modules = [mp for mp in check_modules if odoo_main_path not in mp.parents]
 
@@ -213,18 +213,21 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
             available_modules, module, already_done_modules=check_modules_dependencies
         )
     LOGGER.debug(
-        "adding child modules to check list: %s", ", ".join(sorted([p.stem for p in check_modules_dependencies]))
+        "adding children of requested modules to check list:\n%s",
+        "\n".join(sorted([p.stem for p in check_modules_dependencies])),
     )
 
     check_modules += check_modules_dependencies
+
+    check_modules = set(check_modules)
 
     if not check_modules:
         LOGGER.debug("No Modules provided to check for python Requirements")
         return
     python_depends = []
     for module_path in check_modules:
+        LOGGER.debug("Checking for External Depends: %s", module_path)
         manifest_path = module_path / "__manifest__.py"
-        LOGGER.debug("Loading Manifest: %s", manifest_path.absolute())
         manifest = literal_eval(manifest_path.read_text())
         if module_depends := manifest.get("external_dependencies", {}).get("python"):
             python_depends += module_depends

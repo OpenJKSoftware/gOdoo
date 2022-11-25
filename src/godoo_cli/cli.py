@@ -9,6 +9,7 @@ from .commands import (
     bootstrap_odoo,
     get_source,
     get_source_file,
+    install_module_dependencies,
     launch_odoo,
     makedec_cli_app,
     odoo_shell,
@@ -66,6 +67,9 @@ def main_cli():
     app.command("launch", help="Launch Odoo, Bootstrap if bootstrapflag is not present")(launch_odoo)
     app.command("bootstrap", help="Bootstrap Odoo")(bootstrap_odoo)
     app.command("source-get-file", help="Get Raw file from odoo git remote or specific git remote.")(get_source_file)
+    app.command("source-get-depends", help="Install dependencies from __manifest__.py in specified modules")(
+        install_module_dependencies
+    )
     app.command("source-get", help="Download/Unzip Odoo Source and thirdparty addons.")(get_source)
     app.command("test", help="Bootstrap or Launch odoo in Testing Mode")(odoo_test)
     app.command("shell", help="Shell into Odoo")(odoo_shell)
