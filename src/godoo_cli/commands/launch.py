@@ -6,9 +6,9 @@ from typing import List
 import typer
 
 from ..commands.rpc.cli import rpc_callback
-from ..helpers import run_cmd
 from ..helpers.cli import typer_retuner, typer_unpacker
 from ..helpers.odoo_files import get_odoo_module_paths
+from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .makedev import makedev_config, makedev_rpc
 from .rpc import import_to_odoo

@@ -3,7 +3,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from ..helpers import download_file
+from ..helpers.system import download_file
 from .git_url import GitUrl
 
 LOGGER = logging.getLogger(__name__)

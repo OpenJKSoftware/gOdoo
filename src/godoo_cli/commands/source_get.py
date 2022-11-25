@@ -10,10 +10,10 @@ import typer
 from ruamel.yaml import YAML
 
 from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
-from ..helpers import download_file
 from ..helpers.cli import typer_unpacker
 from ..helpers.odoo_files import get_addon_paths, get_zip_addon_path
 from ..helpers.odoo_manifest import remove_unused_folders
+from ..helpers.system import download_file
 
 LOGGER = logging.getLogger(__name__)
 

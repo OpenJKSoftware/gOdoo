@@ -16,7 +16,7 @@ from .commands import (
     rpc_cli_app,
     uninstall_modules,
 )
-from .helpers import set_logging
+from .helpers.system import set_logging
 
 
 def main_callback(

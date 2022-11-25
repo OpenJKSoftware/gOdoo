@@ -3,8 +3,8 @@ from typing import List
 
 import typer
 
-from ..helpers import run_cmd
 from ..helpers.cli import typer_retuner, typer_unpacker
+from ..helpers.system import run_cmd
 
 LOGGER = logging.getLogger(__name__)
 
