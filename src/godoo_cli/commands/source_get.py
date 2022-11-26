@@ -1,7 +1,8 @@
+"""Commands to clone Odoo and addon source code"""
 import configparser
 import logging
 import shutil
-import zipfile
+import tempfile
 from enum import Enum
 from pathlib import Path
 from typing import List
@@ -26,12 +27,12 @@ class UpdateMode(str, Enum):
     thirdparty = "thirdparty"
 
 
-def unzip_addons(zip_folder: Path, target_addon_folder: Path, remove_excess: bool = False):
-    """Take .zip files from zip_folder and extracts them into the odoo addons folder.
+def unpack_addon_archives(archive_folder: Path, target_addon_folder: Path, remove_excess: bool = False):
+    """Take archive files from archive_folder and extract them into target_addon_folder.
 
     Parameters
     ----------
-    zip_folder : Path
+    archive_folder : Path
         Where to look for zip files
     target_addon_folder : Path
         where to place them
@@ -39,14 +40,33 @@ def unzip_addons(zip_folder: Path, target_addon_folder: Path, remove_excess: boo
         remove all and then unzip, by default False
     """
     if remove_excess:
+        LOGGER.debug("Clearing out unarchive folder: %s", target_addon_folder)
         for folder in target_addon_folder.iterdir():
             shutil.rmtree(folder)
-    LOGGER.info("Extracting Zip Addons to: %s", target_addon_folder)
-    for zip_file in zip_folder.glob("*.zip"):
+    LOGGER.info("Extracting archive addons to: %s", target_addon_folder)
+    for zip_file in archive_folder.glob("*.zip"):
         target_addon_folder.mkdir(exist_ok=True, parents=True)
-        LOGGER.info("Extracting Zip Addon: %s", zip_file)
-        with zipfile.ZipFile(zip_file, "r") as zip_ref:
-            zip_ref.extractall(target_addon_folder)
+        LOGGER.info("Extracting addon archive: %s", zip_file)
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            shutil.unpack_archive(zip_file, td)
+            # We can have zip files with one or more modules.
+            # Either the first folder contains multiple or its a module by itself
+            # So first get the real modules form the zip root or one level down and then move them to subpaths
+            zip_module_paths = get_odoo_module_paths([td] + list(td.glob("*/")))
+            if not zip_module_paths:
+                LOGGER.warning("Could not find valid modules in thirdparty zip: %s", zip_file)
+                continue
+            LOGGER.debug(
+                "Found modules in Zipfile:\n%s",
+                "\n".join([str(f.relative_to(td)) for f in zip_module_paths]),
+            )
+            target_folder = target_addon_folder / ("single_mods" if len(zip_module_paths) == 1 else zip_file.stem)
+            target_folder.mkdir(exist_ok=True)
+            for m in zip_module_paths:
+                module_target = target_folder / m.stem
+                shutil.rmtree(module_target, ignore_errors=True)
+                shutil.move(m, module_target)
 
 
 def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
@@ -152,7 +172,7 @@ def get_source(
     zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
 
     if update_mode in ["all", "zip"]:
-        unzip_addons(thirdparty_zip_source, zip_addon_path)
+        unpack_addon_archives(thirdparty_zip_source, zip_addon_path, remove_excess=remove_unspecified_addons)
 
     if update_mode in ["all", "odoo"]:
         git_ensure_odoo_repo(
@@ -170,12 +190,12 @@ def get_source(
             generate_yml_compare_comments=add_compare_comments,
             download_archive=ctx.obj.source_download_archive,
         )
-    if remove_unspecified_addons:
-        remove_unused_folders(
-            thirdparty_addon_path=thirdparty_addon_path,
-            thirdparty_repos=git_repos.get("thirdparty", []),
-            keep_folders=[zip_addon_path],
-        )
+        if remove_unspecified_addons:
+            remove_unused_folders(
+                thirdparty_addon_path=thirdparty_addon_path,
+                thirdparty_repos=git_repos.get("thirdparty", []),
+                keep_folders=[zip_addon_path],
+            )
 
     if (conf_path := ctx.obj.odoo_conf_path).exists():
         odoo_addon_paths = get_addon_paths(
