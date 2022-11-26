@@ -39,13 +39,13 @@ def unpack_addon_archives(archive_folder: Path, target_addon_folder: Path, remov
     remove_excess : bool , optional
         remove all and then unzip, by default False
     """
+    target_addon_folder.mkdir(exist_ok=True, parents=True)
     if remove_excess:
         LOGGER.debug("Clearing out unarchive folder: %s", target_addon_folder)
         for folder in target_addon_folder.iterdir():
             shutil.rmtree(folder)
     LOGGER.info("Extracting archive addons to: %s", target_addon_folder)
     for zip_file in archive_folder.glob("*.zip"):
-        target_addon_folder.mkdir(exist_ok=True, parents=True)
         LOGGER.info("Extracting addon archive: %s", zip_file)
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
