@@ -170,7 +170,7 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
     && mkdir -p -m 0770 /home/${USERNAME}/.vscode-server/extensions \
-    && chown -R ${USERNAME} /home/${USERNAME}/.vscode-server
+    && chown -R ${USERNAME} {/home/${USERNAME}}
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
