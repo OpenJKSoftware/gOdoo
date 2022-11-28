@@ -4,8 +4,12 @@ import os
 import subprocess
 from pathlib import Path
 
+import click
 import requests
 from rich.logging import RichHandler
+from rich.traceback import install as install_rich_traceback
+
+from . import cli as godoo_cli_helpers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +70,7 @@ def set_logging(verbose: bool = False) -> None:
     verbose : bool
         Wether to Log debug Messages
     """
+    install_rich_traceback(suppress=[click, godoo_cli_helpers])
     if verbose:
         logging.basicConfig(
             level=logging.DEBUG,
