@@ -26,9 +26,5 @@ reset-hard: # To be called from Outside the Devcontainer
 # Same as Reset, but additionally deletes VSCode Extension Volume and Force Rebuilds Container
 	scripts/reset_devcontainer.sh --hard
 
-stg:
-	scripts/pull_remote_odoo_instance.sh
-	godoo launch --prep-stage --dev-mode --no-install-modules --extra-bootstrap-args="-u all"
-
 rebuild:
 	DOCKER_BUILDKIT=1 docker build --ssh default --target devcontainer . --no-cache

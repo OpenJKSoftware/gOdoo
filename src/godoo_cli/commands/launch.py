@@ -10,7 +10,6 @@ from ..helpers.cli import typer_retuner, typer_unpacker
 from ..helpers.odoo_files import get_odoo_module_paths
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
-from .makedev import makedev_config, makedev_rpc
 from .rpc import import_to_odoo
 
 LOGGER = logging.getLogger(__name__)
@@ -62,8 +61,7 @@ def launch_odoo(
     install_workspace_addons: bool = typer.Option(True, help="Install Workspace addons"),
     update_source: bool = typer.Option(True, help="Git Pull Addons"),
     addons_remove_unspecified: bool = typer.Option(True, help="Cleanup/Remove unspecified Addons"),
-    load_data_path: Path = typer.Option(None, help="Starts Async Importer Job with provided path"),
-    prep_stage: bool = typer.Option(False, help="Starts Async Stage Prepper"),
+    load_data_path: List[Path] = typer.Option(None, help="Starts Async Importer Job with provided path(s)"),
     extra_args: List[str] = typer.Option([], help="Extra args to Pass to odoo Launch"),
     extra_bootstrap_args: List[str] = typer.Option([], help="Extra args to Pass to odoo Bootstrap"),
     log_file_path: Path = typer.Option(None, dir_okay=False, writable=True, help="Logfile Path"),
@@ -79,8 +77,6 @@ def launch_odoo(
         log_file_path.unlink(missing_ok=True)
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
-    if ctx.obj.odoo_conf_path.exists() and prep_stage:
-        makedev_config(ctx)
     LOGGER.info("Bootstrap Flag Status: %s", ctx.obj.bootstrap_flag_location.exists())
     bootstraped = False
     ret = ""
@@ -110,31 +106,25 @@ def launch_odoo(
         extra_odoo_args += ea
 
     if dev_mode:
-        extra_odoo_args.append("--dev xml,qweb" if load_data_path else "--dev xml,qweb,reload")
+        extra_odoo_args.append(
+            "--dev xml,qweb" if load_data_path else "--dev xml,qweb,reload"
+        )  # Prevent server restart if Importer threads will be spawned.
 
     if bootstraped and not launch:
         return typer_retuner(ret)
 
     rpc_callback(ctx)  # Add RPC Options using Defaults and Envvars
 
-    if prep_stage:
-        LOGGER.info("Starting Stage Prepper Thread")
-        loader_thread = threading.Thread(
-            target=makedev_rpc,
-            args=(ctx,),
-            name="Stage Cutter",
-        )
-        loader_thread.start()
-
     if load_data_path:
-        LOGGER.info("Starting Data Importer Thread")
-        loader_thread = threading.Thread(
-            target=import_to_odoo,
-            name="DataLoader",
-            args=(ctx,),
-            kwargs={"read_path": load_data_path.absolute()},
-        )
-        loader_thread.start()
+        for p in load_data_path:
+            LOGGER.info("Starting Data Importer Thread for: '%s'", str(p))
+            loader_thread = threading.Thread(
+                target=import_to_odoo,
+                name="DataLoader",
+                args=(ctx,),
+                kwargs={"read_path": p.absolute()},
+            )
+            loader_thread.start()
 
     cmd_string = _launch_command(
         odoo_path=ctx.obj.odoo_main_path,

@@ -11,10 +11,10 @@ from .commands import (
     get_source_file,
     install_module_dependencies,
     launch_odoo,
-    makedec_cli_app,
     odoo_shell,
     odoo_test,
     rpc_cli_app,
+    set_odoo_config,
     uninstall_modules,
 )
 from .helpers.system import set_logging
@@ -55,15 +55,11 @@ def main_cli():
     app.add_typer(
         typer_instance=rpc_cli_app(),
         name="rpc",
-        help="Various RPC Wrappers",
-    )
-    app.add_typer(
-        typer_instance=makedec_cli_app(),
-        name="makedev",
-        help="Set config and RPC settings to generate a staging environment",
+        help="Commands that act on a running Odoo instance through RPC",
     )
 
     # Normal Subcommands
+    app.command("config", help="Set odoo.conf options")(set_odoo_config)
     app.command("launch", help="Launch Odoo, Bootstrap if bootstrapflag is not present")(launch_odoo)
     app.command("bootstrap", help="Bootstrap Odoo")(bootstrap_odoo)
     app.command("source-get-file", help="Get Raw file from odoo git remote or specific git remote.")(get_source_file)
@@ -72,7 +68,7 @@ def main_cli():
     )
     app.command("source-get", help="Download/Unzip Odoo Source and thirdparty addons.")(get_source)
     app.command("test", help="Bootstrap or Launch odoo in Testing Mode")(odoo_test)
-    app.command("shell", help="Shell into Odoo")(odoo_shell)
+    app.command("shell", help="Start interactive Odoo shell")(odoo_shell)
     app.command("uninstall", help="Uninstall Modules")(uninstall_modules)
     return app
 
