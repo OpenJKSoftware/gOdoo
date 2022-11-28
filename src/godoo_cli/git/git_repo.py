@@ -55,8 +55,11 @@ def git_pull_checkout_reset(
     pull : str, optional
         specific target to pull. Usually used in conjunction with branch.
     reset_hard : bool, optional
-        will call reset --hard after checkout to ensure clean git repo, by default True
+        will call reset --hard before checkout to ensure clean git repo, by default True
     """
+
+    if reset_hard:
+        repo.git.reset("--hard", "HEAD")
 
     if pull:
         LOGGER.debug("Pulling Repo: %s, %s", repo.working_dir, pull)
@@ -78,8 +81,6 @@ def git_pull_checkout_reset(
     if branch:
         LOGGER.debug("Checking Out repo %s to Branch: %s", repo.git_dir, branch)
         repo.git.checkout(branch)
-    if reset_hard:
-        repo.git.reset("--hard")
 
 
 def git_ensure_ref(
@@ -120,7 +121,10 @@ def git_ensure_ref(
 
         if not pull and branch and not commit:
             remote_name = str(repo.remotes[0].name)
-            remote_commit = repo.git.rev_parse(remote_name + "/" + str(branch))
+            try:
+                remote_commit = repo.git.rev_parse(remote_name + "/" + str(branch))
+            except Exception:
+                remote_commit = "unknown"
             LOGGER.debug(
                 "Repo: %s comparing local head '%s' with remote head '%s'", repo.working_dir, current, remote_commit
             )
