@@ -42,6 +42,7 @@ jobs:
         id: get_release_body
         uses: actions/github-script@v6
         with:
+          result-encoding: string
           script: |
             const pr_text = "${{github.event.pull_request}}";
             var lines = pr_text.split('\n')
