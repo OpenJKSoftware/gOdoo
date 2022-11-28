@@ -55,8 +55,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ needs.job1.outputs.TAG_NAME}}
-          release_name: ${{ needs.job1.outputs.TAG_NAME }}
+          tag_name: ${{ needs.tag.outputs.TAG_NAME}}
+          release_name: ${{ needs.tag.outputs.TAG_NAME }}
           body: "${{ steps.get_release_body.outputs.result }}"
           draft: false
           prerelease: false
