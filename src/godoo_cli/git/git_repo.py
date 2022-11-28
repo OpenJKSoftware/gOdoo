@@ -1,12 +1,40 @@
+""" Module to provide GIT interaction."""
 import logging
+import shutil
 from pathlib import Path
 
-from git import InvalidGitRepositoryError, Repo
+from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from .git_url import GitUrl
 from .zip_download import git_download_zip
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs):
+    """Clears targetfolder and does a clean clone_from
+
+    Parameters
+    ----------
+    repo_src : str
+        Clone url
+    target_folder : Path
+        Download folder
+    branch : str
+        branch to clone
+
+    Returns
+    -------
+    _type_re
+        _description_
+    """
+    LOGGER.debug("Cloning Repo: %s, to '%s', Kwargs: '%s'", repo_src, target_folder, kwargs)
+    if not isinstance(target_folder, Path):
+        target_folder = Path(target_folder)
+    if target_folder.exists():
+        LOGGER.debug("Clearing Repo folder: %s", target_folder)
+        shutil.rmtree(target_folder)
+    return Repo.clone_from(repo_src, target_folder, **kwargs)
 
 
 def git_pull_checkout_reset(
@@ -30,24 +58,28 @@ def git_pull_checkout_reset(
         will call reset --hard after checkout to ensure clean git repo, by default True
     """
 
-    try:
-        if pull:
-            LOGGER.debug("Pulling Repo: %s, %s", repo.git_dir, pull)
+    if pull:
+        LOGGER.debug("Pulling Repo: %s, %s", repo.working_dir, pull)
+        try:
             repo.remotes[0].pull(pull)
-        if commit:
-            if str(repo.head.commit) != str(commit):
-                LOGGER.debug("Checking out %s to Commit: %s", repo.git_dir, commit)
-                repo.git.checkout(commit)
-            return
-        if branch:
-            LOGGER.debug("Checking Out repo %s to Branch: %s", repo.git_dir, branch)
-            repo.git.checkout(branch)
-        if reset_hard:
-            repo.git.reset("--hard")
-    except Exception as e:
-        raise Exception(
-            str(f"Error while ensuring Git repo: {str(repo)}, branch='{branch}', commit='{commit}', fetch='{pull}'")
-        ) from e
+        except GitCommandError as e:
+            if "fatal: refusing to merge unrelated histories" in e.stderr:
+                clone_kwargs = {}
+                if branch:
+                    clone_kwargs["branch"] = branch
+                repo = _git_clean_clone(repo.remotes[0].url, repo.working_dir, **clone_kwargs)
+            else:
+                raise e
+    if commit:
+        if str(repo.head.commit) != str(commit):
+            LOGGER.debug("Checking out %s to Commit: %s", repo.git_dir, commit)
+            repo.git.checkout(commit)
+        return
+    if branch:
+        LOGGER.debug("Checking Out repo %s to Branch: %s", repo.git_dir, branch)
+        repo.git.checkout(branch)
+    if reset_hard:
+        repo.git.reset("--hard")
 
 
 def git_ensure_ref(
@@ -81,23 +113,29 @@ def git_ensure_ref(
     target_folder.mkdir(exist_ok=True, parents=True)
     try:
         repo = Repo(target_folder)
-        current = repo.head.commit
+        current = str(repo.head.commit)
 
         if not pull and commit and str(commit) != str(current):
             pull = str(commit)
 
         if not pull and branch and not commit:
-            pull = str(branch)
-        git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=pull)
+            remote_name = str(repo.remotes[0].name)
+            remote_commit = repo.git.rev_parse(remote_name + "/" + str(branch))
+            LOGGER.debug(
+                "Repo: %s comparing local head '%s' with remote head '%s'", repo.working_dir, current, remote_commit
+            )
+            if str(remote_commit) != current:
+                pull = str(branch)
 
-        if current == repo.head.commit:
+            git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=pull)
+
+        if current == str(repo.head.commit):
             LOGGER.info("Repo Commit matches. Skipping: '%s' --> '%s'", repo_src, target_folder)
         else:
             LOGGER.info("Pulled Repo from: '%s'. Head is now at: %s", repo_src, repo.head.commit)
     except InvalidGitRepositoryError:
-        LOGGER.debug("Cloning Repo: %s, to '%s', branch '%s'", repo_src, target_folder, branch)
-        repo = Repo.clone_from(repo_src, target_folder, branch=branch, **kwargs)
-        git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=pull)
+        repo = _git_clean_clone(repo_src, target_folder, branch=branch, **kwargs)
+        git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=False)
 
         LOGGER.info(
             "Cloned Repo: '%s'. Branch='%s' Head='%s'",
