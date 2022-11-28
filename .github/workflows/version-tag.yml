@@ -65,3 +65,5 @@ jobs:
     name: Publish Release
     needs: release
     uses: ./.github/workflows/version-publish.yml
+    secrets:
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
