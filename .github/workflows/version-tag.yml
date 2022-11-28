@@ -9,6 +9,8 @@ jobs:
   tag:
     name: Git Tag
     runs-on: ubuntu-latest
+    outputs:
+      TAG_NAME: ${{ steps.version_number.outputs.TAG_NAME }}
     if:
       "github.event.pull_request.merged == true && startsWith( github.event.pull_request.title, ':shipit: Bump to
       Version: ' )"
@@ -29,3 +31,35 @@ jobs:
         run: |
           git tag ${{ steps.version_number.outputs.TAG_NAME }}
           git push --tags
+
+  release:
+    name: Release Tagged version
+    needs: tag
+    runs-on: ubuntu-latest
+    if: contains( github.event.pull_request.labels.*.name, 'auto-release')
+    steps:
+      - name: Get Release Body
+        id: get_release_body
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const pr_text = "${{github.event.pull_request}}";
+            var lines = pr_text.split('\n')
+            lines.splice(0,2)
+            var out_text = lines.join('\n')
+            return out_text
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ needs.job1.outputs.TAG_NAME}}
+          release_name: ${{ needs.job1.outputs.TAG_NAME }}
+          body: "${{ steps.get_release_body.outputs.result }}"
+          draft: false
+          prerelease: false
+
+  publish:
+    name: Publish Release
+    needs: release
+    uses: ./.github/workflows/version-publish.yml
