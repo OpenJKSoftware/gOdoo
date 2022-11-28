@@ -116,15 +116,14 @@ def launch_odoo(
     rpc_callback(ctx)  # Add RPC Options using Defaults and Envvars
 
     if load_data_path:
-        for p in load_data_path:
-            LOGGER.info("Starting Data Importer Thread for: '%s'", str(p))
-            loader_thread = threading.Thread(
-                target=import_to_odoo,
-                name="DataLoader",
-                args=(ctx,),
-                kwargs={"read_path": p.absolute()},
-            )
-            loader_thread.start()
+        LOGGER.info("Starting Data Importer Thread for: '%s'", ", ".join(map(str, load_data_path)))
+        loader_thread = threading.Thread(
+            target=import_to_odoo,
+            name="DataLoader",
+            args=(ctx,),
+            kwargs={"read_paths": load_data_path},
+        )
+        loader_thread.start()
 
     cmd_string = _launch_command(
         odoo_path=ctx.obj.odoo_main_path,

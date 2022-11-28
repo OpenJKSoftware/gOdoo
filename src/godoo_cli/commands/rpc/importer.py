@@ -6,6 +6,7 @@ Places Systemparam to Track if import was already done.
 
 import logging
 from pathlib import Path
+from typing import List
 
 import typer
 from godoo_rpc import import_data
@@ -21,7 +22,7 @@ LOGGER = logging.getLogger(__name__)
 @typer_unpacker
 def import_to_odoo(
     ctx: typer.Context,
-    read_path: Path = typer.Argument(
+    read_paths: List[Path] = typer.Argument(
         ...,
         readable=True,
         exists=True,
@@ -53,18 +54,16 @@ def import_to_odoo(
         odoo_user=ctx.obj.odoo_rpc_user,
         odoo_password=ctx.obj.odoo_rpc_password,
     )
-    if not read_path.exists():
-        raise ValueError("Provided import Path: %s doesn't exist", read_path)
 
-    if read_path.is_file():
-        product_image_regex = ""
-        file_regex = ""
+    if missing_paths := [p for p in read_paths if not p.exists()]:
+        raise ValueError("Provided import Paths: %s doesn't exist", ", ".join(missing_paths))
 
-    import_data(
-        odoo_api=odoo_api,
-        read_path=read_path.absolute(),
-        data_regex=file_regex,
-        product_image_regex=product_image_regex,
-        check_dataset_timestamp=check_data_timestamp,
-        skip_existing_ids=skip_existing_ids,
-    )
+    for path in read_paths:
+        import_data(
+            odoo_api=odoo_api,
+            read_path=path.absolute(),
+            data_regex=file_regex,
+            product_image_regex="" if path.is_file() else product_image_regex,
+            check_dataset_timestamp="" if path.is_file() else check_data_timestamp,
+            skip_existing_ids=skip_existing_ids,
+        )
