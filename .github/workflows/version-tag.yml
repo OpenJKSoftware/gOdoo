@@ -46,9 +46,10 @@ jobs:
           script: |
             const pr_text = "${{github.event.pull_request}}";
             var lines = pr_text.split('\n')
+            console.log(lines)
             lines.splice(0,2)
-            var out_text = lines.join('\n')
-            return out_text
+            console.log(lines)
+            return lines.join('\n')
 
       - name: Create Release
         id: create_release
@@ -58,7 +59,7 @@ jobs:
         with:
           tag_name: ${{ needs.tag.outputs.TAG_NAME}}
           release_name: ${{ needs.tag.outputs.TAG_NAME }}
-          body: "${{ steps.get_release_body.outputs.result }}"
+          body: ${{ steps.get_release_body.outputs.result }}
           draft: false
           prerelease: false
 
