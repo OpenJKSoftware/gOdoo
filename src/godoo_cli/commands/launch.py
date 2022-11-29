@@ -54,21 +54,32 @@ def _launch_command(
 @typer_unpacker
 def launch_odoo(
     ctx: typer.Context,
-    launch: bool = typer.Option(True, help="Launch after Bootstrap"),
-    odoo_demo: bool = typer.Option(False, help="Load Demo Data"),
-    dev_mode: bool = typer.Option(False, help="Pass --dev xml,qweb,reload to odoo"),
-    install_modules: bool = typer.Option(True, help="Install Modules"),
-    install_workspace_addons: bool = typer.Option(True, help="Install Workspace addons"),
-    update_source: bool = typer.Option(True, help="Git Pull Addons"),
-    addons_remove_unspecified: bool = typer.Option(True, help="Cleanup/Remove unspecified Addons"),
-    load_data_path: List[Path] = typer.Option(None, help="Starts Async Importer Job with provided path(s)"),
+    odoo_demo: bool = typer.Option(False, "--odoo-demo", help="Load Demo Data"),
+    dev_mode: bool = typer.Option(False, "--dev-mode", help="Pass --dev xml,qweb,reload to odoo"),
+    no_launch: bool = typer.Option(False, "--no-launch", help="Launch after Bootstrap"),
+    no_install_base: bool = typer.Option(
+        False, "--no-install-base", help="dont install [bold]base[/bold] and [bold]web[/bold] module"
+    ),
+    no_install_workspace_addons: bool = typer.Option(
+        False, "--no-install-workspace-addons", help="Install Workspace addons"
+    ),
+    no_update_source: bool = typer.Option(False, "--no-update-source", help="Update Odoo Source and Thirdparty Addons"),
+    no_addons_remove_unspecified: bool = typer.Option(
+        False,
+        "--no-addons-remove-unspecified",
+        help="don't remove unspecified addons if not '[bold cyan]--no-update-source[/bold cyan]'",
+    ),
+    load_data_path: List[Path] = typer.Option(
+        None,
+        help="Starts Async Importer Job with provided path(s). [bold red]Must provide options from godoo rpc[/bold red]",
+    ),
     extra_args: List[str] = typer.Option([], help="Extra args to Pass to odoo Launch"),
     extra_bootstrap_args: List[str] = typer.Option([], help="Extra args to Pass to odoo Bootstrap"),
     log_file_path: Path = typer.Option(None, dir_okay=False, writable=True, help="Logfile Path"),
     multithread_worker_count: int = typer.Option(9, help="count of worker threads. will enable proxy_mode if >0"),
 ):
     """
-    Bootstrap Odoo and Launch with set options.
+    Launch Odoo, Bootstrap if bootstrapflag is not present.
     """
     LOGGER.info("Starting godoo Init Script")
 
@@ -90,13 +101,13 @@ def launch_odoo(
         ret = bootstrap_odoo(
             ctx=ctx,
             extra_cmd_args=_extra_bootstrap_args,
-            install_base=install_modules,
-            install_workspace_modules=install_workspace_addons and install_modules,
+            no_install_base=no_install_base,
+            no_install_workspace_modules=no_install_workspace_addons or no_install_base,
             multithread_worker_count=multithread_worker_count,
-            update_source=update_source,
-            addons_remove_unspecified=addons_remove_unspecified,
+            no_update_source=no_update_source,
+            no_addons_remove_unspecified=no_addons_remove_unspecified,
         )
-        install_workspace_addons = False
+        no_install_workspace_addons = False
         bootstraped = ret == 0
         if not bootstraped:
             LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
@@ -110,12 +121,11 @@ def launch_odoo(
             "--dev xml,qweb" if load_data_path else "--dev xml,qweb,reload"
         )  # Prevent server restart if Importer threads will be spawned.
 
-    if bootstraped and not launch:
+    if bootstraped and no_launch:
         return typer_retuner(ret)
 
-    rpc_callback(ctx)  # Add RPC Options using Defaults and Envvars
-
     if load_data_path:
+        rpc_callback(ctx)  # Add RPC Options using Defaults and Envvars
         LOGGER.info("Starting Data Importer Thread for: '%s'", ", ".join(map(str, load_data_path)))
         loader_thread = threading.Thread(
             target=import_to_odoo,
@@ -130,7 +140,7 @@ def launch_odoo(
         odoo_conf_path=ctx.obj.odoo_conf_path,
         extra_cmd_args=extra_odoo_args,
         workspace_addon_path=ctx.obj.workspace_addon_path,
-        upgrade_workspace_modules=install_workspace_addons,
+        upgrade_workspace_modules=no_install_workspace_addons,
     )
     LOGGER.info("Launching Odoo")
     return typer_retuner(run_cmd(cmd_string).returncode)

@@ -14,21 +14,25 @@ def rpc_callback(
         ...,
         envvar="ODOO_RPC_HOST",
         help="Odoo RPC Host",
+        rich_help_panel="RPC Options",
     ),
     odoo_main_db: str = typer.Option(
         ...,
         envvar="ODOO_MAIN_DB",
         help="Odoo Database for RPC Calls",
+        rich_help_panel="RPC Options",
     ),
     odoo_rpc_user: str = typer.Option(
         ...,
         envvar="ODOO_RPC_USER",
         help="User for RPC login",
+        rich_help_panel="RPC Options",
     ),
     odoo_rpc_password: str = typer.Option(
         ...,
         envvar="ODOO_RPC_PASSWORD",
         help="Password RPC Login Password",
+        rich_help_panel="RPC Options",
     ),
 ):
     ctx.obj.odoo_rpc_host = odoo_rpc_host

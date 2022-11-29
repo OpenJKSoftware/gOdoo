@@ -102,7 +102,11 @@ def install_modules(
 
 
 def modules_cli_app():
-    app = typer.Typer(callback=rpc_callback, no_args_is_help=True)
+    app = typer.Typer(
+        callback=rpc_callback,
+        no_args_is_help=True,
+        help="Wrapper around Odoo modules. (Install/upgrade, etc)",
+    )
 
     app.command(name="install")(install_modules)
     return app

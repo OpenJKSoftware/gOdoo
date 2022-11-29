@@ -9,7 +9,7 @@ packages = [{include = "godoo_cli",  from = "src"}]
 repository = "https://github.com/OpenJKSoftware/gOdoo"
 keywords = ["odoo", "godoo","devcontainer"]
 
-[tool.poetry_bumpversion.file."src/godoo_cli/__init__.py"]
+[tool.poetry_bumpversion.file."src/godoo_cli/version.py"]
 
 [tool.poetry.scripts]
 godoo = "godoo_cli:launch_cli"

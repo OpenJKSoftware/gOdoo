@@ -15,7 +15,7 @@ def uninstall_modules(
     module_list: List[str] = typer.Argument(..., help="List of Modules to uninstall"),
 ):
     """
-    Uninstall Given Modules from Odoo via shell.
+    Uninstall given Modules from Odoo via shell.
     """
     module_list_str = str(list(module_list))
     uninstall_cmd = f"env['ir.module.module'].search([('name','in',{module_list_str})]).filtered(lambda m: m.state not in ['uninstallable','uninstalled']).button_immediate_uninstall()"

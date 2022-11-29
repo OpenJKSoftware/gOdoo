@@ -47,6 +47,7 @@ def odoo_test(
     ),
     odoo_log_level: str = typer.Option("test", help="Log level"),
 ):
+    """Bootstrap or Launch odoo in Testing Mode."""
     workspace_addon_path = ctx.obj.workspace_addon_path
 
     test_modules = _test_modules_special_cases(test_modules, workspace_addon_path)
@@ -85,12 +86,12 @@ def odoo_test(
 
     ret = launch_odoo(
         ctx=ctx,
-        install_workspace_addons=False,
+        no_install_workspace_addons=True,
         extra_args=launch_args,
         extra_bootstrap_args=bootstrap_args,
-        launch=False,
+        no_launch=True,
         multithread_worker_count=0,
         odoo_demo=True,
-        update_source=False,
+        no_update_source=True,
     )
     return typer_retuner(ret)

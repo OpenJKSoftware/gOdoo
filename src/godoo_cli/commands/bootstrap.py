@@ -129,27 +129,67 @@ def _boostrap_command(
 def bootstrap_odoo(
     ctx: typer.Context,
     thirdparty_addon_path: Path = typer.Option(
-        ..., envvar="ODOO_THIRDPARTY_LOCATION", help="folder that contains thirdparty repos like OCA"
+        ...,
+        envvar="ODOO_THIRDPARTY_LOCATION",
+        help="folder that contains thirdparty repos like OCA",
     ),
-    db_host: str = typer.Option(..., envvar="ODOO_DB_HOST", help="db hostname"),
-    db_filter: str = typer.Option(..., envvar="ODOO_DB_FILTER", help="database filter for odoo_conf"),
-    db_name: str = typer.Option(..., envvar="ODOO_MAIN_DB", help="launch database name"),
-    db_user: str = typer.Option(..., envvar="ODOO_DB_USER", help="db user"),
-    db_password: str = typer.Option(..., envvar="ODOO_DB_PASSWORD", help="db password"),
-    db_port: str = typer.Option(..., envvar="ODOO_DB_PORT", help="db host port"),
+    db_host: str = typer.Option(
+        ...,
+        envvar="ODOO_DB_HOST",
+        help="db hostname",
+        rich_help_panel="Database Options",
+    ),
+    db_filter: str = typer.Option(
+        ...,
+        envvar="ODOO_DB_FILTER",
+        help="database filter for odoo_conf",
+        rich_help_panel="Database Options",
+    ),
+    db_name: str = typer.Option(
+        ...,
+        envvar="ODOO_MAIN_DB",
+        help="launch database name",
+        rich_help_panel="Database Options",
+    ),
+    db_user: str = typer.Option(
+        ...,
+        envvar="ODOO_DB_USER",
+        help="db user",
+        rich_help_panel="Database Options",
+    ),
+    db_password: str = typer.Option(
+        ...,
+        envvar="ODOO_DB_PASSWORD",
+        help="db password",
+        rich_help_panel="Database Options",
+    ),
+    db_port: str = typer.Option(
+        ...,
+        envvar="ODOO_DB_PORT",
+        help="db host port",
+        rich_help_panel="Database Options",
+    ),
     extra_cmd_args: List[str] = typer.Option(None, help="extra agruments to pass to odoo-bin"),
-    install_base: bool = typer.Option(True, help="install base,web modules"),
-    install_workspace_modules: bool = typer.Option(True, help="install all modules found in workspace_path"),
-    multithread_worker_count: int = typer.Option(9, help="count of worker threads. will enable proxy_mode if >0"),
+    multithread_worker_count: int = typer.Option(5, help="count of worker threads. will enable proxy_mode if >0"),
     languages: str = typer.Option("de_DE,en_US", help="languages to load by default"),
-    update_source: bool = typer.Option(True, help="Update Odoo Source and Thirdparty Addons"),
-    addons_remove_unspecified: bool = typer.Option(
-        True, help="Cleanup/Remove unspecified Addons if 'update_source' is true"
+    no_install_base: bool = typer.Option(
+        False, "--no-install-base", help="dont install [bold]base[/bold] and [bold]web[/bold] module"
+    ),
+    no_install_workspace_modules: bool = typer.Option(
+        False,
+        "--no-install-workspace-modules",
+        help="dont automatically install modules found in [bold cyan]--workspace_path[/bold cyan]",
+    ),
+    no_update_source: bool = typer.Option(False, "--no-update-source", help="Update Odoo Source and Thirdparty Addons"),
+    no_addons_remove_unspecified: bool = typer.Option(
+        False,
+        "--no-addons-remove-unspecified",
+        help="don't remove unspecified addons if not '[bold cyan]--no-update-source[/bold cyan]'",
     ),
 ):
     """Bootstrap Odoo."""
-    if update_source:
-        get_source(ctx=ctx, remove_unspecified_addons=addons_remove_unspecified)
+    if not no_update_source:
+        get_source(ctx=ctx, remove_unspecified_addons=not no_addons_remove_unspecified)
 
     addon_paths = get_addon_paths(
         odoo_main_repo=ctx.obj.odoo_main_path,
@@ -169,8 +209,8 @@ def bootstrap_odoo(
         db_password=db_password,
         db_port=db_port,
         extra_cmd_args=extra_cmd_args,
-        install_base=install_base,
-        install_workspace_modules=install_workspace_modules,
+        install_base=not no_install_base,
+        install_workspace_modules=not no_install_workspace_modules,
         multithread_worker_count=multithread_worker_count,
         languages=languages,
     )

@@ -1,6 +1,7 @@
 """Main CLI."""
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 
 import typer
 from dotenv import load_dotenv
@@ -18,24 +19,42 @@ from .commands import (
     uninstall_modules,
 )
 from .helpers.system import set_logging
+from .version import __version__
 
 
 def main_callback(
     ctx: typer.Context,
-    odoo_main_path: Path = typer.Option(..., envvar="ODOO_MAIN_FOLDER", help="folder with odoo-bin"),
-    odoo_conf_path: Path = typer.Option(..., envvar="ODOO_CONF_PATH", help="odoo.conf path"),
+    odoo_main_path: Path = typer.Option(
+        ...,
+        envvar="ODOO_MAIN_FOLDER",
+        help="folder with odoo-bin",
+        rich_help_panel="Paths",
+    ),
+    odoo_conf_path: Path = typer.Option(
+        ...,
+        envvar="ODOO_CONF_PATH",
+        help="odoo.conf path",
+        rich_help_panel="Paths",
+    ),
     workspace_addon_path: Path = typer.Option(
-        ..., envvar="ODOO_WORKSPACE_ADDON_LOCATION", help="path to dev workspace addons"
+        ...,
+        envvar="ODOO_WORKSPACE_ADDON_LOCATION",
+        help="path to dev workspace addons",
+        rich_help_panel="Paths",
     ),
     bootstrap_flag_location: Path = typer.Option(
-        ..., envvar="ODOO_BOOTSTRAP_FLAG", help="Location of the Bootstrap indicator file"
+        ...,
+        envvar="ODOO_BOOTSTRAP_FLAG",
+        help="Location of the Bootstrap indicator file",
+        rich_help_panel="Paths",
     ),
-    source_download_archive: bool = typer.Option(
+    source_download_archive: Optional[bool] = typer.Option(
         False,
+        "--source-download-archive",
         envvar="SOURCE_CLONE_ARCHIVE",
         help="When using a HTTPs Repo Url for Github we can download a snapshop without the Repo history",
     ),
-    verbose: bool = typer.Option(False),
+    verbose: Optional[bool] = typer.Option(False, "--verbose", help="Verbose Logging with Error stacktraces"),
 ):
     ctx.obj = SimpleNamespace(
         odoo_main_path=odoo_main_path,
@@ -50,26 +69,24 @@ def main_callback(
 def main_cli():
     load_dotenv(".env", override=True)
 
-    app = typer.Typer(callback=main_callback, no_args_is_help=True)
+    help_text = f"gOdoo CLI version: [bold green]{__version__}[/bold green]"
+    app = typer.Typer(callback=main_callback, no_args_is_help=True, rich_markup_mode="rich", help=help_text)
     # Nested Subcommands
     app.add_typer(
         typer_instance=rpc_cli_app(),
         name="rpc",
-        help="Commands that act on a running Odoo instance through RPC",
     )
 
     # Normal Subcommands
-    app.command("config", help="Set odoo.conf options")(set_odoo_config)
-    app.command("launch", help="Launch Odoo, Bootstrap if bootstrapflag is not present")(launch_odoo)
-    app.command("bootstrap", help="Bootstrap Odoo")(bootstrap_odoo)
-    app.command("source-get-file", help="Get Raw file from odoo git remote or specific git remote.")(get_source_file)
-    app.command("source-get-depends", help="Install dependencies from __manifest__.py in specified modules")(
-        install_module_dependencies
-    )
-    app.command("source-get", help="Download/Unzip Odoo Source and thirdparty addons.")(get_source)
-    app.command("test", help="Bootstrap or Launch odoo in Testing Mode")(odoo_test)
-    app.command("shell", help="Start interactive Odoo shell")(odoo_shell)
-    app.command("uninstall", help="Uninstall Modules")(uninstall_modules)
+    app.command("launch")(launch_odoo)
+    app.command("bootstrap")(bootstrap_odoo)
+    app.command("test")(odoo_test)
+    app.command("config")(set_odoo_config)
+    app.command("source-get-file")(get_source_file)
+    app.command("source-get-depends")(install_module_dependencies)
+    app.command("source-get")(get_source)
+    app.command("shell")(odoo_shell)
+    app.command("uninstall")(uninstall_modules)
     return app
 
 

@@ -101,6 +101,7 @@ def install_module_dependencies(
         help="Modules to check for dependencies (can use all for all available addons)",
     ),
 ):
+    """Install dependencies from __manifest__.py in specified modules."""
     odoo_addon_paths = get_addon_paths(
         odoo_main_repo=ctx.obj.odoo_main_path,
         workspace_addon_path=ctx.obj.workspace_addon_path,
@@ -122,9 +123,7 @@ def get_source_file(
     file_path: str = typer.Option(..., help="Relative Filepath in Repository"),
     save_path: Path = typer.Option(..., file_okay=True, dir_okay=False, help="Where to write the file"),
 ):
-    """Get Raw file from git remote.
-    Either from the Odoo Repo defined in manifest file or from a custom Git remote.
-    """
+    """Get Raw file from manifest git remotes or specific git remote."""
 
     if not repo_url and not manifest_yml:
         raise ValueError("Need to provide either manifest_yml or repo_url")
@@ -148,7 +147,7 @@ def get_source(
     ctx: typer.Context,
     update_mode: UpdateMode = typer.Argument(UpdateMode.all, help="What to Update"),
     manifest_yml: Path = typer.Option(
-        ..., envvar="ODOO_MANIFEST", help="Git.yml file, that specified what to download with wich prefix"
+        ..., envvar="ODOO_MANIFEST", help="manifest.yml file, that specifies which repos to download."
     ),
     thirdparty_addon_path: Path = typer.Option(
         ..., envvar="ODOO_THIRDPARTY_LOCATION", help="Root folder of the Thirdparty addon repos"
@@ -157,17 +156,18 @@ def get_source(
         ..., envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Source folder, where to look for Addon zips"
     ),
     add_compare_comments: bool = typer.Option(
-        False, help="Wether to add github.com three dot compare links as comments."
+        False, "--add-compare-comments", help="Wether to add github.com three dot compare links as comments."
     ),
     remove_unspecified_addons: bool = typer.Option(
-        False, help="Remove Addon folders that are not in YML or thirdparty.zip"
+        False, "--remove-unspecified-addons", help="Remove Addon folders that are not in YML or thirdparty.zip"
     ),
     force_fetch: bool = typer.Option(
         False,
+        "--force-fetch",
         help="Forces origin fetch, regardless of current branch or commit sha (may be slow)",
     ),
 ):
-    """Update Odoo Source and Thirdparty source."""
+    """Download/Unzip Odoo Source and thirdparty addons."""
     LOGGER.info("Updating Source Repos")
     zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
 

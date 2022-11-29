@@ -7,10 +7,15 @@ from .translations import dump_translations
 
 
 def rpc_cli_app():
-    app = typer.Typer(no_args_is_help=True, callback=rpc_callback)
+    app = typer.Typer(
+        no_args_is_help=True,
+        callback=rpc_callback,
+        help="Functions that act on a running Odoo instance via RPC.",
+    )
 
     app.add_typer(
-        typer_instance=modules_cli_app(), name="modules", help="Wrapper around Odoo modules. (Install/upgrade, etc)"
+        typer_instance=modules_cli_app(),
+        name="modules",
     )
     app.command("import", help="Imports all files in a Folder according to a regex or a specific file")(import_to_odoo)
     app.command(help="Upgrades or Installs Modules in Odoo via RPC.")
