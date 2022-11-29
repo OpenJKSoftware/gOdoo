@@ -45,10 +45,12 @@ jobs:
           result-encoding: string
           script: |
             const pr_text = "${{github.event.pull_request}}";
-            var lines = pr_text.split('\n')
-            console.log(lines)
-            lines.splice(0,2)
-            console.log(lines)
+            console.log(pr_text);
+            var lines = pr_text.split('\n');
+            console.log(context);
+            console.log(lines);
+            lines.splice(0,2);
+            console.log(lines);
             return lines.join('\n')
 
       - name: Create Release
