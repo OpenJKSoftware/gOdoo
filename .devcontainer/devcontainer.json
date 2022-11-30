@@ -13,7 +13,7 @@
   "initializeCommand": "./scripts/container_requirements.sh",
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
-  "postCreateCommand": "pre-commit install && poetry config virtualenvs.create false",
+  "postCreateCommand": "sudo chown -R ContainerUser:ContainerUser /home/ContainerUser && pre-commit install && poetry config virtualenvs.create false",
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}/" // For Docker compose workspace bindmount
   },
