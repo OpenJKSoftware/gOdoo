@@ -33,5 +33,9 @@ def set_odoo_config(
         op_split = op.split("=")
         custom_opts[op_split[0]] = op_split[1]
     LOGGER.debug("Writing Conf Options: %s", custom_opts)
+    if "options" not in odoo_conf:
+        odoo_conf.add_section("options")
+        odoo_conf["options"] = {}
     odoo_conf["options"].update(custom_opts)
+    conf_path.touch(exist_ok=True)
     odoo_conf.write(conf_path.open("w"))
