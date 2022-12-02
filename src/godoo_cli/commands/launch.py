@@ -140,7 +140,7 @@ def launch_odoo(
         odoo_conf_path=ctx.obj.odoo_conf_path,
         extra_cmd_args=extra_odoo_args,
         workspace_addon_path=ctx.obj.workspace_addon_path,
-        upgrade_workspace_modules=no_install_workspace_addons,
+        upgrade_workspace_modules=not no_install_workspace_addons,
     )
     LOGGER.info("Launching Odoo")
     return typer_retuner(run_cmd(cmd_string).returncode)
