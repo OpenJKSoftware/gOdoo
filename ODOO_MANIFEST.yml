@@ -12,7 +12,6 @@
 odoo:
   url: https://github.com/odoo/odoo/
   branch: 16.0 # Branch is mandatory on Odoo Repo but not on OCA Repos
-  commit: f501c25a9d33399cfbb45526d95038266d91686e
 # In the thirdparty section we can add more Repos to download.
 # This can also be an ssh style Url for Odoo Enterprise for example.
 thirdparty:
