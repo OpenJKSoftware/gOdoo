@@ -177,5 +177,6 @@ RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
 
 USER ${USERNAME}
 RUN npm install -g prettier eslint
+RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
 ENV EDITOR=code
 ENTRYPOINT [ "sleep", "infinity" ]
