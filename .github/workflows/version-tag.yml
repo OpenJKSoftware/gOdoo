@@ -45,7 +45,7 @@ jobs:
           result-encoding: string
           script: |
             console.log(context);
-            const pr_text = context.pull_request.body;
+            const pr_text = context.payload.pull_request.body;
             console.log(pr_text);
             var lines = pr_text.split('\n');
             console.log(JSON.stringify(lines));
