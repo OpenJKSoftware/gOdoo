@@ -104,6 +104,8 @@ COPY --chown=$USERNAME:$USERNAME src src
 RUN poetry install --extras "devcontainer codequality" && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.cache
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ---------------------------------------------------------------------------------------------------------
+RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --show-completion zsh > /home/${USERNAME}/.zfunc/_godoo
+
 
 COPY --chown=$USERNAME:$USERNAME ODOO_MANIFEST.yml ./
 
@@ -177,6 +179,5 @@ RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
 
 USER ${USERNAME}
 RUN npm install -g prettier eslint
-RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
 ENV EDITOR=code
 ENTRYPOINT [ "sleep", "infinity" ]
