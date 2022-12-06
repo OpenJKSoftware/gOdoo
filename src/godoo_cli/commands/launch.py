@@ -107,7 +107,7 @@ def launch_odoo(
             no_update_source=no_update_source,
             no_addons_remove_unspecified=no_addons_remove_unspecified,
         )
-        no_install_workspace_addons = False
+        no_install_workspace_addons = True
         bootstraped = ret == 0
         if not bootstraped:
             LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
