@@ -44,13 +44,9 @@ jobs:
         with:
           result-encoding: string
           script: |
-            console.log(context);
             const pr_text = context.payload.pull_request.body;
-            console.log(pr_text);
             var lines = pr_text.split('\n');
-            console.log(JSON.stringify(lines));
-            lines.splice(0,2);
-            console.log(JSON.stringify(lines));
+            lines.splice(0,1);
             return lines.join('\n')
 
       - name: Create Release
