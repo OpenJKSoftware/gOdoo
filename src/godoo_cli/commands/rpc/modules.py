@@ -44,8 +44,11 @@ def rpc_get_modules(odoo_api: OdooApiWrapper, module_query: str, valid_module_na
         base_domain.insert(1, "&")
         base_domain.append(("name", "in", valid_module_names))
 
+    LOGGER.debug("Searching for Modules with Domain: %s", base_domain + search_domain)
     if ids := mod_env.search(base_domain + search_domain):
-        return mod_env.browse(ids)
+        modules = mod_env.browse(ids)
+        LOGGER.debug("Found Modules: %s", [(m.id, m.name, m.state) for m in modules])
+        return modules
 
 
 def rpc_install_modules(
@@ -62,14 +65,16 @@ def rpc_install_modules(
         Upgrade module if already installed, by default True
     """
     did_something = False
-
-    if install_module_ids := [m.id for m in modules if not m.installed]:
+    install_module_ids = [m.id for m in modules if m.state == "uninstalled"]
+    if install_module_ids:
         install_modules = modules.browse(install_module_ids)
         LOGGER.info("Installing Module: " + ", ".join(install_modules.mapped("name")))
         install_modules.button_immediate_install()
         did_something = True
 
-    if upgrade and (up_module_ids := [m.id for m in modules if m.installed]):
+    if upgrade and (
+        up_module_ids := [m.id for m in modules if m.state == "installed" and m.id not in install_module_ids]
+    ):
         up_modules = modules.browse(up_module_ids)
         LOGGER.info("Updating Module: " + ", ".join(up_modules.mapped("name")))
         up_modules.button_immediate_upgrade()
