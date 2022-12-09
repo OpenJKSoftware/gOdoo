@@ -13,6 +13,10 @@ def get_zip_addon_path(thirdparty_path: Path) -> Path:
     return thirdparty_path / "custom"
 
 
+def folder_is_odoo_module(folder: Path):
+    return folder.is_dir() and any(folder.glob("__manifest__.py"))
+
+
 def get_odoo_module_paths(search_folders: Union[List[Path], Path]) -> List[Path]:
     """List all Valid odoo module names in one or many Odoo addons folder.
 
@@ -34,7 +38,7 @@ def get_odoo_module_paths(search_folders: Union[List[Path], Path]) -> List[Path]
         if not folder.exists():
             return
         for folder in folder.iterdir():
-            if folder.is_dir() and any(folder.glob("__manifest__.py")):
+            if folder_is_odoo_module(folder):
                 module_paths.append(folder)
     return module_paths
 
@@ -65,7 +69,14 @@ def get_changed_modules(
         path = git_root / change.split("\t")[1]
         if addon_path in path.parents:
             changed_module_files.append(path)
-    changed_module_folders = list(set([f.parent.absolute() for f in changed_module_files]))
+
+    changed_module_folders = []
+    for f in changed_module_files:
+        for pf in f.parents:
+            if pf.absolute() == addon_path.absolute():
+                break
+            if pf.absolute() not in changed_module_folders and folder_is_odoo_module(pf):
+                changed_module_folders.append(pf.absolute())
     if changed_module_folders:
         LOGGER.debug(
             "Found Modules changed to branch '%s':\n %s",
