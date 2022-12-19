@@ -46,6 +46,7 @@ def odoo_test(
         [], envvar="ODOO_TEST_SKIP_MODULES", help="Modules not to Test even if specified in test_modules"
     ),
     odoo_log_level: str = typer.Option("test", help="Log level"),
+    no_update_source: bool = typer.Option(False, "--no-update-source", help="Update Odoo Source and Thirdparty Addons"),
 ):
     """Bootstrap or Launch odoo in Testing Mode."""
     workspace_addon_path = ctx.obj.workspace_addon_path
@@ -92,6 +93,6 @@ def odoo_test(
         no_launch=True,
         multithread_worker_count=0,
         odoo_demo=True,
-        no_update_source=True,
+        no_update_source=no_update_source,
     )
     return typer_retuner(ret)
