@@ -149,7 +149,7 @@ FROM base_odoo as server
 ARG USERNAME
 RUN sudo rm -rf {/tmp/*,/var/cache/apt,/var/lib/apt/lists/*}
 COPY --chown=${USERNAME}:${USERNAME} ./addons $ODOO_WORKSPACE_ADDON_LOCATION
-ENTRYPOINT [ "/usr/local/bin/godoo", "launch" ]
+ENTRYPOINT [ "godoo", "launch" ]
 
 
 # Stage for testing, because we need the workspace with git available for delta checking
@@ -157,7 +157,7 @@ FROM base_odoo as test
 ARG USERNAME
 RUN sudo rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
 ADD --chown=${USERNAME}:${USERNAME} . .
-ENTRYPOINT [ "/usr/local/bin/godoo", "test" ,"all" ]
+ENTRYPOINT [ "godoo", "test" ,"all" ]
 
 
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
