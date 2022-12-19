@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gOdoo-cli"
-version = "0.3.9"
+version = "0.3.10"
 description = "Wrapper around Odoo-Bin with some convinience RPC functions."
 authors = ["Joshua Kreuder <Joshua_Kreuder@outlook.com>"]
 license = "LGPL-3"
