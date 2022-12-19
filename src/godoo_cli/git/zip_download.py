@@ -1,4 +1,5 @@
 import logging
+import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -43,5 +44,6 @@ def git_download_zip(repo_url: str, target_folder: Path, branch: str, commit: st
             zip_ref.extractall(ex_location)
         for path in ex_location.glob("*"):
             LOGGER.info("Moving %s to %s", path.stem, target_folder)
+            shutil.rmtree(target_folder, ignore_errors=True)
             path.rename(target_folder)
             break
