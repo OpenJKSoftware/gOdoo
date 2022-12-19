@@ -215,8 +215,8 @@ def bootstrap_odoo(
         languages=languages,
     )
 
-    if not no_update_source:
-        _install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
+    # Always update Pip reqs regardless of --no-update-source
+    _install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
 
     LOGGER.info("Launching Bootstrap Commandline")
     ret = run_cmd(cmd_string).returncode
