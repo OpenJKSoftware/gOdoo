@@ -88,10 +88,10 @@ def launch_odoo(
         log_file_path.unlink(missing_ok=True)
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
-    LOGGER.info("Bootstrap Flag Status: %s", ctx.obj.bootstrap_flag_location.exists())
-    bootstraped = False
+    bootstraped = ctx.obj.bootstrap_flag_location.exists()
+    LOGGER.info("Bootstrap Flag Status: %s", bootstraped)
     ret = ""
-    if not ctx.obj.bootstrap_flag_location.exists():
+    if not bootstraped:
         _extra_bootstrap_args = extra_odoo_args.copy()
         if ea := extra_bootstrap_args:
             _extra_bootstrap_args += ea
