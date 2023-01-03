@@ -122,6 +122,7 @@ def launch_odoo(
         )  # Prevent server restart if Importer threads will be spawned.
 
     if bootstraped and no_launch:
+        LOGGER.info("Exiting, because launch was disabled via CLI Argument")
         return typer_retuner(ret)
 
     if load_data_path:
