@@ -134,9 +134,9 @@ def bootstrap_odoo(
         help="folder that contains thirdparty repos like OCA",
     ),
     db_host: str = typer.Option(
-        ...,
+        "",
         envvar="ODOO_DB_HOST",
-        help="db hostname",
+        help="db hostname (empty for default socket)",
         rich_help_panel="Database Options",
     ),
     db_filter: str = typer.Option(
@@ -164,9 +164,9 @@ def bootstrap_odoo(
         rich_help_panel="Database Options",
     ),
     db_port: str = typer.Option(
-        ...,
+        "",
         envvar="ODOO_DB_PORT",
-        help="db host port",
+        help="db host port (empty for socket)",
         rich_help_panel="Database Options",
     ),
     extra_cmd_args: List[str] = typer.Option(None, help="extra agruments to pass to odoo-bin"),
