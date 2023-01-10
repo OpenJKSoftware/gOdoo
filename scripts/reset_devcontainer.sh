@@ -69,7 +69,7 @@ reset_native () {
 
     remove_odoo_config
 
-    if [ "$RESET_ALL" = "true"  ] && [ ! -z $ODOO_THIRDPARTY_LOCATION]; then
+    if [ "$RESET_ALL" = "true"  ] && [ ! -z $ODOO_THIRDPARTY_LOCATION ]; then
         rm -rf $ODOO_THIRDPARTY_LOCATION/*
     fi
 
