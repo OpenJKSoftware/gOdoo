@@ -5,6 +5,7 @@ from typing import Optional
 
 import typer
 from dotenv import load_dotenv
+from rich import print as rich_print
 
 from .commands import (
     bootstrap_odoo,
@@ -18,6 +19,7 @@ from .commands import (
     set_odoo_config,
     uninstall_modules,
 )
+from .helpers.odoo_files import odoo_bin_get_version
 from .helpers.system import set_logging
 from .version import __version__
 
@@ -66,6 +68,13 @@ def main_callback(
     set_logging(verbose=verbose)
 
 
+def print_versions(ctx: typer.Context):
+    rich_print(f"gOdoo Version: [bold green]{__version__}[/bold green]")
+    if mp := ctx.obj.odoo_main_path:
+        odoo_version = odoo_bin_get_version(mp)
+        rich_print(f"Odoo Version: [bold green]{odoo_version}[/bold green]")
+
+
 def main_cli():
     load_dotenv(".env", override=True)
 
@@ -78,6 +87,7 @@ def main_cli():
     )
 
     # Normal Subcommands
+    app.command("version")(print_versions)
     app.command("launch")(launch_odoo)
     app.command("bootstrap")(bootstrap_odoo)
     app.command("test")(odoo_test)

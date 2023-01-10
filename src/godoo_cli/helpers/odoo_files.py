@@ -6,14 +6,46 @@ from typing import List, Union
 
 from git import Repo
 
+from .system import run_cmd
+
 LOGGER = logging.getLogger(__name__)
+
+
+def odoo_bin_get_version(odoo_main_repo_path: Path) -> str:
+    """Get Odoo Version by calling 'odoo-bin --version'
+
+    Parameters
+    ----------
+    odoo_main_repo_path : Path
+        Path to odoo-bin folder
+
+    Returns
+    -------
+    str
+        odoo-bin --version output
+    """
+    odoo_bin_path = odoo_main_repo_path / "odoo-bin"
+    version_out = run_cmd(f"{odoo_bin_path.absolute()} --version", capture_output=True, text=True)
+    return version_out.stdout
 
 
 def get_zip_addon_path(thirdparty_path: Path) -> Path:
     return thirdparty_path / "custom"
 
 
-def folder_is_odoo_module(folder: Path):
+def folder_is_odoo_module(folder: Path) -> bool:
+    """Wether folder is a valid odoo module.
+
+    Parameters
+    ----------
+    folder : Path
+        Folder to check
+
+    Returns
+    -------
+    bool
+        true if folder contains a module
+    """
     return folder.is_dir() and any(folder.glob("__manifest__.py"))
 
 
