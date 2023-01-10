@@ -7,7 +7,7 @@ import typer
 
 from ..commands.rpc.cli import rpc_callback
 from ..helpers.cli import typer_retuner, typer_unpacker
-from ..helpers.odoo_files import get_odoo_module_paths
+from ..helpers.odoo_files import get_odoo_module_paths, odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .rpc import import_to_odoo
@@ -116,10 +116,15 @@ def launch_odoo(
     if ea := extra_args:
         extra_odoo_args += ea
 
+    odoo_main_path = ctx.obj.odoo_main_path
+    odoo_version = odoo_bin_get_version(odoo_main_path)
+
     if dev_mode:
         extra_odoo_args.append(
             "--dev xml,qweb" if load_data_path else "--dev xml,qweb,reload"
         )  # Prevent server restart if Importer threads will be spawned.
+        if "16.0" in odoo_version:
+            extra_odoo_args[-1] += ",werkzeug"
 
     if bootstraped and no_launch:
         LOGGER.info("Exiting, because launch was disabled via CLI Argument")
@@ -137,7 +142,7 @@ def launch_odoo(
         loader_thread.start()
 
     cmd_string = _launch_command(
-        odoo_path=ctx.obj.odoo_main_path,
+        odoo_path=odoo_main_path,
         odoo_conf_path=ctx.obj.odoo_conf_path,
         extra_cmd_args=extra_odoo_args,
         workspace_addon_path=ctx.obj.workspace_addon_path,
