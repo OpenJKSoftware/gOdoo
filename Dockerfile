@@ -112,13 +112,13 @@ COPY --chown=$USERNAME:$USERNAME ODOO_MANIFEST.yml ./
 # Install everything from Odoo requirements.txt, by downloading its raw contents
 FROM python_workspace as odoo_requirements
 RUN set -x; \
-    godoo source-get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
+    godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
     && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade
 
 # Download Odoo Source Code
 FROM python_workspace as odoo_source
 RUN set -x ; \
-    godoo source-get odoo \
+    godoo source get odoo \
     && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
 
 # Download Odoo Addons and unpack .zip Addons
@@ -128,8 +128,8 @@ COPY thirdparty thirdparty
 RUN --mount=type=ssh set -x; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
     && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK || true \
-    && godoo source-get  thirdparty \
-    && godoo source-get  zip
+    && godoo source get  thirdparty \
+    && godoo source get  zip
 
 # Copy Addons and Odoo Source into image with requirements.
 FROM odoo_requirements as base_odoo
