@@ -2,6 +2,7 @@
 
 launch: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
+	godoo source get
 	godoo launch --dev-mode --odoo-demo
 
 quick: # To be called from inside the Devcontainer

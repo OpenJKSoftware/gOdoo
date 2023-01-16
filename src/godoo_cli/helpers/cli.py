@@ -11,6 +11,42 @@ from typer.models import ParameterInfo
 LOGGER = logging.getLogger(__name__)
 
 
+def get_type_from_default(*args):
+    """Decorator to add type annotations to function by Default values.
+
+    Used to tell typer CLI about the Argument types.
+
+    Default values are being searched on annotation_source.
+    If they are found, add annotation_source type to function annotations
+
+    Parameters
+    ----------
+    *args :
+        one or many classes on which to search for the Default values
+    """
+    annotation_source = args
+
+    def decorator(fun):
+        def wrapper():
+            fun_params = inspect.signature(fun).parameters
+            missing_annot = [p for p in fun_params if p not in fun.__annotations__]
+            for param in missing_annot:
+                param_default = fun_params[param]._default
+                for source_class in annotation_source:
+                    if source_param_name := next(
+                        (k for k, v in source_class.__dict__.items() if v == param_default),
+                        None,
+                    ):
+                        if typ := source_class.__annotations__.get(source_param_name):
+                            fun.__annotations__[param] = typ
+                            break
+            return fun
+
+        return wrapper()
+
+    return decorator
+
+
 def typer_retuner(ret):
     """Exit Typer command with return code, if parent of calling function is not the typer_unpacker wrapper.
         Will just return ret if ret is either not an integer, or the parent function was another python func.

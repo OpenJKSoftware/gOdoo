@@ -3,13 +3,12 @@ import re
 from pathlib import Path
 from typing import List
 
-import typer
-
+from ..cli_common import CommonCLI
 from ..helpers.bootstrap import _install_py_reqs_by_odoo_cmd
-from ..helpers.cli import typer_retuner, typer_unpacker
 from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths
 from ..helpers.system import run_cmd
-from .source_get import get_source
+
+CLI = CommonCLI()
 
 LOGGER = logging.getLogger(__name__)
 
@@ -44,10 +43,10 @@ def _boostrap_command(
         odoo bin --addons-path
     workspace_addon_path : Path
         path to addons in dev repo
-    db_host : str
-        db hostname for odoo.conf
     db_filter : str
         db filter for odoo.conf
+    db_host : str
+        db hostname for odoo.conf
     db_name : str
         database name for odoo.conf
     db_user : str
@@ -125,82 +124,38 @@ def _boostrap_command(
     return " ".join(odoo_cmd)
 
 
-@typer_unpacker
+@CLI.unpacker
+@CLI.arg_annotator
 def bootstrap_odoo(
-    ctx: typer.Context,
-    thirdparty_addon_path: Path = typer.Option(
-        ...,
-        envvar="ODOO_THIRDPARTY_LOCATION",
-        help="folder that contains thirdparty repos like OCA",
-    ),
-    db_host: str = typer.Option(
-        "",
-        envvar="ODOO_DB_HOST",
-        help="db hostname (empty for default socket)",
-        rich_help_panel="Database Options",
-    ),
-    db_filter: str = typer.Option(
-        ...,
-        envvar="ODOO_DB_FILTER",
-        help="database filter for odoo_conf",
-        rich_help_panel="Database Options",
-    ),
-    db_name: str = typer.Option(
-        ...,
-        envvar="ODOO_MAIN_DB",
-        help="launch database name",
-        rich_help_panel="Database Options",
-    ),
-    db_user: str = typer.Option(
-        ...,
-        envvar="ODOO_DB_USER",
-        help="db user",
-        rich_help_panel="Database Options",
-    ),
-    db_password: str = typer.Option(
-        ...,
-        envvar="ODOO_DB_PASSWORD",
-        help="db password",
-        rich_help_panel="Database Options",
-    ),
-    db_port: str = typer.Option(
-        "",
-        envvar="ODOO_DB_PORT",
-        help="db host port (empty for socket)",
-        rich_help_panel="Database Options",
-    ),
-    extra_cmd_args: List[str] = typer.Option(None, help="extra agruments to pass to odoo-bin"),
-    multithread_worker_count: int = typer.Option(5, help="count of worker threads. will enable proxy_mode if >0"),
-    languages: str = typer.Option("de_DE,en_US", help="languages to load by default"),
-    no_install_base: bool = typer.Option(
-        False, "--no-install-base", help="dont install [bold]base[/bold] and [bold]web[/bold] module"
-    ),
-    no_install_workspace_modules: bool = typer.Option(
-        False,
-        "--no-install-workspace-modules",
-        help="dont automatically install modules found in [bold cyan]--workspace_path[/bold cyan]",
-    ),
-    no_update_source: bool = typer.Option(False, "--no-update-source", help="Update Odoo Source and Thirdparty Addons"),
-    no_addons_remove_unspecified: bool = typer.Option(
-        False,
-        "--no-addons-remove-unspecified",
-        help="don't remove unspecified addons if not '[bold cyan]--no-update-source[/bold cyan]'",
-    ),
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    odoo_conf_path=CLI.odoo_paths.conf_path,
+    bootstrap_flag_location=CLI.odoo_paths.bootstrap_flag_location,
+    db_filter=CLI.database.db_filter,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
+    extra_cmd_args=CLI.odoo_launch.extra_cmd_args,
+    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
+    languages=CLI.odoo_launch.languages,
+    no_install_base=CLI.odoo_launch.no_install_base,
+    no_install_workspace_modules=CLI.odoo_launch.no_install_workspace_modules,
 ):
     """Bootstrap Odoo."""
-    if not no_update_source:
-        get_source(ctx=ctx, remove_unspecified_addons=not no_addons_remove_unspecified)
 
     addon_paths = get_addon_paths(
-        odoo_main_repo=ctx.obj.odoo_main_path,
-        workspace_addon_path=ctx.obj.workspace_addon_path,
+        odoo_main_repo=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
 
     cmd_string = _boostrap_command(
-        odoo_main_path=ctx.obj.odoo_main_path,
-        odoo_conf_path=ctx.obj.odoo_conf_path,
-        workspace_addon_path=ctx.obj.workspace_addon_path,
+        odoo_main_path=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
+        workspace_addon_path=workspace_addon_path,
         addon_paths=addon_paths,
         db_host=db_host,
         db_name=db_name,
@@ -221,7 +176,7 @@ def bootstrap_odoo(
     LOGGER.info("Launching Bootstrap Commandline")
     ret = run_cmd(cmd_string).returncode
     if ret == 0:
-        ctx.obj.bootstrap_flag_location.touch()
+        bootstrap_flag_location.touch()
     else:
         LOGGER.error("Odoo-Bin Returned %d", ret)
-    return typer_retuner(ret)
+    return CLI.returner(ret)

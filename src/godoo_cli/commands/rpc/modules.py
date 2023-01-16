@@ -5,9 +5,9 @@ import typer
 from godoo_rpc import OdooApiWrapper
 from godoo_rpc.login import wait_for_odoo
 
-from ...helpers.cli import typer_retuner
-from .cli import rpc_callback
+from ...cli_common import CommonCLI
 
+CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
@@ -82,36 +82,29 @@ def rpc_install_modules(
     return did_something
 
 
+@CLI.arg_annotator
 def install_modules(
-    ctx: typer.Context,
     module_name_query: str = typer.Argument(..., help=r"Module Internal name. Will use ilike Match if \% is present"),
+    rpc_host=CLI.rpc.rpc_host,
+    rpc_database=CLI.database.db_name,
+    rpc_user=CLI.rpc.rpc_user,
+    rpc_password=CLI.rpc.rpc_password,
     upgrade: bool = typer.Option(True, help="Upgrae Module if already installed"),
 ):
-    """Upgrades or Installs Modules in Odoo via RPC."""
+    """Install or upgrade module. Can act on multiple modules with % wildcard"""
 
     odoo_api = wait_for_odoo(
-        odoo_host=ctx.obj.odoo_rpc_host,
-        odoo_db=ctx.obj.odoo_main_db,
-        odoo_user=ctx.obj.odoo_rpc_user,
-        odoo_password=ctx.obj.odoo_rpc_password,
+        odoo_host=rpc_host,
+        odoo_db=rpc_database,
+        odoo_user=rpc_user,
+        odoo_password=rpc_password,
     )
 
     if modules := rpc_get_modules(odoo_api, module_name_query):
-        if rpc_install_modules(modules):
+        if rpc_install_modules(modules, upgrade=upgrade):
             return
         else:
             LOGGER.warn("Found Modules, but didn't do anything on DB.")
     else:
         LOGGER.warn("Could not find modules with Query: '%s'", module_name_query)
-    return typer_retuner(1)
-
-
-def modules_cli_app():
-    app = typer.Typer(
-        callback=rpc_callback,
-        no_args_is_help=True,
-        help="Wrapper around Odoo modules. (Install/upgrade, etc)",
-    )
-
-    app.command(name="install")(install_modules)
-    return app
+    return CLI.returner(1)

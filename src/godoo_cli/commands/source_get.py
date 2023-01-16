@@ -10,14 +10,15 @@ from typing import List
 import typer
 from ruamel.yaml import YAML
 
+from ..cli_common import CommonCLI
 from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
 from ..helpers.bootstrap import _install_py_reqs_for_modules
-from ..helpers.cli import typer_unpacker
 from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths, get_zip_addon_path
 from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
 
 LOGGER = logging.getLogger(__name__)
+CLI = CommonCLI()
 
 
 class UpdateMode(str, Enum):
@@ -27,7 +28,11 @@ class UpdateMode(str, Enum):
     thirdparty = "thirdparty"
 
 
-def unpack_addon_archives(archive_folder: Path, target_addon_folder: Path, remove_excess: bool = False):
+def unpack_addon_archives(
+    archive_folder: Path,
+    target_addon_folder: Path,
+    remove_excess: bool = False,
+):
     """Take archive files from archive_folder and extract them into target_addon_folder.
 
     Parameters
@@ -88,36 +93,33 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
     config.write(odoo_conf.open("w"))
 
 
-@typer_unpacker
+@CLI.unpacker
+@CLI.arg_annotator
 def install_module_dependencies(
-    ctx: typer.Context,
-    thirdparty_addon_path: Path = typer.Option(
-        ...,
-        envvar="ODOO_THIRDPARTY_LOCATION",
-        help="Root folder of the Thirdparty addon repos",
-    ),
     module_list: List[str] = typer.Argument(
         ...,
         help="Modules to check for dependencies (can use all for all available addons)",
     ),
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
 ):
     """Install dependencies from __manifest__.py in specified modules."""
     odoo_addon_paths = get_addon_paths(
-        odoo_main_repo=ctx.obj.odoo_main_path,
-        workspace_addon_path=ctx.obj.workspace_addon_path,
+        odoo_main_repo=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
     if len(module_list) == 1 and module_list[0] == "all":
-        search_addon_paths = [p for p in odoo_addon_paths if ctx.obj.odoo_main_path not in p.parents]
+        search_addon_paths = [p for p in odoo_addon_paths if odoo_main_path not in p.parents]
         module_list = [p.stem for p in get_odoo_module_paths(search_addon_paths)]
     _install_py_reqs_for_modules(odoo_addon_paths, module_list)
 
 
-@typer_unpacker
+@CLI.unpacker
+@CLI.arg_annotator
 def get_source_file(
-    manifest_yml: Path = typer.Option(
-        "", envvar="ODOO_MANIFEST", help="godoo manifest path, when downloading odoo source (skip repo_url)"
-    ),
+    manifest_path=CLI.source.mainfest_path,
     repo_url: str = typer.Option("", help="git repo url, for specific repo (skip manifest_yml)"),
     file_ref: str = typer.Option("", help="When not using manifest. File Branch, Commit, Tag..."),
     file_path: str = typer.Option(..., help="Relative Filepath in Repository"),
@@ -125,10 +127,10 @@ def get_source_file(
 ):
     """Get Raw file from manifest git remotes or specific git remote."""
 
-    if not repo_url and not manifest_yml:
+    if not repo_url and not manifest_path:
         raise ValueError("Need to provide either manifest_yml or repo_url")
-    if manifest_yml and not repo_url:
-        manifest = YAML().load(manifest_yml.resolve())
+    if manifest_path and not repo_url:
+        manifest = YAML().load(manifest_path.resolve())
         odoo_spec = manifest["odoo"]
         repo_url = odoo_spec["url"]
         file_ref = odoo_spec.get("commit") or odoo_spec.get("branch")
@@ -142,16 +144,16 @@ def get_source_file(
     return download_file(url=file_url, save_path=save_path)
 
 
-@typer_unpacker
+@CLI.unpacker
+@CLI.arg_annotator
 def get_source(
-    ctx: typer.Context,
     update_mode: UpdateMode = typer.Argument(UpdateMode.all, help="What to Update"),
-    manifest_yml: Path = typer.Option(
-        ..., envvar="ODOO_MANIFEST", help="manifest.yml file, that specifies which repos to download."
-    ),
-    thirdparty_addon_path: Path = typer.Option(
-        ..., envvar="ODOO_THIRDPARTY_LOCATION", help="Root folder of the Thirdparty addon repos"
-    ),
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    odoo_conf_path=CLI.odoo_paths.conf_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    manifest_path=CLI.source.mainfest_path,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    download_zipmode=CLI.source.source_download_archive,
     thirdparty_zip_source: Path = typer.Option(
         ..., envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Source folder, where to look for Addon zips"
     ),
@@ -176,19 +178,19 @@ def get_source(
 
     if update_mode in ["all", "odoo"]:
         git_ensure_odoo_repo(
-            target_folder=ctx.obj.odoo_main_path,
-            manifest_file=manifest_yml,
+            target_folder=odoo_main_path,
+            manifest_file=manifest_path,
             force_fetch=force_fetch,
             add_compare_comment=add_compare_comments,
-            download_archive=ctx.obj.source_download_archive,
+            download_archive=download_zipmode,
         )
 
     if update_mode in ["all", "thirdparty"]:
         git_repos = git_ensure_addon_repos(
             root_folder=thirdparty_addon_path,
-            git_yml_path=manifest_yml,
+            git_yml_path=manifest_path,
             generate_yml_compare_comments=add_compare_comments,
-            download_archive=ctx.obj.source_download_archive,
+            download_archive=download_zipmode,
         )
         if remove_unspecified_addons:
             remove_unused_folders(
@@ -197,10 +199,23 @@ def get_source(
                 keep_folders=[zip_addon_path],
             )
 
-    if (conf_path := ctx.obj.odoo_conf_path).exists():
+    if (conf_path := odoo_conf_path).exists():
         odoo_addon_paths = get_addon_paths(
-            odoo_main_repo=ctx.obj.odoo_main_path,
-            workspace_addon_path=ctx.obj.workspace_addon_path,
+            odoo_main_repo=odoo_main_path,
+            workspace_addon_path=workspace_addon_path,
             thirdparty_addon_path=thirdparty_addon_path,
         )
         update_odoo_conf_addon_paths(odoo_conf=conf_path, addon_paths=odoo_addon_paths)
+
+
+def source_cli_app():
+    app = typer.Typer(
+        no_args_is_help=True,
+        help="Functions concerning with Odoo Source code",
+    )
+
+    app.command("get")(get_source)
+    app.command("get-file")(get_source_file)
+    app.command("get-dependencies")(install_module_dependencies)
+
+    return app

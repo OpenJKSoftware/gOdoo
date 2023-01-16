@@ -5,12 +5,13 @@ from typing import List
 
 import typer
 
-from ..commands.rpc.cli import rpc_callback
-from ..helpers.cli import typer_retuner, typer_unpacker
+from ..cli_common import CommonCLI
 from ..helpers.odoo_files import get_odoo_module_paths, odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .rpc import import_to_odoo
+
+CLI = CommonCLI()
 
 LOGGER = logging.getLogger(__name__)
 
@@ -51,35 +52,77 @@ def _launch_command(
     return " ".join(odoo_cmd)
 
 
-@typer_unpacker
-def launch_odoo(
-    ctx: typer.Context,
-    odoo_demo: bool = typer.Option(False, "--odoo-demo", help="Load Demo Data"),
-    dev_mode: bool = typer.Option(False, "--dev-mode", help="Pass --dev xml,qweb,reload to odoo"),
-    no_launch: bool = typer.Option(False, "--no-launch", help="Launch after Bootstrap"),
-    no_install_base: bool = typer.Option(
-        False, "--no-install-base", help="dont install [bold]base[/bold] and [bold]web[/bold] module"
-    ),
-    no_install_workspace_addons: bool = typer.Option(
-        False, "--no-install-workspace-addons", help="Install Workspace addons"
-    ),
-    no_update_source: bool = typer.Option(False, "--no-update-source", help="Update Odoo Source and Thirdparty Addons"),
-    no_addons_remove_unspecified: bool = typer.Option(
-        False,
-        "--no-addons-remove-unspecified",
-        help="don't remove unspecified addons if not '[bold cyan]--no-update-source[/bold cyan]'",
-    ),
-    load_data_path: List[Path] = typer.Option(
-        None,
-        help="Starts Async Importer Job with provided path(s). [bold red]Must provide options from godoo rpc[/bold red]",
-    ),
-    extra_args: List[str] = typer.Option([], help="Extra args to Pass to odoo Launch"),
-    extra_bootstrap_args: List[str] = typer.Option([], help="Extra args to Pass to odoo Bootstrap"),
-    log_file_path: Path = typer.Option(None, dir_okay=False, writable=True, help="Logfile Path"),
-    multithread_worker_count: int = typer.Option(9, help="count of worker threads. will enable proxy_mode if >0"),
+def pre_launch(
+    odoo_main_path: Path,
+    workspace_addon_path: Path,
+    bootstrap_flag_location: Path,
+    thirdparty_addon_path: Path,
+    odoo_conf_path: Path,
+    db_filter: str,
+    db_host: str,
+    db_port: int,
+    db_name: str,
+    db_user: str,
+    db_password: str,
+    odoo_demo: bool,
+    dev_mode: bool,
+    multithread_worker_count: int = 0,
+    extra_launch_args: List[str] = None,
+    extra_bootstrap_args: List[str] = None,
+    log_file_path: Path = None,
+    install_workspace_addons: bool = True,
+    install_base: bool = True,
+    launch_or_bootstrap: bool = False,
 ):
-    """
-    Launch Odoo, Bootstrap if bootstrapflag is not present.
+    """Start Bootstrap if no bootstrap flag is found. And return Launch CMD.
+
+    Parameters
+    ----------
+    odoo_main_path : Path
+        Path to Odoo-bin folder
+    workspace_addon_path : Path
+        Path to workspace addons
+    bootstrap_flag_location : Path
+        path to bootstrap flag
+    thirdparty_addon_path : Path
+        path to thirdparty addons folder
+    odoo_conf_path : Path
+        path to odoo conf
+    db_filter : str
+        odoo.conf db_filter
+    db_host : str
+        database host url. Empty string for Unix sock
+    db_port : int
+        database port. 0 for unix sock
+    db_name : str
+        odoo main database name
+    db_user : str
+        database user
+    db_password : str
+        database password
+    odoo_demo : bool
+        if false, add --without-demo to bootstrap
+    dev_mode : bool
+        add --dev... to cmd
+    install_base : bool
+        install web, and base
+    install_workspace_addons : bool
+        install all modules in workspace folder
+    extra_args : List[str]
+        extra launch CMD args
+    extra_bootstrap_args : List[str]
+        extra bootstrap cmd args
+    log_file_path : Path
+        path to odoo.log (stdout log if empty)
+    multithread_worker_count : int
+        count of multithread workser
+    launch_or_bootstrap: bool, optional
+        Only return launch cmd if bootstrap did not run
+
+    Returns
+    -------
+    Union[int,str]
+        Int return code of bootstrap if not 0 else launch cmd as string
     """
     LOGGER.info("Starting godoo Init Script")
 
@@ -88,7 +131,7 @@ def launch_odoo(
         log_file_path.unlink(missing_ok=True)
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
-    bootstraped = ctx.obj.bootstrap_flag_location.exists()
+    bootstraped = bootstrap_flag_location.exists()
     LOGGER.info("Bootstrap Flag Status: %s", bootstraped)
     ret = ""
     if not bootstraped:
@@ -97,62 +140,180 @@ def launch_odoo(
             _extra_bootstrap_args += ea
         if not odoo_demo:
             _extra_bootstrap_args += ["--without-demo all"]
-
+        if not install_base:
+            install_workspace_addons = False
         ret = bootstrap_odoo(
-            ctx=ctx,
+            db_name=db_name,
+            db_filter=db_filter,
+            db_user=db_user,
+            db_password=db_password,
+            db_host=db_host,
+            db_port=db_port,
+            bootstrap_flag_location=bootstrap_flag_location,
+            thirdparty_addon_path=thirdparty_addon_path,
+            odoo_main_path=odoo_main_path,
+            odoo_conf_path=odoo_conf_path,
             extra_cmd_args=_extra_bootstrap_args,
-            no_install_base=no_install_base,
-            no_install_workspace_modules=no_install_workspace_addons or no_install_base,
+            no_install_base=not install_base,
+            no_install_workspace_modules=not install_workspace_addons,
             multithread_worker_count=multithread_worker_count,
-            no_update_source=no_update_source,
-            no_addons_remove_unspecified=no_addons_remove_unspecified,
         )
-        no_install_workspace_addons = True
+        install_workspace_addons = True
         bootstraped = ret == 0
         if not bootstraped:
-            LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
-            return typer_retuner(ret)
+            return ret
 
-    if ea := extra_args:
+        if launch_or_bootstrap:
+            return
+
+    if ea := extra_launch_args:
         extra_odoo_args += ea
 
-    odoo_main_path = ctx.obj.odoo_main_path
+    odoo_main_path = odoo_main_path
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
     if dev_mode:
-        extra_odoo_args.append(
-            "--dev xml,qweb" if load_data_path else "--dev xml,qweb,reload"
-        )  # Prevent server restart if Importer threads will be spawned.
+        extra_odoo_args.append("--dev xml,qweb")
         if "16.0" in odoo_version:
             extra_odoo_args[-1] += ",werkzeug"
 
-    if bootstraped and no_launch:
-        LOGGER.info("Exiting, because launch was disabled via CLI Argument")
-        return typer_retuner(ret)
-
-    if load_data_path:
-        rpc_callback(ctx)  # Add RPC Options using Defaults and Envvars
-        LOGGER.info("Starting Data Importer Thread for: '%s'", ", ".join(map(str, load_data_path)))
-        loader_thread = threading.Thread(
-            target=import_to_odoo,
-            name="DataLoader",
-            args=(ctx,),
-            kwargs={"read_paths": load_data_path},
-        )
-        loader_thread.start()
-
-    cmd_string = _launch_command(
+    return _launch_command(
         odoo_path=odoo_main_path,
-        odoo_conf_path=ctx.obj.odoo_conf_path,
+        odoo_conf_path=odoo_conf_path,
         extra_cmd_args=extra_odoo_args,
-        workspace_addon_path=ctx.obj.workspace_addon_path,
-        upgrade_workspace_modules=not no_install_workspace_addons,
+        workspace_addon_path=workspace_addon_path,
+        upgrade_workspace_modules=not install_workspace_addons,
     )
+
+
+@CLI.unpacker
+@CLI.arg_annotator
+def launch_odoo(
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    bootstrap_flag_location=CLI.odoo_paths.bootstrap_flag_location,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    odoo_conf_path=CLI.odoo_paths.conf_path,
+    db_filter=CLI.database.db_filter,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
+    odoo_demo=CLI.odoo_launch.odoo_demo,
+    dev_mode=CLI.odoo_launch.dev_mode,
+    no_install_base=CLI.odoo_launch.no_install_base,
+    no_install_workspace_modules=CLI.odoo_launch.no_install_workspace_modules,
+    extra_args=CLI.odoo_launch.extra_cmd_args,
+    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args,
+    log_file_path=CLI.odoo_launch.log_file_path,
+    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
+):
+    """
+    Launch Odoo, Bootstrap if bootstrapflag is not present.
+    """
+
+    launch_cmd = pre_launch(
+        odoo_main_path=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        bootstrap_flag_location=bootstrap_flag_location,
+        thirdparty_addon_path=thirdparty_addon_path,
+        odoo_conf_path=odoo_conf_path,
+        db_filter=db_filter,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_user=db_user,
+        db_password=db_password,
+        odoo_demo=odoo_demo,
+        dev_mode=dev_mode,
+        install_base=not no_install_base,
+        install_workspace_addons=not no_install_workspace_modules,
+        extra_launch_args=extra_args,
+        extra_bootstrap_args=extra_bootstrap_args,
+        log_file_path=log_file_path,
+        multithread_worker_count=multithread_worker_count,
+    )
+
+    if not isinstance(launch_cmd, str):
+        LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
+        return CLI.returner(launch_cmd)
+
     LOGGER.info("Launching Odoo")
-    return typer_retuner(run_cmd(cmd_string).returncode)
+    return CLI.returner(run_cmd(launch_cmd).returncode)
 
 
-def launch_cli_app():
-    app = typer.Typer(no_args_is_help=True)
-    app.command()(launch_odoo)
-    return app
+def launch_import(
+    load_data_path: List[Path] = typer.Argument(
+        ...,
+        help="Starts Async Importer Job with provided path(s).",
+    ),
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    bootstrap_flag_location=CLI.odoo_paths.bootstrap_flag_location,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    odoo_conf_path=CLI.odoo_paths.conf_path,
+    db_filter=CLI.database.db_filter,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
+    rpc_host=CLI.rpc.rpc_host,
+    rpc_user=CLI.rpc.rpc_user,
+    rpc_password=CLI.rpc.rpc_password,
+    odoo_demo=CLI.odoo_launch.odoo_demo,
+    dev_mode=CLI.odoo_launch.dev_mode,
+    no_install_base=CLI.odoo_launch.no_install_base,
+    no_install_workspace_modules=CLI.odoo_launch.no_install_workspace_modules,
+    extra_launch_args=CLI.odoo_launch.extra_cmd_args,
+    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args,
+    log_file_path=CLI.odoo_launch.log_file_path,
+    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
+):
+    """Bootstrap and Start odoo. Launches RPC import in second thread."""
+
+    launch_cmd = pre_launch(
+        odoo_main_path=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        bootstrap_flag_location=bootstrap_flag_location,
+        thirdparty_addon_path=thirdparty_addon_path,
+        odoo_conf_path=odoo_conf_path,
+        db_filter=db_filter,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_user=db_user,
+        db_password=db_password,
+        odoo_demo=odoo_demo,
+        dev_mode=dev_mode,
+        install_base=not no_install_base,
+        install_workspace_addons=not no_install_workspace_modules,
+        extra_launch_args=extra_launch_args,
+        extra_bootstrap_args=extra_bootstrap_args,
+        log_file_path=log_file_path,
+        multithread_worker_count=multithread_worker_count,
+    )
+
+    if not isinstance(launch_cmd, str):
+        LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
+        return CLI.returner(launch_cmd)
+
+    launch_cmd = launch_cmd.replace(",reload ", " ")  # Remove reload option from CMD String
+
+    LOGGER.info("Starting Data Importer Thread for: '%s'", ", ".join(map(str, load_data_path)))
+    loader_thread = threading.Thread(
+        target=import_to_odoo,
+        name="DataLoader",
+        kwargs={
+            "read_paths": load_data_path,
+            "rpc_host": rpc_host,
+            "rpc_database": db_name,
+            "rpc_user": rpc_user,
+            "rpc_password": rpc_password,
+        },
+    )
+    loader_thread.start()
+
+    LOGGER.info("Launching Odoo")
+    return CLI.returner(run_cmd(launch_cmd).returncode)
