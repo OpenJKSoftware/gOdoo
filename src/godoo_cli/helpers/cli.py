@@ -11,6 +11,49 @@ from typer.models import ParameterInfo
 LOGGER = logging.getLogger(__name__)
 
 
+def get_type_from_default(*args):
+    """Decorator to add type annotations to function by Dataclass default values.
+
+    Used to tell typer CLI about the Argument types if they are applied via a Dataclass.
+
+    Default values are being searched on the dataclasses provided by *args.
+    If they are found, adds type to function annotations so that typer can read them later.
+
+    Parameters
+    ----------
+    *args :
+        one or many dataclasses on which to search for default values
+    """
+    annotation_source = args
+
+    def decorator(fun):
+        def wrapper():
+            fun_params = inspect.signature(fun).parameters
+            missing_annot = []
+            for param_name, param_val in fun_params.items():
+                param_default = param_val.default
+                if hasattr(param_default, "default") and isinstance(param_default.default, type(...)):
+                    # Disable "default" in --help when Arg is required
+                    param_default.show_default = False
+                if param_name not in fun.__annotations__:
+                    missing_annot.append((param_name, param_default))
+
+            for param_name, param_default in missing_annot:
+                for source_class in annotation_source:
+                    if source_param_name := next(
+                        (k for k, v in source_class.__dict__.items() if v == param_default),
+                        None,
+                    ):
+                        if typ := source_class.__annotations__.get(source_param_name):
+                            fun.__annotations__[param_name] = typ
+                            break
+            return fun
+
+        return wrapper()
+
+    return decorator
+
+
 def typer_retuner(ret):
     """Exit Typer command with return code, if parent of calling function is not the typer_unpacker wrapper.
         Will just return ret if ret is either not an integer, or the parent function was another python func.

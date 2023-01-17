@@ -5,24 +5,23 @@ from pathlib import Path
 import typer
 from godoo_rpc.login import wait_for_odoo
 
-from ...helpers.cli import typer_retuner
+from ...cli_common import CommonCLI
 from ...helpers.odoo_files import get_odoo_module_paths
-from .cli import rpc_callback
 from .modules import rpc_get_modules
 
-app = typer.Typer(callback=rpc_callback, no_args_is_help=True)
+CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-def dump_translation(module, target_path: Path):
+def _dump_translation_for_module(module, target_path: Path):
     """Dump Translation of a module into POT file.
 
     Parameters
     ----------
     module : _type_
-        _description_
+        rpc record of module to export
     target_path : Path
-        _description_
+        target pot path
     """
     trans_exp_mod = module.env["base.language.export"]
 
@@ -61,34 +60,70 @@ def _dump_translations(
     for mod in modules:
         ex_path: Path = workspace_addon_path / mod.name / "i18n"
         pot_path: Path = ex_path / (mod.name + ".pot")
-        dump_translation(mod, pot_path)
+        _dump_translation_for_module(mod, pot_path)
 
 
+def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
+    """Autocomplete handler that searches modules in Workspace_addon_path
+
+    Parameters
+    ----------
+    ctx : typer.Context
+        Contains calling parameters
+    incomplete : str
+        Incomplete current entry
+
+    Yields
+    ------
+    str
+        folder name
+    """
+    workspace_folder = ctx.params.get("workspace_addon_path")
+    if not workspace_folder:
+        return
+    workspace_folder = Path(workspace_folder)
+    addon_folders = get_odoo_module_paths(workspace_folder)
+    for fold in addon_folders:
+        if not incomplete or fold.name.startswith(incomplete):
+            yield fold.name
+
+
+@CLI.arg_annotator
 def dump_translations(
-    ctx: typer.Context,
-    module_query=typer.Argument(..., help="Module Name. Add % to force =ilike match. Only valid for Workspace Addons."),
-    upgrade_modules: bool = typer.Option(True, help="Upgrade modules before exporting"),
+    module_query=typer.Argument(
+        ...,
+        help="Module Name(s) comma Seperated. Add % to force =ilike match. Only works in workspace addon path",
+        autocompletion=complete_workspace_addon_names,
+    ),
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    rpc_host=CLI.rpc.rpc_host,
+    rpc_database=CLI.rpc.rpc_db_name,
+    rpc_user=CLI.rpc.rpc_user,
+    rpc_password=CLI.rpc.rpc_password,
+    no_upgrade_modules: bool = typer.Option(
+        False, "--no-upgrade-modules", help="don't upgrade modules before exporting"
+    ),
 ):
-
-    addon_path = ctx.obj.workspace_addon_path
+    """Dump Translations of module to <module_folder>/i18n/<module_name>.pot"""
+    addon_path = workspace_addon_path
     addon_folders = get_odoo_module_paths(addon_path)
     valid_module_names = [str(p.stem) for p in addon_folders]
     LOGGER.debug("Found modules:\n%s", "\n".join(["\t" + mn for mn in valid_module_names]))
 
     odoo_api = wait_for_odoo(
-        odoo_host=ctx.obj.odoo_rpc_host,
-        odoo_db=ctx.obj.odoo_main_db,
-        odoo_user=ctx.obj.odoo_rpc_user,
-        odoo_password=ctx.obj.odoo_rpc_password,
+        odoo_host=rpc_host,
+        odoo_db=rpc_database,
+        odoo_user=rpc_user,
+        odoo_password=rpc_password,
     )
 
     modules = rpc_get_modules(odoo_api, module_query, valid_module_names)
     if not modules:
         LOGGER.warning("No installed Modules found for Query string: '%s'", module_query)
-        return typer_retuner(1)
+        return CLI.returner(1)
 
     _dump_translations(
         modules=modules,
         workspace_addon_path=addon_path,
-        upgrade_modules=upgrade_modules,
+        upgrade_modules=not no_upgrade_modules,
     )

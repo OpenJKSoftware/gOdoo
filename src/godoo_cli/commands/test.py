@@ -5,10 +5,12 @@ from typing import List
 
 import typer
 
-from ..helpers.cli import typer_retuner
+from ..cli_common import CommonCLI
 from ..helpers.odoo_files import get_changed_modules, get_depends_of_module, get_odoo_module_paths
-from .launch import launch_odoo as launch_odoo
+from ..helpers.system import run_cmd
+from .launch import pre_launch
 
+CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
@@ -36,19 +38,29 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
     return in_modules
 
 
+@CLI.arg_annotator
 def odoo_test(
-    ctx: typer.Context,
     test_modules: List[str] = typer.Argument(
         ...,
         help="Modules to install and test (Use 'all' for all Workspace modules), ('changes:<branch> to compare git changes)",
     ),
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    bootstrap_flag_location=CLI.odoo_paths.bootstrap_flag_location,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    odoo_conf_path=CLI.odoo_paths.conf_path,
+    db_filter=CLI.database.db_filter,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
     skip_test_modules: List[str] = typer.Option(
         [], envvar="ODOO_TEST_SKIP_MODULES", help="Modules not to Test even if specified in test_modules"
     ),
     odoo_log_level: str = typer.Option("test", help="Log level"),
 ):
     """Bootstrap or Launch odoo in Testing Mode."""
-    workspace_addon_path = ctx.obj.workspace_addon_path
 
     test_modules = _test_modules_special_cases(test_modules, workspace_addon_path)
 
@@ -84,14 +96,29 @@ def odoo_test(
         f"--test-tags {test_module_list}",
     ]
 
-    ret = launch_odoo(
-        ctx=ctx,
-        no_install_workspace_addons=True,
-        extra_args=launch_args,
+    launch_cmd = pre_launch(
+        odoo_main_path=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+        odoo_conf_path=odoo_conf_path,
+        bootstrap_flag_location=bootstrap_flag_location,
+        db_filter=db_filter,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_user=db_user,
+        db_password=db_password,
+        dev_mode=False,
+        install_base=True,
+        install_workspace_addons=False,
+        extra_launch_args=launch_args,
         extra_bootstrap_args=bootstrap_args,
-        no_launch=True,
         multithread_worker_count=0,
         odoo_demo=True,
-        no_update_source=True,
+        launch_or_bootstrap=True,
     )
-    return typer_retuner(ret)
+    if isinstance(launch_cmd, str):
+        LOGGER.info("Launching Odoo Tests")
+        return CLI.returner(run_cmd(launch_cmd).returncode)
+
+    return CLI.returner(launch_cmd)

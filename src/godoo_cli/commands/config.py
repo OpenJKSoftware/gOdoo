@@ -8,20 +8,22 @@ from typing import List
 
 import typer
 
-from ..helpers.cli import typer_unpacker
+from ..cli_common import CommonCLI
 
+CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-@typer_unpacker
+@CLI.unpacker
+@CLI.arg_annotator
 def set_odoo_config(
-    ctx: typer.Context,
     options: List[str] = typer.Argument(..., help="odoo.conf options by key=value"),
+    odoo_conf_path=CLI.odoo_paths.conf_path,
 ):
     """
     Set odoo.conf values.
     """
-    conf_path = Path(ctx.obj.odoo_conf_path)
+    conf_path = Path(odoo_conf_path)
     odoo_conf = ConfigParser()
     odoo_conf.read(conf_path)
     LOGGER.info("Setting Odoo Conf Options for Stage")
