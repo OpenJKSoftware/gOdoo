@@ -28,7 +28,7 @@ def import_to_odoo(
         help="Folder in which to search for import",
     ),
     rpc_host=CLI.rpc.rpc_host,
-    rpc_database=CLI.database.db_name,
+    rpc_database=CLI.rpc.rpc_db_name,
     rpc_user=CLI.rpc.rpc_user,
     rpc_password=CLI.rpc.rpc_password,
     file_regex: str = typer.Option(

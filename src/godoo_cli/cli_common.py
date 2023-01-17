@@ -51,34 +51,34 @@ class OdooPathCLIArgs:
         ...,
         envvar="ODOO_MAIN_FOLDER",
         help="folder that contains odoo-bin",
-        rich_help_panel="Paths",
+        rich_help_panel="Path Options",
     )
 
     conf_path: Path = Option(
         ...,
         envvar="ODOO_CONF_PATH",
         help="odoo.conf path",
-        rich_help_panel="Paths",
+        rich_help_panel="Path Options",
     )
 
     workspace_addon_path: Path = Option(
         ...,
         envvar="ODOO_WORKSPACE_ADDON_LOCATION",
         help="path to dev workspace addons",
-        rich_help_panel="Paths",
+        rich_help_panel="Path Options",
     )
     thirdparty_addon_path: Path = Option(
         ...,
         envvar="ODOO_THIRDPARTY_LOCATION",
         help="folder that contains thirdparty repos like OCA",
-        rich_help_panel="Paths",
+        rich_help_panel="Path Options",
     )
 
     bootstrap_flag_location: Path = Option(
         ...,
         envvar="ODOO_BOOTSTRAP_FLAG",
         help="Location of the Bootstrap indicator file",
-        rich_help_panel="Paths",
+        rich_help_panel="Path Options",
     )
 
 
@@ -102,6 +102,12 @@ class RpcCLIArgs:
         ...,
         envvar="ODOO_RPC_PASSWORD",
         help="Password RPC Login Password",
+        rich_help_panel="RPC Options",
+    )
+    rpc_db_name: str = Option(
+        ...,
+        envvar=["ODOO_RPC_DB_NAME", "ODOO_MAIN_DB"],
+        help="RPC database name",
         rich_help_panel="RPC Options",
     )
 

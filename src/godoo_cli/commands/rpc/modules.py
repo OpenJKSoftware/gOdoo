@@ -84,9 +84,11 @@ def rpc_install_modules(
 
 @CLI.arg_annotator
 def install_modules(
-    module_name_query: str = typer.Argument(..., help=r"Module Internal name. Will use ilike Match if \% is present"),
+    module_name_query: str = typer.Argument(
+        ..., help=r"Module Internal name(s), comma seperated. Will use ilike Match if \% is present"
+    ),
     rpc_host=CLI.rpc.rpc_host,
-    rpc_database=CLI.database.db_name,
+    rpc_database=CLI.rpc.rpc_db_name,
     rpc_user=CLI.rpc.rpc_user,
     rpc_password=CLI.rpc.rpc_password,
     upgrade: bool = typer.Option(True, help="Upgrae Module if already installed"),

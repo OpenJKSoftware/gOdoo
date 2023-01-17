@@ -68,10 +68,12 @@ def dump_translations(
     module_query=typer.Argument(..., help="Module Name. Add % to force =ilike match. Only valid for Workspace Addons."),
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
     rpc_host=CLI.rpc.rpc_host,
-    rpc_database=CLI.database.db_name,
+    rpc_database=CLI.rpc.rpc_db_name,
     rpc_user=CLI.rpc.rpc_user,
     rpc_password=CLI.rpc.rpc_password,
-    upgrade_modules: bool = typer.Option(True, help="Upgrade modules before exporting"),
+    no_upgrade_modules: bool = typer.Option(
+        False, "--no-upgrade-modules", help="don't upgrade modules before exporting"
+    ),
 ):
     """Dump Translations of module to <module_folder>/i18n/<module_name>.pot"""
     addon_path = workspace_addon_path
@@ -94,5 +96,5 @@ def dump_translations(
     _dump_translations(
         modules=modules,
         workspace_addon_path=addon_path,
-        upgrade_modules=upgrade_modules,
+        upgrade_modules=not no_upgrade_modules,
     )
