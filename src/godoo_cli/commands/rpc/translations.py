@@ -63,9 +63,38 @@ def _dump_translations(
         _dump_translation_for_module(mod, pot_path)
 
 
+def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
+    """Autocomplete handler that searches modules in Workspace_addon_path
+
+    Parameters
+    ----------
+    ctx : typer.Context
+        Contains calling parameters
+    incomplete : str
+        Incomplete current entry
+
+    Yields
+    ------
+    str
+        folder name
+    """
+    workspace_folder = ctx.params.get("workspace_addon_path")
+    if not workspace_folder:
+        return
+    workspace_folder = Path(workspace_folder)
+    addon_folders = get_odoo_module_paths(workspace_folder)
+    for fold in addon_folders:
+        if not incomplete or fold.name.startswith(incomplete):
+            yield fold.name
+
+
 @CLI.arg_annotator
 def dump_translations(
-    module_query=typer.Argument(..., help="Module Name. Add % to force =ilike match. Only valid for Workspace Addons."),
+    module_query=typer.Argument(
+        ...,
+        help="Module Name(s) comma Seperated. Add % to force =ilike match. Only works in workspace addon path",
+        autocompletion=complete_workspace_addon_names,
+    ),
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
     rpc_host=CLI.rpc.rpc_host,
     rpc_database=CLI.rpc.rpc_db_name,
