@@ -8,6 +8,7 @@ from rich import print as rich_print
 from .cli_common import CommonCLI
 from .commands import (
     bootstrap_odoo,
+    db_cli_app,
     launch_import,
     launch_odoo,
     odoo_shell,
@@ -51,6 +52,10 @@ def main_cli():
     app.add_typer(
         typer_instance=rpc_cli_app(),
         name="rpc",
+    )
+    app.add_typer(
+        typer_instance=db_cli_app(),
+        name="db",
     )
     app.add_typer(
         typer_instance=source_cli_app(),

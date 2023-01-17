@@ -243,6 +243,7 @@ def launch_odoo(
     return CLI.returner(run_cmd(launch_cmd).returncode)
 
 
+@CLI.arg_annotator
 def launch_import(
     load_data_path: List[Path] = typer.Argument(
         ...,
