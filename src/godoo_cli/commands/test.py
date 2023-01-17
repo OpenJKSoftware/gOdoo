@@ -115,7 +115,6 @@ def odoo_test(
         extra_bootstrap_args=bootstrap_args,
         multithread_worker_count=0,
         odoo_demo=True,
-        update_source=False,
         launch_or_bootstrap=True,
     )
     if isinstance(launch_cmd, str):
