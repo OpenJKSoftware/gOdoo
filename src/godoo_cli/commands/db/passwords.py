@@ -4,6 +4,7 @@ import typer
 from passlib.context import CryptContext
 
 from ...cli_common import CommonCLI
+from ...helpers.cli import check_dangerous_command
 from .connection import DBConnection
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,9 @@ def set_passwords(
     db_password=CLI.database.db_password,
 ):
     """Set Login Password for all Users."""
+
+    check_dangerous_command()
+
     connection = DBConnection(
         hostname=db_host,
         port=db_port,

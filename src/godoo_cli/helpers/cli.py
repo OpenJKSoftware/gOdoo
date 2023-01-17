@@ -11,6 +11,17 @@ from typer.models import ParameterInfo
 LOGGER = logging.getLogger(__name__)
 
 
+def check_dangerous_command():
+    isdev = str(os.getenv("WORKSPACE_IS_DEV"))
+    if not isdev.lower() == "true":
+        LOGGER.warning(
+            """This function is dangerous in Production environments.
+Please set 'WORKSPACE_IS_DEV=true' as environment Variable to continue
+            """
+        )
+        exit(1)
+
+
 def get_type_from_default(*args):
     """Decorator to add type annotations to function by Dataclass default values.
 
