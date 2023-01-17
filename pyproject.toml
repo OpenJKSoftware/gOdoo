@@ -24,6 +24,7 @@ rich = "^12.6.0"
 godoo-rpc = "0.0.3"
 openupgradelib = "^3.3.4"
 psycopg2 = "^2.9.5"
+passlib = "^1.7.4"
 
 pylint-odoo = { version="^8.0.16", optional = true}
 ipdb = { version="^0.13.9", optional = true}
