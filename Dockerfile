@@ -84,7 +84,7 @@ ARG SOURCE_CLONE_ARCHIVE=False
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
 # ------------------------------------------------------------------------------------------------------
-# Install godoo from this workspace.
+# Install godoo from this workspace. (see pip install below)
 # This workspace is made to be reused as a Odoo Workspace, godoo installed as a Package.
 # Remove whats between the ----- and replace with: RUN pip install godoo
 COPY pyproject.toml poetry.lock ./
@@ -104,8 +104,12 @@ COPY --chown=$USERNAME:$USERNAME src src
 RUN poetry install --extras "devcontainer codequality" && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.cache
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ---------------------------------------------------------------------------------------------------------
-RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --show-completion zsh > /home/${USERNAME}/.zfunc/_godoo
+# ------------------------------------------------------------------------------------------------------
+# Godoo Pypi Install via pip
+# RUN pip install godoo-cli[devcontainer,codequality]==0.3.14 --disable-pip-version-check
+# ---------------------------------------------------------------------------------------------------------
 
+RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --show-completion zsh > /home/${USERNAME}/.zfunc/_godoo
 
 COPY --chown=$USERNAME:$USERNAME ODOO_MANIFEST.yml ./
 
