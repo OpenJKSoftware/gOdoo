@@ -25,7 +25,7 @@ CLI = CommonCLI()
 
 
 def main_callback(
-    verbose: Optional[bool] = typer.Option(False, "--verbose", help="Verbose Logging with Error stacktraces")
+    verbose: Optional[bool] = typer.Option(False, "--verbose", "-v", help="Verbose Logging with Error stacktraces")
 ):
     set_logging(verbose=verbose)
 
@@ -45,7 +45,7 @@ def print_versions(
 def main_cli():
     load_dotenv(".env", override=True)
 
-    help_text = f"gOdoo CLI version: [bold green]{__version__}[/bold green]"
+    help_text = "gOdoo CLI for Interacting with Odoo"
     app = typer.Typer(no_args_is_help=True, callback=main_callback, rich_markup_mode="rich", help=help_text)
     # Nested Subcommands
     app.add_typer(

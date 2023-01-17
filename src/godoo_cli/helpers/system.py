@@ -70,13 +70,20 @@ def set_logging(verbose: bool = False) -> None:
     verbose : bool
         Wether to Log debug Messages
     """
-    install_rich_traceback(suppress=[click, godoo_cli_helpers])
     if verbose:
+        install_rich_traceback(suppress=[click, godoo_cli_helpers])
         logging.basicConfig(
             level=logging.DEBUG,
             format="{message}",
             style="{",
-            handlers=[RichHandler(level=logging.DEBUG, rich_tracebacks=True)],
+            handlers=[
+                RichHandler(
+                    level=logging.DEBUG,
+                    show_path=True,
+                    rich_tracebacks=True,
+                    tracebacks_show_locals=True,
+                )
+            ],
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     else:
