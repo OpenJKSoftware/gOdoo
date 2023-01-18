@@ -173,7 +173,7 @@ def pre_launch(
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
     if dev_mode:
-        extra_odoo_args.append("--dev xml,qweb")
+        extra_odoo_args.append("--dev xml,qweb,reload")
         if "16.0" in odoo_version:
             extra_odoo_args[-1] += ",werkzeug"
 
