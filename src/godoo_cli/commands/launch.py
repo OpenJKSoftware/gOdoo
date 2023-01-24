@@ -159,10 +159,11 @@ def pre_launch(
             no_install_workspace_modules=not install_workspace_addons,
             multithread_worker_count=multithread_worker_count,
         )
-        install_workspace_addons = True
         bootstraped = ret == 0
         if not bootstraped:
             return ret
+        if install_workspace_addons and bootstraped:
+            install_workspace_addons = False
 
         if launch_or_bootstrap:
             return
