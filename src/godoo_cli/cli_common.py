@@ -170,10 +170,10 @@ class SourceGetArgs:
 
 class CommonCLI:
     def __init__(self) -> None:
-        self.odoo_paths = OdooPathCLIArgs()
-        self.odoo_launch = OdooLaunchArgs()
-        self.database = DatabaseCLIArgs()
-        self.rpc = RpcCLIArgs()
+        self.odoo_paths = OdooPathCLIArgs
+        self.odoo_launch = OdooLaunchArgs
+        self.database = DatabaseCLIArgs
+        self.rpc = RpcCLIArgs
         self.source = SourceGetArgs
         self.returner = typer_retuner
         self.unpacker = typer_unpacker
