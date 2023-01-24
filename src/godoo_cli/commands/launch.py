@@ -1,4 +1,5 @@
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import List
@@ -182,7 +183,7 @@ def pre_launch(
         odoo_conf_path=odoo_conf_path,
         extra_cmd_args=extra_odoo_args,
         workspace_addon_path=workspace_addon_path,
-        upgrade_workspace_modules=not install_workspace_addons,
+        upgrade_workspace_modules=install_workspace_addons,
     )
 
 
@@ -300,7 +301,7 @@ def launch_import(
         LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
         return CLI.returner(launch_cmd)
 
-    launch_cmd = launch_cmd.replace(",reload ", " ")  # Remove reload option from CMD String
+    launch_cmd = re.sub(r"(--dev [\w,]+)(,reload)", r"\1", launch_cmd)  # Remove reload option from CMD String
 
     LOGGER.info("Starting Data Importer Thread for: '%s'", ", ".join(map(str, load_data_path)))
     loader_thread = threading.Thread(
