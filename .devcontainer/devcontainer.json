@@ -1,7 +1,4 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.187.0/containers/docker-from-docker-compose
 {
-  "name": "gOdoo-Odoo-DevStack",
   "workspaceFolder": "/odoo/workspace",
   // Container Settings
   "dockerComposeFile": [
@@ -10,9 +7,9 @@
     "../docker-compose.traefik.yml"
   ],
   "service": "app",
-  "initializeCommand": "./scripts/container_requirements.sh",
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
+  "initializeCommand": "./scripts/container_requirements.sh",
   "postCreateCommand": "sudo chown -R ContainerUser:ContainerUser /home/ContainerUser && pre-commit install && poetry config virtualenvs.create false",
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}/" // For Docker compose workspace bindmount
@@ -35,17 +32,19 @@
     "eamodio.gitlens",
     "mhutchie.git-graph",
     "GitLab.gitlab-workflow",
+    // XML:
+    "DotJoshJohnson.xml",
+    "formulahendry.auto-close-tag",
+    // CSV:
+    "mechatroner.rainbow-csv",
+    "janisdd.vscode-edit-csv",
     // Misc:
     "bungcip.better-toml",
     "gruntfuggly.todo-tree",
     "naumovs.color-highlight",
     "esbenp.prettier-vscode",
     "christian-kohler.path-intellisense",
-    "redhat.vscode-xml",
-    "yzhang.markdown-all-in-one",
-    "mechatroner.rainbow-csv",
-    "janisdd.vscode-edit-csv",
-    "ms-azuretools.vscode-docker"
+    "yzhang.markdown-all-in-one"
   ],
   "settings": {
     "files.insertFinalNewline": true,
@@ -88,6 +87,9 @@
     "odoo.dev.OdooRemoteDb": "odoo",
     "odoo.dev.OdooRemoteUser": "admin",
     "odoo.dev.OdooRemotePassword": "admin",
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "[xml]": {
+      "editor.defaultFormatter": "DotJoshJohnson.xml"
+    }
   }
 }
