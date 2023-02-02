@@ -3,7 +3,7 @@
 
 ARG USERNAME=ContainerUser
 ARG WORKSPACE=/odoo/workspace
-ARG PYTHONVERSION=3.8
+ARG PYTHONVERSION=3.10
 ARG BASE_IMAGE=ghcr.io/openjksoftware/python-devcontainer
 
 FROM ${BASE_IMAGE}:${PYTHONVERSION} as odoo_system_depends
@@ -45,7 +45,7 @@ ENV NVM_DIR=/usr/local/nvm \
 RUN install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
 
 USER ${USERNAME}
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 # install node and npm
 RUN source $NVM_DIR/nvm.sh \
     && nvm install $NODE_VERSION \
@@ -118,6 +118,9 @@ FROM python_workspace as odoo_requirements
 RUN set -x; \
     godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
     && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade
+
+# Because of a pytz dependency conflict with Pandas in py3.10, override with gOdoo depends again
+RUN poetry update
 
 # Download Odoo Source Code
 FROM python_workspace as odoo_source

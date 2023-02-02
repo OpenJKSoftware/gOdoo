@@ -15,16 +15,15 @@ keywords = ["odoo", "godoo","devcontainer"]
 godoo = "godoo_cli:launch_cli"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.8.1,<3.12"
 python-dotenv = "^0.20.0"
 ruamel-yaml = "^0.17.21"
-typer = {extras = ["all"], version = "^0.7.0"}
 gitpython = "^3.1.27"
-rich = "^12.6.0"
-godoo-rpc = "0.0.3"
+godoo-rpc = "^0.1.1"
 openupgradelib = "^3.3.4"
-psycopg2 = "^2.9.5"
-passlib = "^1.7.4"
+psycopg2 = "^2.8.6" # Mirror Odoo Reqs
+passlib = "^1.7.3" # Mirror Odoo Reqs
+typer-common-functions = "^0.0.3"
 
 pylint-odoo = { version="^8.0.16", optional = true}
 ipdb = { version="^0.13.9", optional = true}
