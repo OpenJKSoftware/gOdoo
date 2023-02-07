@@ -4,6 +4,10 @@ services:
   app:
     build:
       target: devcontainer
+      args:
+        WKHTMLTOPDF_SOURCE: ${WKHTMLTOPDF_SOURCE}
+        BASE_IMAGE: ${BASE_IMAGE}
+        USERNAME: ${CONTAINER_USERNAME}
     volumes:
       - ./:/odoo/workspace:cached # Mount vscode Workspace
     cap_add:

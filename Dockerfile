@@ -1,13 +1,11 @@
 # Odoo Docker Container
 # This file uses Multiple Build Stages
-
-ARG USERNAME=ContainerUser
 ARG WORKSPACE=/odoo/workspace
-ARG PYTHONVERSION=3.10
-ARG BASE_IMAGE=ghcr.io/openjksoftware/python-devcontainer
+ARG BASE_IMAGE
 
-FROM ${BASE_IMAGE}:${PYTHONVERSION} as odoo_system_depends
+FROM ${BASE_IMAGE} as odoo_system_depends
 USER root
+ARG WKHTMLTOPDF_SOURCE
 
 # Install Dependencies
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
@@ -33,8 +31,7 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
     python3-dev \
     python3-libsass \
     graphviz \
-    && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.buster_amd64.deb \
-    && echo 'ea8277df4297afc507c61122f3c349af142f31e5 wkhtmltox.deb' | sha1sum -c - \
+    && curl -o wkhtmltox.deb -sSL ${WKHTMLTOPDF_SOURCE} \
     && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
     && rm -rf wkhtmltox.deb
 
