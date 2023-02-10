@@ -104,16 +104,15 @@ def _boostrap_command(
         f"--config {str(odoo_conf_path.absolute())}",
         "--save",
         f"--load-language {languages}",
-        "--log-level info",
-        "--limit-time-cpu 360",
-        "--limit-time-real 420",
-        "--data-dir /var/lib/odoo",
         "--stop-after-init",
         f"--addons-path '{addon_paths}'",
     ]
     odoo_cmd = base_cmds + db_command
     if extra_cmd_args:
         odoo_cmd.append(" ".join(extra_cmd_args))
+    if any(["--data-dir" in s for s in odoo_cmd]):
+        odoo_cmd.append("--data-dir /var/lib/odoo")
+
     if multithread_worker_count > 0:
         odoo_cmd += [
             "--proxy-mode",
