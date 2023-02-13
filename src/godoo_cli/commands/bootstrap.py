@@ -1,7 +1,8 @@
 import logging
+import os
 import re
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 from ..cli_common import CommonCLI
 from ..helpers.bootstrap import _install_py_reqs_by_odoo_cmd
@@ -11,6 +12,11 @@ from ..helpers.system import run_cmd
 CLI = CommonCLI()
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _add_default_argument(cmd_list: List[str], arg: str, arg_val: Any):
+    if not any([arg in s for s in cmd_list]):
+        cmd_list.append(f'{arg}="{arg_val}"')
 
 
 def _boostrap_command(
@@ -27,7 +33,7 @@ def _boostrap_command(
     extra_cmd_args: List[str] = None,
     install_base: bool = True,
     install_workspace_modules: bool = True,
-    multithread_worker_count: int = 9,
+    multithread_worker_count: int = -1,
     languages: str = "de_DE,en_US",
 ) -> str:
     """
@@ -109,9 +115,12 @@ def _boostrap_command(
     ]
     odoo_cmd = base_cmds + db_command
     if extra_cmd_args:
-        odoo_cmd.append(" ".join(extra_cmd_args))
-    if any(["--data-dir" in s for s in odoo_cmd]):
-        odoo_cmd.append("--data-dir /var/lib/odoo")
+        odoo_cmd += extra_cmd_args
+
+    _add_default_argument(cmd_list=odoo_cmd, arg="--data-dir", arg_val="/var/lib/odoo")
+
+    if multithread_worker_count == -1:
+        multithread_worker_count = os.cpu_count() or 0 + 1
 
     if multithread_worker_count > 0:
         odoo_cmd += [

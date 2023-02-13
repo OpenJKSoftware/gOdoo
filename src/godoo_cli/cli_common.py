@@ -10,7 +10,7 @@ from typer_common_functions import get_type_from_default, typer_retuner, typer_u
 class OdooLaunchArgs:
     extra_cmd_args: List[str] = Option(None, help="extra agruments to pass to odoo-bin", rich_help_panel="Odoo")
     multithread_worker_count: int = Option(
-        5, help="count of worker threads. will enable proxy_mode if >0", rich_help_panel="Odoo"
+        -1, help="count of worker threads. will enable proxy_mode if >0. (Autodetect with -1)", rich_help_panel="Odoo"
     )
     languages: str = Option("de_DE,en_US", help="languages to load by default", rich_help_panel="Odoo")
     no_install_base: bool = Option(
