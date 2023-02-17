@@ -1,11 +1,13 @@
 # Odoo Docker Container
 # This file uses Multiple Build Stages
 ARG WORKSPACE=/odoo/workspace
+ARG USERNAME
 ARG BASE_IMAGE
 
 FROM ${BASE_IMAGE} as odoo_system_depends
 USER root
 ARG WKHTMLTOPDF_SOURCE
+ARG NODE_VERSION
 
 # Install Dependencies
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
@@ -37,8 +39,9 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
 
 FROM odoo_system_depends as node_npm
 ARG USERNAME
+ARG NODE_VERSION
 ENV NVM_DIR=/usr/local/nvm \
-    NODE_VERSION=16.17.1
+    NODE_VERSION=${NODE_VERSION}
 RUN install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
 
 USER ${USERNAME}
