@@ -131,7 +131,7 @@ def git_ensure_ref(
             if str(remote_commit) != current:
                 pull = str(branch)
 
-            git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=pull)
+        git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=pull)
 
         if current == str(repo.head.commit):
             LOGGER.info("Repo Commit matches. Skipping: '%s' --> '%s'", repo_src, target_folder)
@@ -178,6 +178,9 @@ def git_ensure_repo(
     **kwargs
         get passed to git clone
     """
+
+    if isinstance(target_folder, str):
+        target_folder = Path(target_folder)
 
     if target_folder.exists() and any(target_folder.iterdir()) and not target_folder.glob(".git"):
         LOGGER.info("Assuming '%s' got pulled in .Zip mode. Skipping Clone and commit check.", target_folder)
