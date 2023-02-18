@@ -14,82 +14,85 @@
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}/" // For Docker compose workspace bindmount
   },
-  // vscode Extensions to install in the devcontainer
-  "extensions": [
-    // Python:
-    "ms-python.python",
-    "ms-python.vscode-pylance",
-    "oderwat.indent-rainbow",
-    "njpwerner.autodocstring",
-    "visualstudioexptteam.vscodeintellicode",
-    // Database:
-    "mtxr.sqltools",
-    "mtxr.sqltools-driver-pg",
-    // Odoo:
-    "jigar-patel.odoosnippets",
-    "scapigliato.vsc-odoo-development",
-    // Git Tools:
-    "eamodio.gitlens",
-    "mhutchie.git-graph",
-    "GitLab.gitlab-workflow",
-    // XML:
-    "DotJoshJohnson.xml",
-    "formulahendry.auto-close-tag",
-    // CSV:
-    "mechatroner.rainbow-csv",
-    "janisdd.vscode-edit-csv",
-    // Misc:
-    "bungcip.better-toml",
-    "gruntfuggly.todo-tree",
-    "naumovs.color-highlight",
-    "esbenp.prettier-vscode",
-    "christian-kohler.path-intellisense",
-    "yzhang.markdown-all-in-one"
-  ],
-  "settings": {
-    "files.insertFinalNewline": true,
-    "editor.snippetSuggestions": "bottom",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.sortImports": true
-    },
-    "terminal.integrated.scrollback": 10000,
-    // SQL Tools with Connection to db devcontainer:
-    "sqltools.connections": [
-      {
-        "name": "OdooDB",
-        "driver": "PostgreSQL",
-        "previewLimit": 50,
-        "server": "db",
-        "port": 5432,
-        "database": "odoo",
-        "username": "odoo_user",
-        "password": "odoo"
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Python:
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "oderwat.indent-rainbow",
+        "njpwerner.autodocstring",
+        "visualstudioexptteam.vscodeintellicode",
+        // Database:
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        // Odoo:
+        "jigar-patel.odoosnippets",
+        "scapigliato.vsc-odoo-development",
+        // Git Tools:
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        "GitLab.gitlab-workflow",
+        // XML:
+        "DotJoshJohnson.xml",
+        "formulahendry.auto-close-tag",
+        // CSV:
+        "mechatroner.rainbow-csv",
+        "janisdd.vscode-edit-csv",
+        // Misc:
+        "bungcip.better-toml",
+        "gruntfuggly.todo-tree",
+        "naumovs.color-highlight",
+        "esbenp.prettier-vscode",
+        "christian-kohler.path-intellisense",
+        "yzhang.markdown-all-in-one"
+      ],
+      "settings": {
+        "files.insertFinalNewline": true,
+        "editor.snippetSuggestions": "bottom",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.sortImports": true
+        },
+        "terminal.integrated.scrollback": 10000,
+        // SQL Tools with Connection to db devcontainer:
+        "sqltools.connections": [
+          {
+            "name": "OdooDB",
+            "driver": "PostgreSQL",
+            "previewLimit": 50,
+            "server": "db",
+            "port": 5432,
+            "database": "odoo",
+            "username": "odoo_user",
+            "password": "odoo"
+          }
+        ],
+        "sqltools.autoOpenSessionFiles": false,
+        "sqltools.highlightQuery": true,
+        // Python Settings:
+        "python.pythonPath": "/usr/local/bin/python",
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.languageServer": "Pylance",
+        "python.linting.enabled": true,
+        "python.formatting.provider": "black",
+        "python.linting.pylintEnabled": true,
+        "[python]": {
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+          },
+          "editor.defaultFormatter": "ms-python.python"
+        },
+        "odoo.dev.OdooRemoteUrl": "http://localhost",
+        "odoo.dev.OdooRemotePort": "8069",
+        "odoo.dev.OdooRemoteDb": "odoo",
+        "odoo.dev.OdooRemoteUser": "admin",
+        "odoo.dev.OdooRemotePassword": "admin",
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[xml]": {
+          "editor.defaultFormatter": "DotJoshJohnson.xml"
+        }
       }
-    ],
-    "sqltools.autoOpenSessionFiles": false,
-    "sqltools.highlightQuery": true,
-    // Python Settings:
-    "python.pythonPath": "/usr/local/bin/python",
-    "python.defaultInterpreterPath": "/usr/local/bin/python",
-    "python.languageServer": "Pylance",
-    "python.linting.enabled": true,
-    "python.formatting.provider": "black",
-    "python.linting.pylintEnabled": true,
-    "[python]": {
-      "editor.codeActionsOnSave": {
-        "source.organizeImports": true
-      },
-      "editor.defaultFormatter": "ms-python.python"
-    },
-    "odoo.dev.OdooRemoteUrl": "http://localhost",
-    "odoo.dev.OdooRemotePort": "8069",
-    "odoo.dev.OdooRemoteDb": "odoo",
-    "odoo.dev.OdooRemoteUser": "admin",
-    "odoo.dev.OdooRemotePassword": "admin",
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "[xml]": {
-      "editor.defaultFormatter": "DotJoshJohnson.xml"
     }
   }
 }
