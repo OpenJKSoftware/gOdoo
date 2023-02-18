@@ -1,6 +1,6 @@
 # Odoo Docker Container
 # This file uses Multiple Build Stages
-ARG WORKSPACE=/odoo/workspace
+ARG WORKSPACE=/odoo/godoo
 ARG BASE_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.10
 ARG USERNAME=ContainerUser
 
@@ -9,7 +9,7 @@ USER root
 ARG NODE_VERSION=16.17.1
 
 # Install Dependencies
-RUN --mount=type=cache,target=/var/cache/apt set -x; \
+RUN set -x; \
     apt-get update \
     && apt-get -y install --no-install-recommends  \
     libxml2-dev \
@@ -34,10 +34,10 @@ RUN --mount=type=cache,target=/var/cache/apt set -x; \
     graphviz
 
 # Intall WKHTMLtoPDF
-RUN --mount=type=cache,target=/var/cache/apt set -x; \
+RUN set -x; \
     export WKHTMLTOPDF_SOURCE=$(case $(dpkg --print-architecture) in \
-        "amd64") echo "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb" ;; \
-        "arm64") echo "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_arm64.deb" ;; esac) \
+    "amd64") echo "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb" ;; \
+    "arm64") echo "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_arm64.deb" ;; esac) \
     && curl -o wkhtmltox.deb -sSL ${WKHTMLTOPDF_SOURCE} \
     && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
     && rm -rf wkhtmltox.deb
@@ -92,26 +92,15 @@ ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 # Install godoo from this workspace. (see pip install below)
 # This workspace is made to be reused as a Odoo Workspace, godoo installed as a Package.
 # Remove whats between the ----- and replace with: RUN pip install godoo
-COPY pyproject.toml poetry.lock ./
-USER root
-RUN set -x; \
-    # Yes I know the following is kinda bad. But since we're also dealing with Odoos Requirements, a venv just overcomplicates things.
-    poetry config virtualenvs.create false \
-    # A little bit of caching magic below
-    # installs all dependencies on an empty package first since godoo source changes more often than the files copied above
-    # empty __init__.py gets overwritten by COPY below
-    && mkdir -p ./src/godoo_cli \
-    && touch ./{src/godoo_cli/__init__.py,README.md} \
-    && poetry install --extras "devcontainer codequality"
-# The following COPYs are below poetry install for better caching
+COPY --chown=${USERNAME}:${USERNAME} pyproject.toml poetry.lock ./
+# Install only dependencies, so they only reinstall when lock or toml where changed
+RUN poetry install --all-extras --no-root --no-interaction --no-ansi && touch README.md
 COPY --chown=$USERNAME:$USERNAME src src
-# Now install godoo for real. Way faster now, because deps are already cached.
-RUN poetry install --extras "devcontainer codequality" && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.cache
+RUN poetry install --all-extras --no-interaction --no-ansi
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
-# ---------------------------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------------------------
 # Godoo Pypi Install via pip
-# RUN pip install godoo-cli[devcontainer,codequality]==0.3.14 --disable-pip-version-check
+# RUN pip install godoo-cli[devcontainer,codequality] --disable-pip-version-check
 # ---------------------------------------------------------------------------------------------------------
 
 RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --show-completion zsh > /home/${USERNAME}/.zfunc/_godoo
@@ -123,9 +112,6 @@ FROM python_workspace as odoo_requirements
 RUN set -x; \
     godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
     && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade
-
-# Because of a pytz dependency conflict with Pandas in py3.10, override with gOdoo depends again
-RUN poetry update
 
 # Download Odoo Source Code
 FROM python_workspace as odoo_source
@@ -176,15 +162,14 @@ ENTRYPOINT [ "godoo", "test" ,"all" ]
 FROM base_odoo as devcontainer
 ARG USERNAME
 USER root
-VOLUME ["/home/${USERNAME}/.vscode-server"]
-VOLUME ["/home/${USERNAME}/.cache/pre-commit"]
 RUN --mount=type=cache,target=/var/cache/apt set -x; \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
-    && mkdir -p -m 0770 /home/${USERNAME}/.vscode-server/extensions \
-    && chown -R ${USERNAME} /home/${USERNAME}
+    && mkdir -p /home/${USERNAME}/{.vscode-server/extensions,.cache/pre-commit} \
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache/pre-commit}
+
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
 RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}

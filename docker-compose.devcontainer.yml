@@ -7,9 +7,12 @@ services:
       args:
         SOURCE_CLONE_ARCHIVE: False
     volumes:
-      - ./:/odoo/workspace:cached # Mount vscode Workspace
+      - ./:/odoo/godoo:cached # Mount vscode Workspace
+      - vscode_server:/home/ContainerUser/.vscode-server
+      - pre_commit_cache:/home/ContainerUser/.cache/pre-commit
     cap_add:
       - SYS_PTRACE
 
 volumes:
-  vscode_cache:
+  vscode_server:
+  pre_commit_cache:

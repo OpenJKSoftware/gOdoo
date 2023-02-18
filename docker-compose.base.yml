@@ -17,7 +17,6 @@ services:
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
       - "odoo_web:/var/lib/odoo"
-      - "odoo_thirdparty:/odoo/thirdparty"
 
   db:
     image: postgres:15-alpine
@@ -33,4 +32,3 @@ services:
 volumes:
   db:
   odoo_web:
-  odoo_thirdparty:

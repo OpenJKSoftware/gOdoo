@@ -1,5 +1,5 @@
 {
-  "workspaceFolder": "/odoo/workspace",
+  "workspaceFolder": "/odoo/godoo",
   // Container Settings
   "dockerComposeFile": [
     "../docker-compose.base.yml",
@@ -10,7 +10,7 @@
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
   "initializeCommand": "./scripts/container_requirements.sh",
-  "postCreateCommand": "sudo chown -R ContainerUser:ContainerUser /home/ContainerUser && pre-commit install && poetry config virtualenvs.create false",
+  "postCreateCommand": "pre-commit install",
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}/" // For Docker compose workspace bindmount
   },
