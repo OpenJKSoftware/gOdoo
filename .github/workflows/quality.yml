@@ -61,6 +61,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        platform: ["linux/amd64", "linux/arm64"]
 
     steps:
       - name: Checkout repository
@@ -88,7 +91,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           cache-from: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
           push: ${{ github.ref == 'refs/heads/master' && 'true' ||  'false'  }}
