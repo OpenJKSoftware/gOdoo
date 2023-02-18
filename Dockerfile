@@ -94,13 +94,13 @@ ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 # Remove whats between the ----- and replace with: RUN pip install godoo
 COPY --chown=${USERNAME}:${USERNAME} pyproject.toml poetry.lock ./
 # Install only dependencies, so they only reinstall when lock or toml where changed
-RUN poetry install --all-extras --no-root --no-interaction --no-ansi && touch README.md
+RUN poetry install --all-extras --no-root --no-interaction --no-ansi
 COPY --chown=$USERNAME:$USERNAME src src
-RUN poetry install --all-extras --no-interaction --no-ansi
+RUN touch README.md && poetry install --all-extras --no-interaction --no-ansi
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ------------------------------------------------------------------------------------------------------
 # Godoo Pypi Install via pip
-# RUN pip install godoo-cli[devcontainer,codequality] --disable-pip-version-check
+# RUN pip install godoo-cli[devcontainer,codequality]
 # ---------------------------------------------------------------------------------------------------------
 
 RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --show-completion zsh > /home/${USERNAME}/.zfunc/_godoo
