@@ -19,7 +19,7 @@ remove_odoo_config() {
 
 reset_docker () {
     # Get running Docker containers and Volumes and then delete them.
-    [ -z "$COMPOSE_PROJECT_NAME" ] && echo "Env Var COMPOSE_PROJECT_NAME missing" && exit 1
+    [ -z "$COMPOSE_PROJECT_NAME" ] && COMPOSE_PROJECT_NAME=$(basename $PROJ_FOLDER)
     PROJ_NAME=$COMPOSE_PROJECT_NAME
     echo Deleting Containers with ProjName: $PROJ_NAME
 
@@ -85,7 +85,7 @@ if [ ! "$WORKSPACE_IS_DEV" = true ]  ; then
     esac
 fi
 
-if [ "$PROJ_FOLDER" == "/odoo/workspace" ] # Check if Current Project folder matches .devcontainer workspacefolder
+if [ ! -z $(which odoo-bin) ] # Check if Current Project folder matches .devcontainer workspacefolder
 then
     reset_native
     exit 0
