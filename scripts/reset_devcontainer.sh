@@ -13,7 +13,7 @@ source $PROJ_FOLDER/.env
 
 remove_odoo_config() {
     conf_path="${ODOO_CONF_PATH:-config/odoo.conf}"
-    echo "Deleting Config file: $conf_path"
+    echo "==> Deleting Config file: $conf_path"
     rm -f $conf_path
 }
 
@@ -21,7 +21,7 @@ reset_docker () {
     # Get running Docker containers and Volumes and then delete them.
     [ -z "$COMPOSE_PROJECT_NAME" ] && COMPOSE_PROJECT_NAME=$(basename $PROJ_FOLDER)
     PROJ_NAME=$COMPOSE_PROJECT_NAME
-    echo Deleting Containers with ProjName: $PROJ_NAME
+    echo "==> Deleting Containers with ProjName: $PROJ_NAME"
 
     CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep ^$PROJ_NAME)
 
@@ -34,42 +34,44 @@ reset_docker () {
     remove_odoo_config
 
     if [ ! -z "$CONTAINERS" ]; then
-        echo Removing Devcontainers for Project: $PROJ_NAME ...
+        echo "==> Removing Devcontainers for Project: $PROJ_NAME"
         docker rm -f $CONTAINERS
     fi
 
     if [ ! -z "$VOLUMES" ]; then
-        echo Removing Devvolumes
+        echo "==> Removing Dev-Volumes"
         docker volume rm -f $VOLUMES
     fi
 
     if [ "$RESET_ALL" = "true" ]; then
-        echo "Rebuilding Devcontainer Image"
+        echo "==> Rebuilding Devcontainer Image"
         docker compose build --no-cache --parallel --pull
     fi
 }
 
 reset_native () {
-    [ -z "$ODOO_DB_HOST" ] && echo "Env Var ODOO_DB_HOST missing" && exit 1
-    [ -z "$ODOO_DB_PASSWORD" ] && echo "Env Var ODOO_DB_PASSWORD missing" && exit 1
-    [ -z "$ODOO_DB_USER" ] && echo "Env Var ODOO_DB_USER missing" && exit 1
-    [ -z "$ODOO_DB_PORT" ] && echo "Env Var ODOO_DB_PORT missing" && exit 1
-    [ -z "$ODOO_MAIN_DB" ] && echo "Env Var ODOO_MAIN_DB missing" && exit 1
+    echo "==> Resetting Native"
+    [ -z "$ODOO_DB_HOST" ] && echo "=x Env Var ODOO_DB_HOST missing" && exit 1
+    [ -z "$ODOO_DB_PASSWORD" ] && echo "=x Env Var ODOO_DB_PASSWORD missing" && exit 1
+    [ -z "$ODOO_DB_USER" ] && echo "=x Env Var ODOO_DB_USER missing" && exit 1
+    [ -z "$ODOO_DB_PORT" ] && echo "=x Env Var ODOO_DB_PORT missing" && exit 1
+    [ -z "$ODOO_MAIN_DB" ] && echo "=x Env Var ODOO_MAIN_DB missing" && exit 1
 
     set -e
 
-    echo "Dropping DB if exist"
+    echo "==> Dropping DB if exist"
     PGPASSWORD=$ODOO_DB_PASSWORD dropdb -p $ODOO_DB_PORT -h $ODOO_DB_HOST -U $ODOO_DB_USER $ODOO_MAIN_DB --if-exists
 
-    echo "Recreating DB"
+    echo "==> Recreating DB"
     PGPASSWORD=$ODOO_DB_PASSWORD createdb -U $ODOO_DB_USER -h $ODOO_DB_HOST -p $ODOO_DB_PORT $ODOO_MAIN_DB --owner=$ODOO_DB_USER
 
-    echo "Deleting Valib"
+    echo "==> Deleting Valib"
     sudo rm -rf /var/lib/odoo/*
 
     remove_odoo_config
 
     if [ "$RESET_ALL" = "true"  ] && [ ! -z $ODOO_THIRDPARTY_LOCATION ]; then
+        echo "==> Clearing Thirdparty Volume"
         rm -rf $ODOO_THIRDPARTY_LOCATION/*
     fi
 
@@ -77,7 +79,7 @@ reset_native () {
 
 
 if [ ! "$WORKSPACE_IS_DEV" = true ]  ; then
-    read -p "This is not a Dev Env. Continue (y/n)?" choice
+    read -p "==> This is not a Dev Env. Continue (y/n)?" choice
     case "$choice" in
     n|N ) exit 1;;
     y|Y ) echo Entering Dangerzone :O ;;
@@ -85,7 +87,7 @@ if [ ! "$WORKSPACE_IS_DEV" = true ]  ; then
     esac
 fi
 
-if [ ! -z $(which odoo-bin) ] # Check if Current Project folder matches .devcontainer workspacefolder
+if [ ! -z $(which odoo-bin) ] # If odoo-bin is in path, were probably native.
 then
     reset_native
     exit 0
