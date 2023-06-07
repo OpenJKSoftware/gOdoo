@@ -88,6 +88,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
+          file: "./docker/Dockerfile"
           platforms: "linux/amd64"
           cache-from: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
