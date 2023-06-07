@@ -2,9 +2,9 @@
   "workspaceFolder": "/odoo/godoo",
   // Container Settings
   "dockerComposeFile": [
-    "../docker-compose.base.yml",
-    "../docker-compose.devcontainer.yml",
-    "../docker-compose.traefik.yml"
+    "../docker/docker-compose.base.yml",
+    "../docker/docker-compose.traefik.yml",
+    "../docker/docker-compose.devcontainer.yml"
   ],
   "service": "app",
   "shutdownAction": "stopCompose",

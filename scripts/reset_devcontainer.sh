@@ -45,7 +45,7 @@ reset_docker () {
 
     if [ "$RESET_ALL" = "true" ]; then
         echo "==> Rebuilding Devcontainer Image"
-        docker compose build --no-cache --parallel --pull
+        cd $PROJ_FOLDER/docker && docker compose build --no-cache --parallel --pull
     fi
 }
 

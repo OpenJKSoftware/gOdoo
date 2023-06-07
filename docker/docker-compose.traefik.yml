@@ -10,22 +10,33 @@ services:
 
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.service=${COMPOSE_PROJECT_NAME}
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=websecure
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=${TRAEFIK_HOST_RULE}
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=HostRegexp(`{envreg:${TRAEFIK_HOST_REGEX}}`)
       - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=8069
 
       # Odoo <=15 Longpolling Config
       # - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.service=${COMPOSE_PROJECT_NAME}_longpoll
       # - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.entrypoints=websecure
-      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.rule=(${TRAEFIK_HOST_RULE}) && PathPrefix(`/longpolling`)
+      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}_longpoll.rule=HostRegexp(`{envreg:${TRAEFIK_HOST_REGEX}}`) && PathPrefix(`/longpolling`)
       # - traefik.http.services.${COMPOSE_PROJECT_NAME}_longpoll.loadbalancer.server.port=8072
 
-      # Odoo >=16 Websocket Config
       - traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.service=${COMPOSE_PROJECT_NAME}_websocket
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.entrypoints=websecure
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.rule=(${TRAEFIK_HOST_RULE}) && PathPrefix(`/websocket`)
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.rule=HostRegexp(`{envreg:${TRAEFIK_HOST_REGEX}}`) &&
+        PathPrefix(`/websocket`)
       - traefik.http.services.${COMPOSE_PROJECT_NAME}_websocket.loadbalancer.server.port=8072
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}_websocket.middlewares=sslheader
+
+  cups:
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-cups.service=${COMPOSE_PROJECT_NAME}-cups
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-cups.entrypoints=websecure
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-cups.rule=HostRegexp(`cups-{envreg:${TRAEFIK_HOST_REGEX}}`)
+      - traefik.http.services.${COMPOSE_PROJECT_NAME}-cups.loadbalancer.server.port=631
 
 networks:
   traefik:

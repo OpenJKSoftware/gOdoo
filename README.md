@@ -12,6 +12,8 @@ with Python CLI `godoo` convenience wrapper around `odoo-bin`.
 This repository is the base source for the Python package [godoo-cli](https://pypi.org/project/godoo-cli/) and serves as
 an all batteries included development environment.
 
+This is the source repository for `gOdoo`. If you want to use `gOdoo` please refer to [./docker/Dockerfile](./docker/Dockerfile) and modify it to install godoo using Pip.
+
 Made Possible by: [WEMPE Elektronic GmbH](https://wetech.de)
 
 # gOdoo-cli
@@ -29,7 +31,7 @@ Use `godoo --help` to find out more. HINT: Install tab-completion with `godoo --
 This workspace also contains Docker and Docker-Compose files. \
 
 They are used to provide either easy Odoo instances where the source is pulled according to
-[ODOO_MANIFEST.yml](./ODOO_MANIFEST.yml), or as a all batteries included devcontainer for VScode.
+[ODOO_MANIFEST.yml](odoo_manifest.yml), or as a all batteries included devcontainer for VScode.
 
 ## Requirements
 
@@ -37,7 +39,7 @@ They are used to provide either easy Odoo instances where the source is pulled a
 - [Traefik](https://doc.traefik.io/traefik/) container running with docker provider and "traefik" named docker network.
   Example: [Traefik Devproxy](https://github.com/joshkreud/traefik_devproxy)
 - SSH Agent running. (check `echo $SSH_AUTH_SOCK`)\
-  This gets passed trough in the Buildprocess to clone Thirdparty repos.
+  This gets passed trough in the Buildprocess to clone Thirdparty repos (Optional).
 
 ## Just wanna have a quick and easy Odoo Instance?
 
@@ -63,6 +65,7 @@ docker-compose up
 - Easy fully working Odoo instance by `docker-compose up` with https access.
 - `godoo` CLI wrapper around Odoo. (Most flags can be configured by Environment Variables and are already preconfigured
   in the Containers. See [.env.sample](./.env.sample))
+- Cups Container, that provides a CUPS Printserver
 - `odoo-bin` is added to PATH and can thus be invoked from every folder.
 - Odoo will run in Proxy_Mode behind a Traefik reverse proxy for easy access on
   `https://$COMPOSE_PROJECT_NAME.docker.localhost`
@@ -144,7 +147,7 @@ Use `godoo shell` to enter an interactive shell on the Database.
 ## Third Party Modules (manifest.yml)
 
 The `godoo` bootstrap function, will download some modules using git. \
-Which Repos to download is specified in `ODOO_MANIFEST.yml` ([Default](./ODOO_MANIFEST.yml)) \
+Which Repos to download is specified in `ODOO_MANIFEST.yml` ([Default](odoo_manifest.yml)) \
 Not all of the cloned addons are automatically installed. \
 Install them via the Apps Page in Odoo using `godoo rpc modules install` or using `odoo-bin`.\
 Modules downloaded on the Odoo Marketplace can be dropped as a `.zip` archive in [./thirdparty](./thirdparty)

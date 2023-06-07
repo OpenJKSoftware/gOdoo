@@ -1,15 +1,19 @@
 # Odoo Docker Container
 # This file uses Multiple Build Stages
+
 ARG WORKSPACE=/odoo/godoo
-ARG BASE_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.10
+ARG BASE_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.11
 ARG USERNAME=ContainerUser
 
 FROM ${BASE_IMAGE} as odoo_system_depends
 USER root
 ARG NODE_VERSION=16.17.1
+ARG NVM_VERSION=v0.39.1
+ARG GODOO_VERSION=0.4.3
+
 
 # Install Dependencies
-RUN set -x; \
+RUN --mount=type=cache,target=/var/cache/apt set -ex; \
     apt-get update \
     && apt-get -y install --no-install-recommends  \
     libxml2-dev \
@@ -31,26 +35,25 @@ RUN set -x; \
     fonts-noto-cjk \
     python3-dev \
     python3-libsass \
-    graphviz
+    graphviz \
+    libcupsimage2-dev \
+    cups-client
+
 
 # Intall WKHTMLtoPDF
-RUN set -x; \
-    export WKHTMLTOPDF_SOURCE=$(case $(dpkg --print-architecture) in \
-    "amd64") echo "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb" ;; \
-    "arm64") echo "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_arm64.deb" ;; esac) \
-    && curl -o wkhtmltox.deb -sSL ${WKHTMLTOPDF_SOURCE} \
-    && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
-    && rm -rf wkhtmltox.deb
+COPY docker/install_wkhtmltopdf.sh /tmp/install_wkhtmltopdf.sh
+RUN --mount=type=cache,target=/var/cache/apt bash /tmp/install_wkhtmltopdf.sh
 
 FROM odoo_system_depends as node_npm
 ARG USERNAME
-ARG NODE_VERSION
+ARG NVM_VERSION
 ENV NVM_DIR=/usr/local/nvm \
     NODE_VERSION=${NODE_VERSION}
 RUN install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
 
 USER ${USERNAME}
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
 # install node and npm
 RUN source $NVM_DIR/nvm.sh \
     && nvm install $NODE_VERSION \
@@ -70,7 +73,7 @@ ARG USERNAME
 WORKDIR $WORKSPACE
 # godoo Default Env Vars:
 ENV ODOO_MAIN_FOLDER=/odoo/odoo \
-    ODOO_MANIFEST=$WORKSPACE/ODOO_MANIFEST.yml \
+    ODOO_MANIFEST=$WORKSPACE/odoo_manifest.yml \
     ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
     ODOO_THIRDPARTY_ZIP_LOCATION=$WORKSPACE/thirdparty \
     ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
@@ -103,31 +106,35 @@ RUN touch README.md && poetry install --all-extras --no-interaction --no-ansi
 # RUN pip install godoo-cli[devcontainer,codequality]
 # ---------------------------------------------------------------------------------------------------------
 
-RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --show-completion zsh > /home/${USERNAME}/.zfunc/_godoo
 
-COPY --chown=$USERNAME:$USERNAME ODOO_MANIFEST.yml ./
+# Instal godoo autocomplete. Env var to disable shellingham, as docker doesnt run in a shell
+RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
 
+COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml ./
 # Install everything from Odoo requirements.txt, by downloading its raw contents
 FROM python_workspace as odoo_requirements
-RUN set -x; \
+RUN set -ex; \
     godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
-    && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade
+    && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade \
+    && pip3 install pycups
+# Reinstall godoo, to override dateutil dependency conflict with Pandas
+RUN pip3 install "godoo-cli[devcontainer,codequality]==${GODOO_VERSION}" -U
 
 # Download Odoo Source Code
 FROM python_workspace as odoo_source
-RUN set -x ; \
-    godoo source get odoo \
+RUN set -ex ; \
+    godoo source get  odoo \
     && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
 
 # Download Odoo Addons and unpack .zip Addons
 FROM python_workspace as oodo_addon_source
 ARG USERNAME
 COPY thirdparty thirdparty
-RUN --mount=type=ssh set -x; \
+RUN --mount=type=ssh set -ex; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
     && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK || true \
-    && godoo source get  thirdparty \
-    && godoo source get  zip
+    && godoo source get thirdparty \
+    && godoo source get zip
 
 # Copy Addons and Odoo Source into image with requirements.
 FROM odoo_requirements as base_odoo
@@ -136,7 +143,7 @@ COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_
 COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
 EXPOSE 8069 8071 8072
 USER root
-RUN set -x; \
+RUN set -ex; \
     mkdir -p {$(dirname $ODOO_CONF_PATH),/var/lib/odoo} \
     && chown -R ${USERNAME}:${USERNAME} {$(dirname $ODOO_CONF_PATH),/var/lib/odoo}
 USER ${USERNAME}
@@ -162,13 +169,17 @@ ENTRYPOINT [ "godoo", "test" ,"all" ]
 FROM base_odoo as devcontainer
 ARG USERNAME
 USER root
-RUN --mount=type=cache,target=/var/cache/apt set -x; \
-    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+RUN --mount=type=cache,target=/var/cache/apt set -ex; \
+    echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
     && mkdir -p /home/${USERNAME}/{.vscode-server/extensions,.cache/pre-commit} \
-    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache/pre-commit}
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache/pre-commit} \
+    && mkdir -p /etc/cups \
+    && echo "ServerName cups:631" > /etc/cups/client.conf
+ARG WORKSPACE
+ENV ODOO_PRINT_PDF_LOCATION=$WORKSPACE
 
 # Separate statement, because it removes cache.
 # We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
