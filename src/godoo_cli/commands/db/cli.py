@@ -1,5 +1,6 @@
 import typer
 
+from .connection import login_db
 from .passwords import set_passwords
 
 
@@ -10,5 +11,6 @@ def db_cli_app():
     )
 
     app.command()(set_passwords)
+    app.command("login")(login_db)
 
     return app

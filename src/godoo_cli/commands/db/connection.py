@@ -1,10 +1,27 @@
 import logging
+import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 
 import psycopg2
 
+from ...cli_common import CommonCLI
+
 LOGGER = logging.getLogger(__name__)
+CLI = CommonCLI()
+
+
+@CLI.arg_annotator
+def login_db(
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
+):
+    """Login Interactive psql CLI using provided credentials"""
+    command = ["psql", f"-h{db_host}", f"-p{db_port}", f"-U{db_user}", f"-d{db_name}"]
+    subprocess.run(command, env={"PGPASSWORD": db_password})
 
 
 @dataclass
