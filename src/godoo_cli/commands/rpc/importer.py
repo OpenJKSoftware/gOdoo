@@ -64,7 +64,7 @@ def import_to_odoo(
             odoo_api=odoo_api,
             read_path=path.absolute(),
             data_regex=file_regex,
-            product_image_regex="" if path.is_file() else product_image_regex,
-            check_dataset_timestamp="" if path.is_file() else check_data_timestamp,
+            product_image_regex=False if path.is_file() else product_image_regex,
+            check_dataset_timestamp=check_data_timestamp,
             skip_existing_ids=skip_existing_ids,
         )
