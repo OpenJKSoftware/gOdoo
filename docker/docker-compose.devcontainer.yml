@@ -4,9 +4,9 @@ services:
   app:
     build:
       target: devcontainer
+      args:
+        SOURCE_CLONE_ARCHIVE: False
     command: ""
-    args:
-      SOURCE_CLONE_ARCHIVE: False
     volumes:
       - vscode_server:/home/ContainerUser/.vscode-server
       - pre_commit_cache:/home/ContainerUser/.cache/pre-commit
