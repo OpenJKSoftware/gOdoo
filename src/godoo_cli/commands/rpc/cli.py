@@ -1,7 +1,7 @@
 import typer
 
 from .importer import import_to_odoo
-from .modules import install_modules
+from .modules import install_modules, uninstall_modules
 from .translations import dump_translations
 
 
@@ -12,6 +12,7 @@ def modules_cli_app():
     )
 
     app.command(name="install")(install_modules)
+    app.command(name="uninstall")(uninstall_modules)
     app.command(name="dump-translation")(dump_translations)
     return app
 

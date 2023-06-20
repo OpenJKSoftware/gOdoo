@@ -93,7 +93,7 @@ def install_modules(
     rpc_password=CLI.rpc.rpc_password,
     upgrade: bool = typer.Option(True, help="Upgrae Module if already installed"),
 ):
-    """Install or upgrade module. Can act on multiple modules with % wildcard"""
+    """Install or upgrade Odoo modules via RPC. Can act on multiple modules with % wildcard"""
 
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,
@@ -105,6 +105,38 @@ def install_modules(
     if modules := rpc_get_modules(odoo_api, module_name_query):
         if rpc_install_modules(modules, upgrade=upgrade):
             return
+        else:
+            LOGGER.warn("Found Modules, but didn't do anything on DB.")
+    else:
+        LOGGER.warn("Could not find modules with Query: '%s'", module_name_query)
+    return CLI.returner(1)
+
+
+@CLI.arg_annotator
+def uninstall_modules(
+    module_name_query: str = typer.Argument(
+        ..., help=r"Module Internal name(s), comma seperated. Will use ilike Match if \% is present"
+    ),
+    rpc_host=CLI.rpc.rpc_host,
+    rpc_database=CLI.rpc.rpc_db_name,
+    rpc_user=CLI.rpc.rpc_user,
+    rpc_password=CLI.rpc.rpc_password,
+):
+    """Uninstall odoo Modules via RPC. Can act on multiple modules with % wildcard"""
+
+    odoo_api = wait_for_odoo(
+        odoo_host=rpc_host,
+        odoo_db=rpc_database,
+        odoo_user=rpc_user,
+        odoo_password=rpc_password,
+    )
+
+    if modules := rpc_get_modules(odoo_api, module_name_query):
+        uninstall_module_ids = [m.id for m in modules if m.state == "installed"]
+        if uninstall_module_ids:
+            uninstall_modules = modules.browse(uninstall_module_ids)
+            LOGGER.info("Uninstalling Module: " + ", ".join(uninstall_modules.mapped("name")))
+            uninstall_modules.button_immediate_uninstall()
         else:
             LOGGER.warn("Found Modules, but didn't do anything on DB.")
     else:
