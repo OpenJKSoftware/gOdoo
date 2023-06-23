@@ -7,7 +7,7 @@ launch: # To be called from inside the Devcontainer
 
 quick: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
-	godoo launch --dev-mode --no-install-workspace-addons --no-update-source
+	godoo launch --dev-mode --no-install-workspace-modules
 
 kill: # to be called from inside the devcontainer
 	kill $(ps aux | grep 'odoo-bin -' | awk '{print $2}')
