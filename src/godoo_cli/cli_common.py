@@ -73,13 +73,6 @@ class OdooPathCLIArgs:
         rich_help_panel="Path Options",
     )
 
-    bootstrap_flag_location: Path = Option(
-        ...,
-        envvar="ODOO_BOOTSTRAP_FLAG",
-        help="Location of the Bootstrap indicator file",
-        rich_help_panel="Path Options",
-    )
-
 
 @dataclass
 class RpcCLIArgs:

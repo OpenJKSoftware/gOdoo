@@ -78,7 +78,6 @@ ENV ODOO_MAIN_FOLDER=/odoo/odoo \
     ODOO_THIRDPARTY_ZIP_LOCATION=$WORKSPACE/thirdparty \
     ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
     ODOO_CONF_PATH=config/odoo.conf \
-    ODOO_BOOTSTRAP_FLAG=/var/lib/odoo/bootstrap_flag \
     ODOO_MAIN_DB=odoo \
     ODOO_DB_FILTER=odoo \
     ODOO_DB_PASSWORD=odoo \

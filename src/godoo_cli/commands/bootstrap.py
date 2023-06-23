@@ -139,7 +139,6 @@ def bootstrap_odoo(
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
     thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
-    bootstrap_flag_location=CLI.odoo_paths.bootstrap_flag_location,
     db_filter=CLI.database.db_filter,
     db_host=CLI.database.db_host,
     db_port=CLI.database.db_port,
@@ -183,8 +182,6 @@ def bootstrap_odoo(
 
     LOGGER.info("Launching Bootstrap Commandline")
     ret = run_cmd(cmd_string).returncode
-    if ret == 0:
-        bootstrap_flag_location.touch()
-    else:
+    if ret != 0:
         LOGGER.error("Odoo-Bin Returned %d", ret)
     return CLI.returner(ret)

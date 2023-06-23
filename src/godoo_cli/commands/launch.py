@@ -56,7 +56,6 @@ def _launch_command(
 def pre_launch(
     odoo_main_path: Path,
     workspace_addon_path: Path,
-    bootstrap_flag_location: Path,
     thirdparty_addon_path: Path,
     odoo_conf_path: Path,
     db_filter: str,
@@ -75,7 +74,7 @@ def pre_launch(
     install_base: bool = True,
     launch_or_bootstrap: bool = False,
 ):
-    """Start Bootstrap if no bootstrap flag is found. And return Launch CMD.
+    """Start Bootstrap if no config file is found. And return Launch CMD.
 
     Parameters
     ----------
@@ -83,8 +82,6 @@ def pre_launch(
         Path to Odoo-bin folder
     workspace_addon_path : Path
         Path to workspace addons
-    bootstrap_flag_location : Path
-        path to bootstrap flag
     thirdparty_addon_path : Path
         path to thirdparty addons folder
     odoo_conf_path : Path
@@ -132,7 +129,7 @@ def pre_launch(
         log_file_path.unlink(missing_ok=True)
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
-    bootstraped = bootstrap_flag_location.exists()
+    bootstraped = odoo_conf_path.exists()
     LOGGER.info("Bootstrap Flag Status: %s", bootstraped)
     ret = ""
     if not bootstraped:
@@ -150,7 +147,6 @@ def pre_launch(
             db_password=db_password,
             db_host=db_host,
             db_port=db_port,
-            bootstrap_flag_location=bootstrap_flag_location,
             thirdparty_addon_path=thirdparty_addon_path,
             odoo_main_path=odoo_main_path,
             odoo_conf_path=odoo_conf_path,
@@ -193,7 +189,6 @@ def pre_launch(
 def launch_odoo(
     odoo_main_path=CLI.odoo_paths.bin_path,
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    bootstrap_flag_location=CLI.odoo_paths.bootstrap_flag_location,
     thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
     db_filter=CLI.database.db_filter,
@@ -218,7 +213,6 @@ def launch_odoo(
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
-        bootstrap_flag_location=bootstrap_flag_location,
         thirdparty_addon_path=thirdparty_addon_path,
         odoo_conf_path=odoo_conf_path,
         db_filter=db_filter,
@@ -253,7 +247,6 @@ def launch_import(
     ),
     odoo_main_path=CLI.odoo_paths.bin_path,
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    bootstrap_flag_location=CLI.odoo_paths.bootstrap_flag_location,
     thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
     db_filter=CLI.database.db_filter,
@@ -279,7 +272,6 @@ def launch_import(
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
-        bootstrap_flag_location=bootstrap_flag_location,
         thirdparty_addon_path=thirdparty_addon_path,
         odoo_conf_path=odoo_conf_path,
         db_filter=db_filter,
