@@ -28,7 +28,7 @@ reset_docker () {
     if [ "$RESET_ALL" = "true" ]; then
         VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME)
     else
-        VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME | grep -Ev '(_vscode_cache$|_odoo_thirdparty$)')
+        VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME | grep -Ev '(_vscode_server$|_commandhistory|_pre_commit_cache$)')
     fi
 
     remove_odoo_config

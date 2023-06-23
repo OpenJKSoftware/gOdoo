@@ -9,6 +9,7 @@ services:
     command: ""
     volumes:
       - vscode_server:/home/ContainerUser/.vscode-server
+      - commandhistory:/home/ContainerUser/.commandhistory
       - pre_commit_cache:/home/ContainerUser/.cache/pre-commit
       - ../:/odoo/godoo:cached # Mount vscode Workspace
     cap_add:
@@ -16,4 +17,5 @@ services:
 
 volumes:
   vscode_server:
+  commandhistory:
   pre_commit_cache:
