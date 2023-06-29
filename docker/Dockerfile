@@ -7,10 +7,8 @@ ARG USERNAME=ContainerUser
 
 FROM ${BASE_IMAGE} as odoo_system_depends
 USER root
-ARG NODE_VERSION=16.17.1
-ARG NVM_VERSION=v0.39.1
-ARG GODOO_VERSION=0.4.3
-
+ARG NODE_VERSION=18.16.1
+ARG NVM_VERSION=v0.39.3
 
 # Install Dependencies
 RUN --mount=type=cache,target=/var/cache/apt set -ex; \
@@ -116,8 +114,6 @@ RUN set -ex; \
     godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
     && pip3 install -r ./odoo_requirements.txt --no-warn-script-location --disable-pip-version-check --upgrade \
     && pip3 install pycups
-# Reinstall godoo, to override dateutil dependency conflict with Pandas
-RUN pip3 install "godoo-cli[devcontainer,codequality]==${GODOO_VERSION}" -U
 
 # Download Odoo Source Code
 FROM python_workspace as odoo_source
