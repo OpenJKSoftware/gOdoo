@@ -35,10 +35,6 @@ services:
     build:
       context: cups
       dockerfile: Dockerfile.cups
-    volumes:
-      - /var/run/dbus:/var/run/dbus
-    devices:
-      - /dev/bus:/dev/bus
 
 volumes:
   db:
