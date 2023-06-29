@@ -4,7 +4,7 @@
 # If executed from outside of the container, it will remove the Docker containers and volumes.
 # Pass --hard to also delete Thirdparty addons and the devcontainer extension caches
 
-PROJ_FOLDER=$(dirname $(readlink -f $0))
+PROJ_FOLDER=$(dirname $0)
 PROJ_FOLDER=$(dirname $PROJ_FOLDER)
 
 source $PROJ_FOLDER/.env
