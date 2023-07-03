@@ -11,7 +11,7 @@ ARG NODE_VERSION=18.16.1
 ARG NVM_VERSION=v0.39.3
 
 # Install Dependencies
-RUN --mount=type=cache,target=/var/cache/apt set -ex; \
+RUN set -ex; \
     apt-get update \
     && apt-get -y install --no-install-recommends  \
     libxml2-dev \
@@ -40,7 +40,7 @@ RUN --mount=type=cache,target=/var/cache/apt set -ex; \
 
 # Intall WKHTMLtoPDF
 COPY docker/install_wkhtmltopdf.sh /tmp/install_wkhtmltopdf.sh
-RUN --mount=type=cache,target=/var/cache/apt bash /tmp/install_wkhtmltopdf.sh
+RUN bash /tmp/install_wkhtmltopdf.sh
 
 FROM odoo_system_depends as node_npm
 ARG USERNAME
@@ -164,7 +164,7 @@ ENTRYPOINT [ "godoo", "test" ,"all" ]
 FROM base_odoo as devcontainer
 ARG USERNAME
 USER root
-RUN --mount=type=cache,target=/var/cache/apt set -ex; \
+RUN set -ex; \
     echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
