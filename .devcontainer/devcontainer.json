@@ -29,12 +29,13 @@
         // Odoo:
         "jigar-patel.odoosnippets",
         "scapigliato.vsc-odoo-development",
+        // "trinhanhngoc.vscode-odoo",
         // Git Tools:
         "eamodio.gitlens",
         "mhutchie.git-graph",
-        "GitLab.gitlab-workflow",
+        "github.vscode-github-actions",
         // XML:
-        "DotJoshJohnson.xml",
+        "redhat.vscode-xml",
         "formulahendry.auto-close-tag",
         // CSV:
         "mechatroner.rainbow-csv",
@@ -45,7 +46,10 @@
         "naumovs.color-highlight",
         "esbenp.prettier-vscode",
         "christian-kohler.path-intellisense",
-        "yzhang.markdown-all-in-one"
+        "yzhang.markdown-all-in-one",
+        // Copilot:
+        "Github.copilot",
+        "GitHub.copilot-chat"
       ],
       "settings": {
         "files.insertFinalNewline": true,
@@ -71,8 +75,8 @@
         "sqltools.autoOpenSessionFiles": false,
         "sqltools.highlightQuery": true,
         // Python Settings:
-        "python.pythonPath": "/usr/local/bin/python",
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.pythonPath": "/opt/poetry-venv/bin/python",
+        "python.defaultInterpreterPath": "/opt/poetry-venv/bin/python",
         "python.languageServer": "Pylance",
         "python.linting.enabled": true,
         "python.formatting.provider": "black",
@@ -83,14 +87,10 @@
           },
           "editor.defaultFormatter": "ms-python.python"
         },
-        "odoo.dev.OdooRemoteUrl": "http://localhost",
-        "odoo.dev.OdooRemotePort": "8069",
-        "odoo.dev.OdooRemoteDb": "odoo",
-        "odoo.dev.OdooRemoteUser": "admin",
-        "odoo.dev.OdooRemotePassword": "admin",
         "editor.defaultFormatter": "esbenp.prettier-vscode",
         "[xml]": {
-          "editor.defaultFormatter": "DotJoshJohnson.xml"
+          "editor.defaultFormatter": "redhat.vscode-xml",
+          "xml.format.joinCommentLines": false
         }
       }
     }
