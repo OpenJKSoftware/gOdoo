@@ -15,9 +15,6 @@
         "xml,qweb",
         "--log-level",
         "debug",
-        // "--log-sql",
-        "--log-request",
-        // "--log-response",
         "--workers",
         "0"
       ],
