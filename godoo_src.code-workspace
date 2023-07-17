@@ -8,6 +8,9 @@
     },
     {
       "path": "../thirdparty"
-    },
+    }
   ],
+  "settings": {
+    "github-actions.workflows.pinned.workflows": ["godoo/.github/workflows/quality.yml"]
+  }
 }
