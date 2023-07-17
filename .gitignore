@@ -1,4 +1,5 @@
 import
+pyrightconfig.json
 config/odoo.conf
 *.pass
 *.nogit.*
