@@ -39,6 +39,7 @@ inotify = { version="^0.2.10",optional = true}
 mock = { version="^4.0.3", optional= true}
 pytest = { version="^7.2.1", optional= true}
 pytest-cov = {version="^4.0.0",optional=true}
+pydevd-odoo = { version="^1.2.1",optional=true}
 
 [tool.poetry.extras]
 devcontainer = [
@@ -50,6 +51,7 @@ devcontainer = [
     "py-spy",
     "inotify",
     "mock",
+    "pydevd-odoo"
 ]
 codequality = [
     "pylint-odoo",
