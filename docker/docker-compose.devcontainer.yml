@@ -15,6 +15,11 @@ services:
     cap_add:
       - SYS_PTRACE
 
+  cups:
+    build:
+      context: cups
+      dockerfile: Dockerfile.cups
+
 volumes:
   vscode_server:
   commandhistory:

@@ -4,7 +4,8 @@
   "dockerComposeFile": [
     "../docker/docker-compose.base.yml",
     "../docker/docker-compose.traefik.yml",
-    "../docker/docker-compose.devcontainer.yml"
+    "../docker/docker-compose.devcontainer.yml",
+    "../docker/docker-compose.devcontainer-traefik.yml"
   ],
   "service": "app",
   "shutdownAction": "stopCompose",

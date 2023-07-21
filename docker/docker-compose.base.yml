@@ -31,11 +31,6 @@ services:
       - "/etc/localtime:/etc/localtime:ro"
       - "../config/postgresql.conf:/etc/postgresql/postgresql.conf"
 
-  cups:
-    build:
-      context: cups
-      dockerfile: Dockerfile.cups
-
 volumes:
   db:
   odoo_web:
