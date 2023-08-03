@@ -48,6 +48,7 @@ def odoo_test(
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
     thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
+    extra_launch_args=CLI.odoo_launch.extra_cmd_args,
     db_filter=CLI.database.db_filter,
     db_host=CLI.database.db_host,
     db_port=CLI.database.db_port,
@@ -94,6 +95,9 @@ def odoo_test(
         "--no-http",
         f"--test-tags {test_module_list}",
     ]
+
+    if extra_launch_args:
+        launch_args = extra_launch_args + launch_args
 
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,

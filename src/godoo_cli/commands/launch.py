@@ -175,6 +175,9 @@ def pre_launch(
         if "16.0" in odoo_version:
             extra_odoo_args[-1] += ",werkzeug"
 
+    if multithread_worker_count == 0:
+        extra_odoo_args.append("--workers 0")
+
     return _launch_command(
         odoo_path=odoo_main_path,
         odoo_conf_path=odoo_conf_path,
