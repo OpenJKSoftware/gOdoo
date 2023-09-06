@@ -26,7 +26,13 @@ CLI = CommonCLI()
 
 
 def main_callback(
-    verbose: Optional[bool] = typer.Option(False, "--verbose", "-v", help="Verbose Logging with Error stacktraces")
+    verbose: Optional[bool] = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        envvar="GODOO_VERBOSE",
+        help="Verbose Logging with Error stacktraces",
+    )
 ):
     set_logging(verbose=verbose)
 
