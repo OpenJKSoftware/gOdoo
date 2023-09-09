@@ -95,6 +95,6 @@ jobs:
           push: ${{ github.ref == 'refs/heads/master' && 'true' ||  'false'  }}
           build-args: |
             SOURCE_CLONE_ARCHIVE=True
-          target: server
+          target: prod
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
