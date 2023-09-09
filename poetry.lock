@@ -2160,4 +2160,4 @@ devcontainer = ["debugpy", "inotify", "ipdb", "mock", "py-spy", "pydevd-odoo", "
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8.1,<3.12"
-content-hash = "1976f6ef3242786db689b1ecf9e4372b17a45db8e1fbfbc6d3f1518211a0d784"
+content-hash = "7e5e3e59af11f6b1d7872e337b386bd47e28b09b5e69f094a61291e08723e25d"
