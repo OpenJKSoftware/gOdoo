@@ -1,5 +1,6 @@
 import
 pyrightconfig.json
+remote_instance_data/
 config/odoo.conf
 *.pass
 *.nogit.*

@@ -7,6 +7,7 @@ from rich import print as rich_print
 
 from .cli_common import CommonCLI
 from .commands import (
+    backup_cli_app,
     bootstrap_odoo,
     db_cli_app,
     launch_import,
@@ -67,6 +68,7 @@ def main_cli():
         typer_instance=source_cli_app(),
         name="source",
     )
+    app.add_typer(typer_instance=backup_cli_app(), name="backup")
 
     # Normal Subcommands
     app.command("version")(print_versions)

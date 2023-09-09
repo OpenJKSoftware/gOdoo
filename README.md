@@ -119,7 +119,7 @@ There are 3 Options to reset the Dev Env.
    container. (Vscode will prompt to reconnect if still open)
 2. From **Outside** the Container run `make reset-hard` in the project root to force rebuild the main Odoo container and
    then do the same as `make reset`
-3. From **Inside** the Container run `make reset` to drop the DB and delete varlib and config file, which is way
+3. From **Inside** the Container run `make reset` to drop the DB and delete filestore and config file, which is way
    quicker than the other options.
 
 ### Manual Reset
