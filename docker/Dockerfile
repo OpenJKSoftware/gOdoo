@@ -182,7 +182,7 @@ RUN set -ex; \
     && apt-get update \
     && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
     && mkdir -p /home/${USERNAME}/{.vscode-server/extensions,.cache/pre-commit} \
-    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache/pre-commit} \
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache} \
     && mkdir -p /etc/cups \
     && echo "ServerName cups:631" > /etc/cups/client.conf \
     && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf
