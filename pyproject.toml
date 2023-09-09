@@ -9,6 +9,9 @@ packages = [{include = "godoo_cli",  from = "src"}]
 repository = "https://github.com/OpenJKSoftware/gOdoo"
 keywords = ["odoo", "godoo","devcontainer"]
 
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.4.0"
+
 [tool.poetry_bumpversion.file."src/godoo_cli/version.py"]
 
 [tool.poetry.scripts]
@@ -30,7 +33,6 @@ ipdb = { version="^0.13.9", optional = true}
 debugpy = { version="^1.6.0", optional = true}
 black = { version="^22.10.0", optional = true}
 isort = { version="^5.10.1", optional = true}
-pre-commit = { version="^2.20.0", optional = true}
 watchdog = { version="^2.1.7", optional = true}
 py-spy = { version="^0.3.11", optional = true}
 rope = { version="^0.23.0", optional = true}
@@ -45,7 +47,6 @@ pydevd-odoo = { version="^1.2.1",optional=true}
 devcontainer = [
     "ipdb",
     "debugpy",
-    "pre-commit",
     "watchdog",
     "rope",
     "py-spy",
