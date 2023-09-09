@@ -136,15 +136,15 @@ class InstancePuller:
         filestore_target = target_folder / "odoo_filestore"
         sql_target = target_folder / "odoo.dump"
 
-        self.check_overwrite([filestore_target, sql_target])
-
         if filestore_folder:
             volume_path = filestore_folder
         elif filestore_volume:
             volume_path = self.get_docker_volume_path(filestore_volume)
         else:
-            raise NotImplementedError("You need to either Supply a filestore-folder or a filestore-volume")
+            LOGGER.error("You need to either Supply a filestore-folder or a filestore-volume")
+            raise typer.Exit(1)
 
+        self.check_overwrite([filestore_target, sql_target])
         filestore_target.mkdir(parents=True, exist_ok=True)
         self.rsync_filestore(volume_path, filestore_target)
 
