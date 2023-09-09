@@ -6,8 +6,8 @@ ARG USERNAME=ContainerUser
 ARG WORKSPACE=/odoo/godoo
 ARG VIRTUAL_ENV=/odoo/venv
 
-ARG DEV_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.11
-ARG PROD_IMAGE=python:3.11-slim-bullseye
+ARG DEV_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.8
+ARG PROD_IMAGE=python:3.8-slim-bullseye
 
 ARG NODE_VERSION=16.17.1
 ARG NVM_VERSION=v0.39.1

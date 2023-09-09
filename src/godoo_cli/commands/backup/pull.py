@@ -2,6 +2,7 @@ import datetime
 import logging
 import subprocess
 from pathlib import Path
+from typing import List
 
 import typer
 from rich.console import Console
@@ -57,7 +58,7 @@ class InstancePuller:
             LOGGER.debug("Running: %s", command)
             subprocess.run(command, stdout=sql_dump_file, shell=True)
 
-    def check_overwrite(self, paths: list[Path]) -> bool:
+    def check_overwrite(self, paths: List[Path]) -> bool:
         """Checks if the provided Paths do already exist.
         Ignores 0 size files and empty folders.
         Prints table of Paths with size and Changedate.
