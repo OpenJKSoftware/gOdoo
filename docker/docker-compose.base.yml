@@ -7,9 +7,11 @@ services:
       dockerfile: ./docker/Dockerfile
       ssh:
         - default
-      target: server
+      target: prod
     init: true
-    command: ""
+    environment:
+      - ODOO_DB_HOST=db
+      - ODOO_DB_PORT=5432
     env_file:
       - .env
     depends_on:
@@ -17,20 +19,23 @@ services:
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
       - "odoo_web:/var/lib/odoo"
-      - "${ODOO_CONF_PATH:-../config}:/config"
+      - "config:/odoo/config"
+      - "venv:/odoo/venv"
 
   db:
     image: postgres:15-alpine
     environment:
       - TZ=${TZ:-Europe/Berlin}
       - POSTGRES_DB=postgres
-      - POSTGRES_PASSWORD=${ODOO_DB_PASSWORD:-odoo}
-      - POSTGRES_USER=${ODOO_DB_USER:-odoo_user}
+      - POSTGRES_PASSWORD=${ODOO_DB_PASSWORD}
+      - POSTGRES_USER=${ODOO_DB_USER}
     volumes:
       - "db:/var/lib/postgresql/data"
       - "/etc/localtime:/etc/localtime:ro"
       - "../config/postgresql.conf:/etc/postgresql/postgresql.conf"
 
 volumes:
+  config:
+  venv:
   db:
   odoo_web:

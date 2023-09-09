@@ -11,7 +11,7 @@
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
   "initializeCommand": "./scripts/container_requirements.sh",
-  "postCreateCommand": "pre-commit install",
+  "postCreateCommand": "pre-commit install --install-hooks && echo 'Post Create Done'",
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}/" // For Docker compose workspace bindmount
   },
@@ -21,6 +21,9 @@
         // Python:
         "ms-python.python",
         "ms-python.vscode-pylance",
+        "ms-python.pylint",
+        "ms-python.black-formatter",
+        "ms-python.isort",
         "oderwat.indent-rainbow",
         "njpwerner.autodocstring",
         "visualstudioexptteam.vscodeintellicode",
@@ -76,12 +79,9 @@
         "sqltools.autoOpenSessionFiles": false,
         "sqltools.highlightQuery": true,
         // Python Settings:
-        "python.pythonPath": "/opt/poetry-venv/bin/python",
-        "python.defaultInterpreterPath": "/opt/poetry-venv/bin/python",
+        "python.pythonPath": "/odoo/venv/bin/python",
+        "python.defaultInterpreterPath": "/odoo/venv/bin/python",
         "python.languageServer": "Pylance",
-        "python.linting.enabled": true,
-        "python.formatting.provider": "black",
-        "python.linting.pylintEnabled": true,
         "[python]": {
           "editor.codeActionsOnSave": {
             "source.organizeImports": true
