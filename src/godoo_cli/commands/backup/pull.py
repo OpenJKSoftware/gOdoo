@@ -6,6 +6,7 @@ from typing import List
 
 import typer
 from rich.console import Console
+from rich.progress import track
 from rich.prompt import Confirm
 from rich.table import Table
 from typing_extensions import Annotated
@@ -32,7 +33,12 @@ class InstancePuller:
         command = f"docker volume inspect {volume_name} | jq -r .[0].Mountpoint"
         command = self.set_exec_target(command)
         LOGGER.debug("Running: '%s'", command)
-        path = subprocess.run(command, shell=True, capture_output=True, text=True).stdout.strip("\n")
+        path = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip("\n")
         LOGGER.debug("Docker Volume Path: %s", path)
         return path
 
@@ -40,6 +46,7 @@ class InstancePuller:
         src_path = filestore_folder
         if self.ssh_hostname:
             src_path = f"{self.ssh_user}@{self.ssh_hostname}:{src_path}/"
+
         command = f"rsync --rsync-path 'sudo rsync' -a --no-perms --no-owner --no-group --delete --info=progress2 {src_path} {target_folder}"
         LOGGER.info("Rysnc filestore from: %s", filestore_folder)
         LOGGER.debug("Running: %s", command)
@@ -47,16 +54,24 @@ class InstancePuller:
 
     def download_db_dump(self, db_name, target_sql_path: Path):
         command = f"pg_dump --no-owner -Fc {db_name}"
-        if u := self.pg_user:
-            command += f" -U {u}"
         if n := self.pg_container:
             command = f"docker exec {n} {command}"
+            if u := self.pg_user:
+                command += f" -U {u}"
+        else:
+            # Lets assume we run pg_dump locally here.
+            # Totally need to think about a neat way to handle the multiple combinations of this.
+            if u := self.pg_user:
+                command = f"sudo -u {u} {command}"
+
         command = self.set_exec_target(command)
         LOGGER.info("Downloading DB Dump: %s", db_name)
         target_sql_path.touch(exist_ok=True)
         with target_sql_path.open("wb") as sql_dump_file:
             LOGGER.debug("Running: %s", command)
-            subprocess.run(command, stdout=sql_dump_file, shell=True)
+            dbdumper = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+            for line in track(dbdumper.stdout, description="Downloading DB Dump", show_speed=False):
+                sql_dump_file.write(line)
 
     def check_overwrite(self, paths: List[Path]) -> bool:
         """Checks if the provided Paths do already exist.
@@ -90,7 +105,7 @@ class InstancePuller:
             if path.is_file():
                 return file_size_mb(path)
             else:
-                return sum([file_size_mb(f) for f in path.rglob("")])
+                return sum([file_size_mb(f) for f in path.rglob("*")])
 
         for p in existing_paths:
             timestamp = datetime.datetime.fromtimestamp(p.stat().st_mtime)
@@ -109,13 +124,23 @@ class InstancePuller:
         self,
         target_folder: Annotated[Path, typer.Argument(..., help="Target Folder to pull data to.")],
         ssh_user: Annotated[
-            str, typer.Option(..., help="SSH User of remote instance.", rich_help_panel="Remote Options")
+            str,
+            typer.Option(
+                ...,
+                help="SSH User of remote instance.",
+                rich_help_panel="Remote Options",
+            ),
         ] = None,
         ssh_hostname: Annotated[
-            str, typer.Option(help="SSH Hostname of remote instance.", rich_help_panel="Remote Options")
+            str,
+            typer.Option(
+                help="SSH Hostname of remote instance.",
+                rich_help_panel="Remote Options",
+            ),
         ] = None,
         filestore_folder: Annotated[
-            Path, typer.Option(help="Path to odoo web folder.", rich_help_panel="Filestore Options")
+            Path,
+            typer.Option(help="Path to odoo web folder.", rich_help_panel="Filestore Options"),
         ] = None,
         filestore_volume: Annotated[
             str,
@@ -125,7 +150,11 @@ class InstancePuller:
             ),
         ] = None,
         pg_container: Annotated[
-            str, typer.Option(help="Postgres Container Name. (Optional)", rich_help_panel="Database Options")
+            str,
+            typer.Option(
+                help="Postgres Container Name. (Optional)",
+                rich_help_panel="Database Options",
+            ),
         ] = None,
         pg_db_user=CLI.database.db_user,
         pg_db_name=CLI.database.db_name,
