@@ -237,9 +237,9 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
         filter_module_names = available_module_names
     filter_module_names = [f for f in filter_module_names if f != "base"]
 
-    LOGGER.info("Checking python requirements of Modules:\n%s", "\n".join(sorted(filter_module_names)))
+    LOGGER.debug("Checking python requirements of Modules: %s", sorted(filter_module_names))
     if unavailable_modules := set(filter_module_names).difference(available_module_names):
-        LOGGER.warning("Could not find __manifest__ for:\n%s", "\n".join(unavailable_modules))
+        LOGGER.warning("Could not find __manifest__ for: %s", unavailable_modules)
         LOGGER.debug("Search Paths:\n%s", "\n".join(map(str, addon_paths)))
 
     check_modules = [mp for mp in available_modules if mp.stem in filter_module_names]

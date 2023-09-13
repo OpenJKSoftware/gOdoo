@@ -32,10 +32,10 @@ def _install_py_reqs_for_modules(addon_paths: List[Path], module_names: List[str
         ).stdout.decode("utf-8")
         installed_packages = [m.get("name") for m in literal_eval(installed_packages)]
         if missing_packages := [p for p in py_reqs if p not in installed_packages]:
-            LOGGER.info("Installing Python requirements: '%s'", ", ".join(missing_packages))
+            LOGGER.info("Installing Python requirements: %s", missing_packages)
             res = run_cmd(f"pip install {' '.join(missing_packages)} --disable-pip-version-check", shell=True)
             if res.returncode != 0:
-                raise FileNotFoundError("Pip installation error at: %s" % ", ".join(missing_packages))
+                raise FileNotFoundError("Pip installation error at: %s" % missing_packages)
             return res
     LOGGER.debug("No py Requirements to be installed")
 
