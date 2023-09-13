@@ -32,7 +32,10 @@ def query_database(
         db_name=db_name,
     )
     with connection.connect() as cursor:
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        for row in rows:
-            print("\t".join(row))  # pylint: disable=print-used
+        try:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            for row in rows:
+                print("\t".join(row))  # pylint: disable=print-used
+        except Exception:
+            raise typer.Exit(1)
