@@ -11,6 +11,7 @@ from ..helpers.odoo_files import get_odoo_module_paths, odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .rpc import import_to_odoo
+from .source_get import update_odoo_conf
 
 CLI = CommonCLI()
 
@@ -169,6 +170,13 @@ def pre_launch(
 
     odoo_main_path = odoo_main_path
     odoo_version = odoo_bin_get_version(odoo_main_path)
+
+    update_odoo_conf(
+        odoo_conf_path=odoo_conf_path,
+        odoo_main_path=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
 
     if dev_mode:
         extra_odoo_args.append("--dev xml,qweb,reload")

@@ -247,6 +247,7 @@ def get_source(
         update_odoo_conf_addon_paths(odoo_conf=conf_path, addon_paths=odoo_addon_paths)
 
 
+@CLI.unpacker
 @CLI.arg_annotator
 def update_odoo_conf(
     odoo_conf=CLI.odoo_paths.conf_path,
