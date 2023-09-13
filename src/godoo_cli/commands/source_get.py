@@ -208,6 +208,22 @@ def get_source(
         update_odoo_conf_addon_paths(odoo_conf=conf_path, addon_paths=odoo_addon_paths)
 
 
+@CLI.arg_annotator
+def update_odoo_conf(
+    odoo_conf=CLI.odoo_paths.conf_path,
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+):
+    """Update Odoo.conf with Addon Paths."""
+    odoo_addon_paths = get_addon_paths(
+        odoo_main_repo=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
+    update_odoo_conf_addon_paths(odoo_conf=odoo_conf, addon_paths=odoo_addon_paths)
+
+
 def source_cli_app():
     app = typer.Typer(
         no_args_is_help=True,
@@ -215,6 +231,7 @@ def source_cli_app():
     )
 
     app.command("get")(get_source)
+    app.command("sync-conf")(update_odoo_conf)
     app.command("get-file")(get_source_file)
     app.command("get-dependencies")(install_module_dependencies)
 
