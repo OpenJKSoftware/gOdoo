@@ -16,6 +16,7 @@ from ..helpers.bootstrap import _install_py_reqs_for_modules
 from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths, get_zip_addon_path
 from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
+from .db.connection import DBConnection
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
@@ -84,6 +85,8 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
     addon_paths : List[Path]
         list of paths
     """
+    if not odoo_conf.exists():
+        raise FileNotFoundError("Odoo.conf not found at: %s" % odoo_conf)
     config = configparser.ConfigParser()
     config.read(odoo_conf)
     addon_paths = ",".join([str(p.absolute()) for p in addon_paths])
@@ -95,7 +98,43 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
 
 @CLI.unpacker
 @CLI.arg_annotator
-def install_module_dependencies(
+def py_depends_by_db(
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
+):
+    """Insall Python Dependencies for all installed modules in DB."""
+    connection = DBConnection(
+        hostname=db_host,
+        port=db_port,
+        username=db_user,
+        password=db_password,
+        db_name=db_name,
+    )
+    with connection.connect() as conn:
+        try:
+            conn.execute("SELECT name FROM ir_module_module WHERE state='installed'")
+        except UnboundLocalError as e:
+            LOGGER.error("Could not connect to DB. Check your DB Connection settings.")
+            raise typer.Exit(1) from e
+        module_list = [r[0] for r in conn.fetchall()]
+        LOGGER.info("Installing Py Reqiurements for Modules: %s", module_list)
+        odoo_addon_paths = get_addon_paths(
+            odoo_main_repo=odoo_main_path,
+            workspace_addon_path=workspace_addon_path,
+            thirdparty_addon_path=thirdparty_addon_path,
+        )
+        _install_py_reqs_for_modules(odoo_addon_paths, module_list)
+
+
+@CLI.unpacker
+@CLI.arg_annotator
+def py_depends_by_modules(
     module_list: List[str] = typer.Argument(
         ...,
         help="Modules to check for dependencies (can use all for all available addons)",
@@ -233,6 +272,7 @@ def source_cli_app():
     app.command("get")(get_source)
     app.command("sync-conf")(update_odoo_conf)
     app.command("get-file")(get_source_file)
-    app.command("get-dependencies")(install_module_dependencies)
+    app.command("get-dependencies")(py_depends_by_modules)
+    app.command("get-dependencies-db")(py_depends_by_db)
 
     return app
