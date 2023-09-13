@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import psycopg2
 
 from ...cli_common import CommonCLI
+from ...helpers.system import run_cmd
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
@@ -62,7 +63,32 @@ class DBConnection:
         except Exception as e:
             LOGGER.warning("Rolling Back DB cursor. Got Exception: %s", e)
             connection.rollback()
+            raise e
         finally:
             LOGGER.debug("Closing DB connection")
             cr.close()
             connection.close()
+
+    def run_psql_shell_command(self, command: str, **kwargs):
+        """Run a psql command using the provided credentials. {} in the command will get templated with the connection string"""
+        LOGGER.debug("Running PSQL Command: %s", command)
+        arg_list = []
+        if h := self.hostname:
+            arg_list += ["-h", h]
+        if p := self.port:
+            arg_list += ["-p", p]
+        if u := self.username:
+            arg_list += ["-U", u]
+        if d := self.db_name:
+            arg_list += ["-d", d]
+        command_env = {}
+        if p := self.password:
+            command_env["PGPASSWORD"] = p
+
+        arg_str = " ".join(arg_list)
+        if "{}" in command:
+            command = command.format(arg_str)
+        else:
+            command += " " + " ".join(arg_list)
+
+        return run_cmd(command, env=command_env, **kwargs)

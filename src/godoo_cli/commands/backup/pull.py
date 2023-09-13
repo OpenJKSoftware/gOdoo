@@ -1,17 +1,13 @@
-import datetime
 import logging
 import subprocess
 from pathlib import Path
-from typing import List
 
 import typer
-from rich.console import Console
 from rich.progress import track
-from rich.prompt import Confirm
-from rich.table import Table
 from typing_extensions import Annotated
 
 from ...cli_common import CommonCLI
+from ...helpers.system import typer_ask_overwrite_path
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
@@ -73,69 +69,22 @@ class InstancePuller:
             for line in track(dbdumper.stdout, description="Downloading DB Dump", show_speed=False):
                 sql_dump_file.write(line)
 
-    def check_overwrite(self, paths: List[Path]) -> bool:
-        """Checks if the provided Paths do already exist.
-        Ignores 0 size files and empty folders.
-        Prints table of Paths with size and Changedate.
-        Prompts user to continue or abort typer.
-        """
-
-        def path_exists(path: Path):
-            """If Path exists and is no empty dir"""
-            if path.is_dir():
-                return bool(path.glob("*"))
-            else:
-                return path.exists() and path.stat().st_size
-
-        existing_paths = [p for p in paths if path_exists(p)]
-        if not existing_paths:
-            return
-        table = Table()
-        table.add_column("Name")
-        table.add_column("Size", justify="right")
-        table.add_column("Date Changed")
-
-        def file_or_folder_size_mb(path: Path):
-            """Get size of file or all files in folder summed in MB"""
-
-            def file_size_mb(file: Path):
-                """Get size of file in MB"""
-                return file.stat().st_size / (1024 * 1024)
-
-            if path.is_file():
-                return file_size_mb(path)
-            else:
-                return sum([file_size_mb(f) for f in path.rglob("*")])
-
-        for p in existing_paths:
-            timestamp = datetime.datetime.fromtimestamp(p.stat().st_mtime)
-            path_size = round(file_or_folder_size_mb(p), 2)
-            table.add_row(p.name, f"{path_size}mb", timestamp.strftime("%Y-%m-%d: %H:%M:%S"))
-        LOGGER.warning("Found Existing Odoo Files:")
-        Console().print(table)
-        override = Confirm.ask("override?")
-        if override:
-            return
-        LOGGER.info("Aborting")
-        raise typer.Exit(1)
-
     @CLI.arg_annotator
     def pull_instance_data(
         self,
-        target_folder: Annotated[Path, typer.Argument(..., help="Target Folder to pull data to.")],
+        target_folder: Annotated[
+            Path, typer.Argument(..., help="Target Folder to pull data to.", file_okay=False, dir_okay=True)
+        ],
         ssh_user: Annotated[
             str,
             typer.Option(
-                ...,
-                help="SSH User of remote instance.",
-                rich_help_panel="Remote Options",
+                ..., help="SSH User of remote instance.", rich_help_panel="Remote Options", envvar="ODOO_PULL_SSH_USER"
             ),
         ] = None,
         ssh_hostname: Annotated[
             str,
             typer.Option(
-                help="SSH Hostname of remote instance.",
-                rich_help_panel="Remote Options",
+                help="SSH Hostname of remote instance.", rich_help_panel="Remote Options", envvar="ODOO_PULL_HOST"
             ),
         ] = None,
         filestore_folder: Annotated[
@@ -173,7 +122,9 @@ class InstancePuller:
             LOGGER.error("You need to either Supply a filestore-folder or a filestore-volume")
             raise typer.Exit(1)
 
-        self.check_overwrite([filestore_target, sql_target])
+        if not typer_ask_overwrite_path([filestore_target, sql_target]):
+            raise typer.Exit(2)
+
         filestore_target.mkdir(parents=True, exist_ok=True)
         self.rsync_filestore(volume_path, filestore_target)
 
