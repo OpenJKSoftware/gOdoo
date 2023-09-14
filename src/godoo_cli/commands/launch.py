@@ -11,7 +11,7 @@ from ..helpers.odoo_files import get_odoo_module_paths, odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .rpc import import_to_odoo
-from .source_get import update_odoo_conf
+from .source_get import py_depends_by_db, update_odoo_conf
 
 CLI = CommonCLI()
 
@@ -133,6 +133,7 @@ def pre_launch(
     bootstraped = odoo_conf_path.exists()
     LOGGER.info("Bootstrap Flag Status: %s", bootstraped)
     ret = ""
+    did_bootstrap = False
     if not bootstraped:
         _extra_bootstrap_args = extra_odoo_args.copy()
         if ea := extra_bootstrap_args:
@@ -159,6 +160,7 @@ def pre_launch(
         bootstraped = ret == 0
         if not bootstraped:
             return ret
+        did_bootstrap = True
         if install_workspace_addons and bootstraped:
             install_workspace_addons = False
 
@@ -177,6 +179,17 @@ def pre_launch(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
+    if not did_bootstrap:
+        py_depends_by_db(
+            odoo_main_path=odoo_main_path,
+            workspace_addon_path=workspace_addon_path,
+            thirdparty_addon_path=thirdparty_addon_path,
+            db_host=db_host,
+            db_port=db_port,
+            db_name=db_name,
+            db_user=db_user,
+            db_password=db_password,
+        )
 
     if dev_mode:
         extra_odoo_args.append("--dev xml,qweb,reload")
