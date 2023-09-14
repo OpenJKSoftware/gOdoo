@@ -24,6 +24,7 @@ def call_rsync(source_folder: Path, target_folder: Path, rsync_delete: bool = Tr
 def drop_db(connection: DBConnection, db_name: str):
     """Drop a DB in postgres"""
     with connection.connect() as cur:
+        cur.connection.autocommit = True
         LOGGER.info("Dropping DB: %s", db_name)
         cur.execute("DROP DATABASE IF EXISTS %s" % db_name)
 
@@ -31,5 +32,6 @@ def drop_db(connection: DBConnection, db_name: str):
 def create_db(connection: DBConnection, db_name: str):
     """Create DB In Postgres"""
     with connection.connect() as cur:
+        cur.connection.autocommit = True
         LOGGER.info("Creating DB: %s", db_name)
         cur.execute("CREATE DATABASE %s" % db_name)
