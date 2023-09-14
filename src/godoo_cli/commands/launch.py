@@ -172,7 +172,7 @@ def pre_launch(
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
     update_odoo_conf(
-        odoo_conf_path=odoo_conf_path,
+        odoo_conf=odoo_conf_path,
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
