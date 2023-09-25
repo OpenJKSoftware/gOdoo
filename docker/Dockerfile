@@ -3,7 +3,7 @@
 
 ARG USERNAME=ContainerUser
 
-ARG WORKSPACE=/odoo/godoo
+ARG WORKSPACE=/odoo/godoo_workspace
 ARG VIRTUAL_ENV=/odoo/venv
 
 ARG DEV_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.8

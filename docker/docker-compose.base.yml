@@ -20,7 +20,6 @@ services:
       - "/etc/localtime:/etc/localtime:ro"
       - "odoo_web:/var/lib/odoo"
       - "config:/odoo/config"
-      - "venv:/odoo/venv"
 
   db:
     image: postgres:15-alpine
@@ -36,6 +35,5 @@ services:
 
 volumes:
   config:
-  venv:
   db:
   odoo_web:

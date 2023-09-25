@@ -1,5 +1,5 @@
 {
-  "workspaceFolder": "/odoo/godoo",
+  "workspaceFolder": "/odoo/godoo_workspace",
   // Container Settings
   "dockerComposeFile": [
     "../docker/docker-compose.base.yml",
@@ -51,6 +51,7 @@
         "esbenp.prettier-vscode",
         "christian-kohler.path-intellisense",
         "yzhang.markdown-all-in-one",
+        "seatonjiang.gitmoji-vscode",
         // Copilot:
         "Github.copilot",
         "GitHub.copilot-chat"

@@ -11,7 +11,8 @@ services:
       - vscode_server:/home/ContainerUser/.vscode-server
       - commandhistory:/home/ContainerUser/.commandhistory
       - pre_commit_cache:/home/ContainerUser/.cache/pre-commit
-      - ../:/odoo/godoo # Mount vscode Workspace
+      - ../:/odoo/godoo_workspace # Mount vscode Workspace
+      - venv:/odoo/venv
     cap_add:
       - SYS_PTRACE
 
@@ -21,6 +22,7 @@ services:
       dockerfile: Dockerfile.cups
 
 volumes:
+  venv:
   vscode_server:
   commandhistory:
   pre_commit_cache:
