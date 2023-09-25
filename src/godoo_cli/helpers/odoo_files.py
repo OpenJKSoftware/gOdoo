@@ -68,7 +68,7 @@ def get_odoo_module_paths(search_folders: Union[List[Path], Path]) -> List[Path]
     module_paths = []
     for folder in search_folders:
         if not folder.exists():
-            return
+            raise FileNotFoundError(f"Could not find odoo addon folder: '{folder}'")
         for folder in folder.iterdir():
             if folder_is_odoo_module(folder):
                 module_paths.append(folder)
