@@ -114,6 +114,9 @@ class InstancePuller:
         filestore_target = target_folder / "odoo_filestore"
         sql_target = target_folder / "odoo.dump"
 
+        if not typer_ask_overwrite_path([filestore_target, sql_target]):
+            raise typer.Exit(2)
+
         if filestore_folder:
             volume_path = filestore_folder
         elif filestore_volume:
@@ -121,9 +124,6 @@ class InstancePuller:
         else:
             LOGGER.error("You need to either Supply a filestore-folder or a filestore-volume")
             raise typer.Exit(1)
-
-        if not typer_ask_overwrite_path([filestore_target, sql_target]):
-            raise typer.Exit(2)
 
         filestore_target.mkdir(parents=True, exist_ok=True)
         self.rsync_filestore(volume_path, filestore_target)
