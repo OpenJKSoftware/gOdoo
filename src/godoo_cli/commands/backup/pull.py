@@ -63,11 +63,17 @@ class InstancePuller:
         command = self.set_exec_target(command)
         LOGGER.info("Downloading DB Dump: %s", db_name)
         target_sql_path.touch(exist_ok=True)
+        target_sql_path.unlink()
+        ret = 0
         with target_sql_path.open("wb") as sql_dump_file:
             LOGGER.debug("Running: %s", command)
             dbdumper = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
             for line in track(dbdumper.stdout, description="Downloading DB Dump", show_speed=False):
                 sql_dump_file.write(line)
+            ret = dbdumper.wait()
+        if ret != 0:
+            LOGGER.error("Failed to download DB Dump")
+            raise typer.Exit(1)
 
     @CLI.arg_annotator
     def pull_instance_data(
