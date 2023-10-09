@@ -122,6 +122,27 @@ def download_file(url: str, save_path: Path, chunk_size: int = 128) -> None:
             fd.write(chunk)
 
 
+def file_or_folder_size_mb(path: Path) -> float:
+    """Get size of file or all files in folder summed in MB"""
+
+    def file_size_mb(file: Path) -> float:
+        """Get size of file in MB"""
+        return file.stat().st_size / (1024 * 1024)
+
+    if path.is_file():
+        return file_size_mb(path)
+    else:
+        return sum([file_size_mb(f) for f in path.rglob("*")])
+
+
+def path_has_content(path: Path):
+    """If Path exists and is no empty dir"""
+    if path.is_dir():
+        return bool(path.glob("*"))
+    else:
+        return path.exists() and path.stat().st_size
+
+
 def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
     """Checks if the provided Paths do already exist.
     Ignores 0 size files and empty folders.
@@ -133,35 +154,17 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
     False, when we shall not overwrite files.
     True, when there are no files to override or we should override
     """
+
     if isinstance(paths, Path):
         paths = [paths]
 
-    def path_exists(path: Path):
-        """If Path exists and is no empty dir"""
-        if path.is_dir():
-            return bool(path.glob("*"))
-        else:
-            return path.exists() and path.stat().st_size
-
-    existing_paths = [p for p in paths if path_exists(p)]
+    existing_paths = [p for p in paths if path_has_content(p)]
     if not existing_paths:
         return True
     table = Table()
     table.add_column("Name")
     table.add_column("Size", justify="right")
     table.add_column("Date Changed")
-
-    def file_or_folder_size_mb(path: Path) -> float:
-        """Get size of file or all files in folder summed in MB"""
-
-        def file_size_mb(file: Path) -> float:
-            """Get size of file in MB"""
-            return file.stat().st_size / (1024 * 1024)
-
-        if path.is_file():
-            return file_size_mb(path)
-        else:
-            return sum([file_size_mb(f) for f in path.rglob("*")])
 
     for p in existing_paths:
         timestamp = datetime.datetime.fromtimestamp(p.stat().st_mtime)
