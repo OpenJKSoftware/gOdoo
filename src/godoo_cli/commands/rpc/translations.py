@@ -100,9 +100,7 @@ def dump_translations(
     rpc_database=CLI.rpc.rpc_db_name,
     rpc_user=CLI.rpc.rpc_user,
     rpc_password=CLI.rpc.rpc_password,
-    no_upgrade_modules: bool = typer.Option(
-        False, "--no-upgrade-modules", help="don't upgrade modules before exporting"
-    ),
+    upgrade_modules: bool = typer.Option(True, help="Upgrade modules before exporting"),
 ):
     """Dump Translations of module to <module_folder>/i18n/<module_name>.pot"""
     addon_path = workspace_addon_path
@@ -125,5 +123,5 @@ def dump_translations(
     _dump_translations(
         modules=modules,
         workspace_addon_path=addon_path,
-        upgrade_modules=not no_upgrade_modules,
+        upgrade_modules=upgrade_modules,
     )

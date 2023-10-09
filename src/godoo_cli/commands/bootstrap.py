@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Any, List
 
@@ -31,7 +30,6 @@ def _boostrap_command(
     db_password: str,
     db_port: str,
     extra_cmd_args: List[str] = None,
-    install_base: bool = True,
     install_workspace_modules: bool = True,
     multithread_worker_count: int = -1,
     languages: str = "de_DE,en_US",
@@ -63,8 +61,6 @@ def _boostrap_command(
         db host port
     extra_cmd_args : List[str], optional
         extra args to pass to odoo-bin, by default None
-    install_base : bool, optional
-        install base,web, by default True
     install_workspace_modules : bool, optional
         install all modules found in workspace_path, by default True
     multithread_worker_count : int, optional
@@ -93,12 +89,9 @@ def _boostrap_command(
     LOGGER.info("Getting Addon Paths")
 
     workspace_addons = get_odoo_module_paths(workspace_addon_path)
-    if any([re.match(r"( |^)(-i|--init)", i) for i in extra_cmd_args]):
-        init_modules = []
-    else:
-        init_modules = ["base", "web"] if install_base else []
-        if install_workspace_modules and workspace_addons:
-            init_modules += [f.name for f in workspace_addons]
+    init_modules = []
+    if install_workspace_modules and workspace_addons:
+        init_modules += [f.name for f in workspace_addons]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
     addon_paths = [str(p.absolute()) for p in addon_paths]
@@ -148,8 +141,7 @@ def bootstrap_odoo(
     extra_cmd_args=CLI.odoo_launch.extra_cmd_args,
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
     languages=CLI.odoo_launch.languages,
-    no_install_base=CLI.odoo_launch.no_install_base,
-    no_install_workspace_modules=CLI.odoo_launch.no_install_workspace_modules,
+    install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
 ):
     """Bootstrap Odoo."""
 
@@ -171,8 +163,7 @@ def bootstrap_odoo(
         db_password=db_password,
         db_port=db_port,
         extra_cmd_args=extra_cmd_args,
-        install_base=not no_install_base,
-        install_workspace_modules=not no_install_workspace_modules,
+        install_workspace_modules=install_workspace_modules,
         multithread_worker_count=multithread_worker_count,
         languages=languages,
     )

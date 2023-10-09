@@ -30,6 +30,7 @@ def odoo_load_test_data(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
     odoo_log_level: str = typer.Option("test", help="Log level"),
+    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):
     """Run tests.data.generate_test_data fnction in Odoo shell for given modules. Ensures Modules are installed and odoo is bootstrapped"""
 
@@ -72,7 +73,7 @@ def odoo_load_test_data(
         install_workspace_addons=False,
         extra_launch_args=launch_args,
         extra_bootstrap_args=bootstrap_args,
-        multithread_worker_count=0,
+        multithread_worker_count=multithread_worker_count,
         odoo_demo=False,
         launch_or_bootstrap=True,
     )

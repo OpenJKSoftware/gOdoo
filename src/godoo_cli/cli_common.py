@@ -13,26 +13,10 @@ class OdooLaunchArgs:
         -1, help="count of worker threads. will enable proxy_mode if >0. (Autodetect with -1)", rich_help_panel="Odoo"
     )
     languages: str = Option("de_DE,en_US", help="languages to load by default", rich_help_panel="Odoo")
-    no_install_base: bool = Option(
-        False,
-        "--no-install-base",
-        help="dont install [bold]base[/bold] and [bold]web[/bold] module",
+    install_workspace_modules: bool = Option(
+        True,
+        help="Automatically install modules found in [bold cyan]--workspace_path[/bold cyan]",
         rich_help_panel="Odoo",
-    )
-    no_install_workspace_modules: bool = Option(
-        False,
-        "--no-install-workspace-modules",
-        help="dont automatically install modules found in [bold cyan]--workspace_path[/bold cyan]",
-        rich_help_panel="Odoo",
-    )
-    no_update_source: bool = Option(
-        False, "--no-update-source", help="Update Odoo Source and Thirdparty Addons", rich_help_panel="Source Code"
-    )
-    no_addons_remove_unspecified: bool = Option(
-        False,
-        "--no-addons-remove-unspecified",
-        help="don't remove unspecified addons if not '[bold cyan]--no-update-source[/bold cyan]'",
-        rich_help_panel="Source Code",
     )
     odoo_demo: bool = Option(False, "--odoo-demo", help="Load Demo Data", rich_help_panel="Odoo")
     dev_mode: bool = Option(
