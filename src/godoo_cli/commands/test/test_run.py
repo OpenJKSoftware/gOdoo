@@ -5,10 +5,10 @@ from typing import List
 
 import typer
 
-from ..cli_common import CommonCLI
-from ..helpers.odoo_files import get_changed_modules, get_depends_of_module, get_odoo_module_paths
-from ..helpers.system import run_cmd
-from .launch import pre_launch
+from ...cli_common import CommonCLI
+from ...helpers.odoo_files import get_changed_modules, get_depends_of_module, get_odoo_module_paths
+from ...helpers.system import run_cmd
+from ..launch import pre_launch
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
 
 
 @CLI.arg_annotator
-def odoo_test(
+def odoo_run_tests(
     test_modules: List[str] = typer.Argument(
         ...,
         help="Modules to install and test (Use 'all' for all Workspace modules), ('changes:<branch> to compare git changes)",
@@ -60,7 +60,7 @@ def odoo_test(
     ),
     odoo_log_level: str = typer.Option("test", help="Log level"),
 ):
-    """Bootstrap or Launch odoo in Testing Mode."""
+    """Bootstrap or Launch odoo in Testing Mode. Exits after Run, so no webserver is started. (Will set weird odoo.conf if it needs to bootstrap)"""
 
     test_modules = _test_modules_special_cases(test_modules, workspace_addon_path)
 

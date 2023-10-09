@@ -12,11 +12,12 @@ from .commands import (
     db_cli_app,
     launch_import,
     launch_odoo,
+    odoo_run_tests,
     odoo_shell,
-    odoo_test,
     rpc_cli_app,
     set_odoo_config,
     source_cli_app,
+    test_cli_app,
     uninstall_modules,
 )
 from .helpers.odoo_files import odoo_bin_get_version
@@ -69,13 +70,14 @@ def main_cli():
         name="source",
     )
     app.add_typer(typer_instance=backup_cli_app(), name="backup")
+    app.add_typer(typer_instance=test_cli_app(), name="test")
 
     # Normal Subcommands
     app.command("version")(print_versions)
     app.command("bootstrap")(bootstrap_odoo)
     app.command("launch")(launch_odoo)
     app.command("launch-import")(launch_import)
-    app.command("test")(odoo_test)
+    app.command("test")(odoo_run_tests)
     app.command("config")(set_odoo_config)
     app.command("shell")(odoo_shell)
     app.command("uninstall")(uninstall_modules)

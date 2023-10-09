@@ -165,7 +165,7 @@ def pre_launch(
             install_workspace_addons = False
 
         if launch_or_bootstrap:
-            return
+            return ret
 
     if ea := extra_launch_args:
         extra_odoo_args += ea
