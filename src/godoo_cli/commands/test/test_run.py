@@ -135,7 +135,6 @@ def odoo_run_tests(
     )
     if isinstance(launch_cmd, str):
         if pregenerate_assets:
-            LOGGER.info("Pregenerating Assets")
             odoo_pregenerate_assets(odoo_main_path)
         LOGGER.info("Launching Odoo Tests")
         return CLI.returner(run_cmd(launch_cmd).returncode)

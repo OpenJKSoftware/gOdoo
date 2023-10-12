@@ -123,7 +123,8 @@ def py_depends_by_db(
             LOGGER.error("Could not connect to DB. Check your DB Connection settings.")
             raise typer.Exit(1) from e
         module_list = [r[0] for r in conn.fetchall()]
-        LOGGER.info("Ensuring Py Reqiurements for Modules: %s are met", module_list)
+        LOGGER.info("Ensuring Py Reqiurements for Installed Modules are met")
+        LOGGER.debug("Modules:\n%s", "\n".join(["\t" + m for m in module_list]))
         odoo_addon_paths = get_addon_paths(
             odoo_main_repo=odoo_main_path,
             workspace_addon_path=workspace_addon_path,

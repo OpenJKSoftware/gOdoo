@@ -113,7 +113,7 @@ def _boostrap_command(
     _add_default_argument(cmd_list=odoo_cmd, arg="--data-dir", arg_val="/var/lib/odoo")
 
     if multithread_worker_count == -1:
-        multithread_worker_count = os.cpu_count() or 0 + 1
+        multithread_worker_count = (os.cpu_count() or 2) / 2
 
     if multithread_worker_count > 0:
         odoo_cmd += [
