@@ -48,7 +48,7 @@ def print_versions(
     """
     rich_print(f"gOdoo Version: [bold green]{__version__}[/bold green]")
     odoo_version = odoo_bin_get_version(odoo_main_path)
-    rich_print(f"Odoo Version: [bold green]{odoo_version}[/bold green]")
+    rich_print(f"Odoo Version: [bold green]{odoo_version.raw}[/bold green]")
 
 
 def main_cli():

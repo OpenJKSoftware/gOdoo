@@ -1,6 +1,6 @@
 import typer
 
-from .test_launch import odoo_load_test_data
+from .test_load_data import odoo_load_test_data
 from .test_run import odoo_run_tests
 
 

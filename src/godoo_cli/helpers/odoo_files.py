@@ -1,6 +1,8 @@
 """Functions that operate on Odoos Source Code."""
 import logging
+import re
 from ast import literal_eval
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Union
 
@@ -9,6 +11,19 @@ from git import Repo
 from .system import run_cmd
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class OdooVersion:
+    """Structure to hold Odoo version"""
+
+    text: str
+    major: int
+    minor: int
+
+    @property
+    def raw(self):
+        return f"{self.major}.{self.minor}"
 
 
 def odoo_bin_get_version(odoo_main_repo_path: Path) -> str:
@@ -21,12 +36,19 @@ def odoo_bin_get_version(odoo_main_repo_path: Path) -> str:
 
     Returns
     -------
-    str
-        odoo-bin --version output
+    OdooVersion
+        odoo-bin --version output parsed into Dataclass
     """
     odoo_bin_path = odoo_main_repo_path / "odoo-bin"
     version_out = run_cmd(f"{odoo_bin_path.absolute()} --version", capture_output=True, text=True)
-    return version_out.stdout
+    vers_match = re.match(r"(?P<text>.*) (?P<major>\d{0,2})\.(?P<minor>\d)", version_out.stdout)
+    if vers_match:
+        return OdooVersion(
+            text=vers_match.group("text"),
+            major=int(vers_match.group("major")),
+            minor=int(vers_match.group("minor")),
+        )
+    raise ValueError(f"Could not parse Odoo Version from: '{version_out}'")
 
 
 def get_zip_addon_path(thirdparty_path: Path) -> Path:

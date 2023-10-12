@@ -1,9 +1,11 @@
 import logging
+from pathlib import Path
 from typing import List
 
 import typer
 
 from ..cli_common import CommonCLI
+from ..helpers.odoo_files import odoo_bin_get_version
 from ..helpers.system import run_cmd
 
 CLI = CommonCLI()
@@ -43,3 +45,26 @@ def odoo_shell(
         shell_cmd = f'echo "{pipe_in_command}" |' + shell_cmd
     LOGGER.debug("Running Command: %s", shell_cmd)
     return CLI.returner(run_cmd(shell_cmd).returncode)
+
+
+def odoo_pregenerate_assets(odoo_main_path: Path):
+    """Uses Odoo shell to Pregenerate Asset bundles in Odoo.
+    Ensures the Asset bundles are present in Filestore
+
+    Parameters
+    ----------
+    odoo_main_path : Path
+        Path to odoo-bin Folder
+
+    Raises
+    ------
+    NotImplementedError
+        On Unsupported Odoo Version
+    """
+    odoo_version = odoo_bin_get_version(odoo_main_repo_path=odoo_main_path)
+    if odoo_version.major == 16:
+        pregen_command = "env['ir.qweb']._pregenerate_assets_bundles();env.cr.commit()"
+    else:
+        raise NotImplementedError(f"Odoo Version {odoo_version.raw} not supported in gOdoo for pregenerate_assets")
+    LOGGER.info("Pregenerating Assets for Odoo version %s", odoo_version.raw)
+    odoo_shell(pipe_in_command=pregen_command)

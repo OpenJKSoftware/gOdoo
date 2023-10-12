@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import List
 
 import typer
+from typing_extensions import Annotated
 
 from ...cli_common import CommonCLI
 from ...helpers.odoo_files import get_changed_modules, get_depends_of_module, get_odoo_module_paths
 from ...helpers.system import run_cmd
 from ..launch import pre_launch
+from ..shell import odoo_pregenerate_assets
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
@@ -55,19 +57,24 @@ def odoo_run_tests(
     db_name=CLI.database.db_name,
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
-    skip_test_modules: List[str] = typer.Option(
-        [], envvar="ODOO_TEST_SKIP_MODULES", help="Modules not to Test even if specified in test_modules"
-    ),
+    skip_test_modules: Annotated[
+        List[str],
+        typer.Option(envvar="ODOO_TEST_SKIP_MODULES", help="Modules not to Test even if specified in test_modules"),
+    ] = None,
     odoo_log_level: str = typer.Option("test", help="Log level"),
+    pregenerate_assets: Annotated[bool, typer.Option(help="Pregenerate assets before running tests")] = True,
 ):
     """Bootstrap or Launch odoo in Testing Mode. Exits after Run, so no webserver is started. (Will set weird odoo.conf if it needs to bootstrap)"""
 
     test_modules = _test_modules_special_cases(test_modules, workspace_addon_path)
 
-    skip_test_modules = [m for m in skip_test_modules if m in test_modules]  # Filter out skip mods that arent requested
     if skip_test_modules:
-        LOGGER.info("Skipping Tests for Modules:\n%s", ", ".join(["\t" + m for m in skip_test_modules]))
-        test_modules = [m for m in test_modules if m not in skip_test_modules]
+        skip_test_modules = [
+            m for m in skip_test_modules if m in test_modules
+        ]  # Filter out skip mods that arent requested
+        if skip_test_modules:
+            LOGGER.info("Skipping Tests for Modules:\n%s", ", ".join(["\t" + m for m in skip_test_modules]))
+            test_modules = [m for m in test_modules if m not in skip_test_modules]
 
     if not test_modules:
         LOGGER.info("Nothing to Test. Skipping.")
@@ -79,25 +86,29 @@ def odoo_run_tests(
     LOGGER.info("Testing Odoo Modules:\n%s", "\n".join(sorted(["\t" + m for m in test_modules])))
 
     bootstrap_args = [
-        "--test-enable",
         f"--init {module_list}",
+        "--load-language en_US",
+        f"--log-level {odoo_log_level}",
     ]
     if re.search("(sale|account)", test_module_list, re.IGNORECASE):
-        bootstrap_args[-1] += ",l10n_generic_coa"
+        bootstrap_args[0] += ",l10n_generic_coa"
 
-    bootstrap_args.append(f"--test-tags {test_module_list}")
-    bootstrap_args.append("--load-language en_US")
     launch_args = [
         f"-u {module_list}",
-        "--test-enable",
         f"--log-level {odoo_log_level}",
-        "--stop-after-init",
-        "--no-http",
         f"--test-tags {test_module_list}",
+        "--stop-after-init",
     ]
 
     if extra_launch_args:
         launch_args = extra_launch_args + launch_args
+
+    launch_or_bootstrap = False
+    if not pregenerate_assets:
+        # If we dont pregenerate assets, we can run the Tests directly in Bootstrap
+        # This saves one Upgrade iteration
+        launch_or_bootstrap = True
+        bootstrap_args.append(f"--test-tags {test_module_list}")
 
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,
@@ -111,15 +122,17 @@ def odoo_run_tests(
         db_user=db_user,
         db_password=db_password,
         dev_mode=False,
-        install_base=True,
         install_workspace_addons=False,
         extra_launch_args=launch_args,
         extra_bootstrap_args=bootstrap_args,
         multithread_worker_count=0,
         odoo_demo=False,
-        launch_or_bootstrap=True,
+        launch_or_bootstrap=launch_or_bootstrap,
     )
     if isinstance(launch_cmd, str):
+        if pregenerate_assets:
+            LOGGER.info("Pregenerating Assets")
+            odoo_pregenerate_assets(odoo_main_path)
         LOGGER.info("Launching Odoo Tests")
         return CLI.returner(run_cmd(launch_cmd).returncode)
 

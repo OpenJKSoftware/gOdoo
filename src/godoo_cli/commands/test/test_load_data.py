@@ -69,7 +69,6 @@ def odoo_load_test_data(
         db_user=db_user,
         db_password=db_password,
         dev_mode=False,
-        install_base=True,
         install_workspace_addons=False,
         extra_launch_args=launch_args,
         extra_bootstrap_args=bootstrap_args,

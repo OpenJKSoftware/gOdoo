@@ -72,7 +72,6 @@ def pre_launch(
     extra_bootstrap_args: List[str] = None,
     log_file_path: Path = None,
     install_workspace_addons: bool = True,
-    install_base: bool = True,
     launch_or_bootstrap: bool = False,
 ):
     """Start Bootstrap if no config file is found. And return Launch CMD.
@@ -103,7 +102,6 @@ def pre_launch(
         if false, add --without-demo to bootstrap
     dev_mode : bool
         add --dev... to cmd
-    install_base : bool
         install web, and base
     install_workspace_addons : bool
         install all modules in workspace folder
@@ -140,8 +138,6 @@ def pre_launch(
             _extra_bootstrap_args += ea
         if not odoo_demo:
             _extra_bootstrap_args += ["--without-demo all"]
-        if not install_base:
-            install_workspace_addons = False
         ret = bootstrap_odoo(
             db_name=db_name,
             db_filter=db_filter,
@@ -192,7 +188,7 @@ def pre_launch(
 
     if dev_mode:
         extra_odoo_args.append("--dev xml,qweb,reload")
-        if "16.0" in odoo_version:
+        if odoo_version.major == 16:
             extra_odoo_args[-1] += ",werkzeug"
 
     if multithread_worker_count == 0:
