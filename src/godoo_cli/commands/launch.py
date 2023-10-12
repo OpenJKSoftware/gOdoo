@@ -73,6 +73,7 @@ def pre_launch(
     log_file_path: Path = None,
     install_workspace_addons: bool = True,
     launch_or_bootstrap: bool = False,
+    languages: str = "de_DE,en_US",
 ):
     """Start Bootstrap if no config file is found. And return Launch CMD.
 
@@ -115,6 +116,8 @@ def pre_launch(
         count of multithread workser
     launch_or_bootstrap: bool, optional
         Only return launch cmd if bootstrap did not run
+    languages : str, optional
+        languages to load, by default "de_DE,en_US"
 
     Returns
     -------
@@ -151,6 +154,7 @@ def pre_launch(
             extra_cmd_args=_extra_bootstrap_args,
             install_workspace_modules=install_workspace_addons,
             multithread_worker_count=multithread_worker_count,
+            languages=languages,
         )
         bootstraped = ret == 0
         if not bootstraped:
@@ -223,6 +227,7 @@ def launch_odoo(
     extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args,
     log_file_path=CLI.odoo_launch.log_file_path,
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
+    languages=CLI.odoo_launch.languages,
 ):
     """
     Launch Odoo, Bootstrap if bootstrapflag is not present.
@@ -246,6 +251,7 @@ def launch_odoo(
         extra_bootstrap_args=extra_bootstrap_args,
         log_file_path=log_file_path,
         multithread_worker_count=multithread_worker_count,
+        languages=languages,
     )
 
     if not isinstance(launch_cmd, str):

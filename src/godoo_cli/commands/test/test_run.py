@@ -51,6 +51,8 @@ def odoo_run_tests(
     thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
     extra_launch_args=CLI.odoo_launch.extra_cmd_args,
+    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args,
+    languages=CLI.odoo_launch.languages,
     db_filter=CLI.database.db_filter,
     db_host=CLI.database.db_host,
     db_port=CLI.database.db_port,
@@ -87,7 +89,6 @@ def odoo_run_tests(
 
     bootstrap_args = [
         f"--init {module_list}",
-        "--load-language en_US",
         f"--log-level {odoo_log_level}",
     ]
     if re.search("(sale|account)", test_module_list, re.IGNORECASE):
@@ -110,6 +111,8 @@ def odoo_run_tests(
         launch_or_bootstrap = True
         bootstrap_args.append(f"--test-tags {test_module_list}")
 
+    bootstrap_args = extra_bootstrap_args + bootstrap_args
+
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
@@ -127,6 +130,7 @@ def odoo_run_tests(
         extra_bootstrap_args=bootstrap_args,
         multithread_worker_count=0,
         odoo_demo=False,
+        languages=languages,
         launch_or_bootstrap=launch_or_bootstrap,
     )
     if isinstance(launch_cmd, str):

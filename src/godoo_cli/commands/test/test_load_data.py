@@ -46,7 +46,6 @@ def odoo_load_test_data(
         f"--init {module_list_csv}",
     ]
 
-    bootstrap_args.append("--load-language en_US")
     launch_args = [
         f"-u {module_list_csv}",
         f"--log-level {odoo_log_level}",
