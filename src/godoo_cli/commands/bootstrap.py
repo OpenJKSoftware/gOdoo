@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, List
 
@@ -122,7 +123,10 @@ def _boostrap_command(
         ]
 
     odoo_cmd = list(filter(None, odoo_cmd))
-    return " ".join(odoo_cmd)
+    cmd_str = " ".join(odoo_cmd)
+    if not re.match(r"(-i|--init) ", cmd_str):
+        cmd_str += "-i base,web"
+    return cmd_str
 
 
 @CLI.unpacker
