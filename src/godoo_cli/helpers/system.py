@@ -33,7 +33,7 @@ def run_cmd(command: str, log_name: str = "", **kwargs) -> subprocess.CompletedP
     -------
     CompletedProcess
     """
-    LOGGER.debug("Running shell: '%s'", command)
+    LOGGER.debug("Running shell:\n%s", command)
     if not kwargs.get("shell"):
         kwargs["shell"] = True
     proc = subprocess.run(command, **kwargs)

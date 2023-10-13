@@ -291,7 +291,7 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
         return
     python_depends = []
     for module_path in check_modules:
-        LOGGER.debug("Checking for External Depends: %s", module_path)
+        LOGGER.debug("Checking for External Depends: %s", module_path.absolute())
         manifest_path = module_path / "__manifest__.py"
         manifest = literal_eval(manifest_path.read_text())
         if module_depends := manifest.get("external_dependencies", {}).get("python"):
