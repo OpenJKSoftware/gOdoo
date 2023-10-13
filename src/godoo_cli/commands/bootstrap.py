@@ -89,10 +89,14 @@ def _boostrap_command(
 
     LOGGER.info("Getting Addon Paths")
 
-    workspace_addons = get_odoo_module_paths(workspace_addon_path)
     init_modules = []
-    if install_workspace_modules and workspace_addons:
-        init_modules += [f.name for f in workspace_addons]
+    if not re.match(r"(-i|--init) ", " ".join(extra_cmd_args or [])):
+        if install_workspace_modules:
+            workspace_addons = get_odoo_module_paths(workspace_addon_path)
+            if install_workspace_modules and workspace_addons:
+                init_modules += [f.name for f in workspace_addons]
+        else:
+            init_modules = ["base", "web"]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
     addon_paths = [str(p.absolute()) for p in addon_paths]
@@ -124,8 +128,6 @@ def _boostrap_command(
 
     odoo_cmd = list(filter(None, odoo_cmd))
     cmd_str = " ".join(odoo_cmd)
-    if not re.match(r"(-i|--init) ", cmd_str):
-        cmd_str += " -i base,web"
     return cmd_str
 
 
