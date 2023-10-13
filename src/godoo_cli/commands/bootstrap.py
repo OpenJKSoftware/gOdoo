@@ -125,7 +125,7 @@ def _boostrap_command(
     if multithread_worker_count > 0:
         odoo_cmd += [
             "--proxy-mode",
-            f"--workers {multithread_worker_count}",
+            f"--workers {int( multithread_worker_count )}",
         ]
 
     odoo_cmd = list(filter(None, odoo_cmd))
