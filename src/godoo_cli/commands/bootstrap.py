@@ -125,7 +125,7 @@ def _boostrap_command(
     odoo_cmd = list(filter(None, odoo_cmd))
     cmd_str = " ".join(odoo_cmd)
     if not re.match(r"(-i|--init) ", cmd_str):
-        cmd_str += "-i base,web"
+        cmd_str += " -i base,web"
     return cmd_str
 
 
