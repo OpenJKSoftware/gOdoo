@@ -12,7 +12,12 @@ class OdooLaunchArgs:
     multithread_worker_count: int = Option(
         -1, help="count of worker threads. will enable proxy_mode if >0. (Autodetect with -1)", rich_help_panel="Odoo"
     )
-    languages: str = Option("en_US", help="languages to load by default", rich_help_panel="Odoo")
+    languages: str = Option(
+        "en_US",
+        help="languages to load by default",
+        rich_help_panel="Odoo",
+        envvar="ODOO_LAUNCH_LANGUAGES",
+    )
     install_workspace_modules: bool = Option(
         True,
         help="Automatically install modules found in [bold cyan]--workspace_path[/bold cyan]",
