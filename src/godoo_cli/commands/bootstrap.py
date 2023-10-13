@@ -90,12 +90,14 @@ def _boostrap_command(
     LOGGER.info("Getting Addon Paths")
 
     init_modules = []
-    if not re.match(r"(-i|--init) ", " ".join(extra_cmd_args or [])):
+    extra_cmd_args_str = " ".join(extra_cmd_args or [])
+    if not re.match(r"(-i|--init) ", extra_cmd_args_str):
         if install_workspace_modules:
             workspace_addons = get_odoo_module_paths(workspace_addon_path)
             if install_workspace_modules and workspace_addons:
                 init_modules += [f.name for f in workspace_addons]
-        else:
+        elif not re.match(r"(-u|--update) ", extra_cmd_args_str):
+            # If Upgrade command is present, we assume base and web are already installed
             init_modules = ["base", "web"]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
