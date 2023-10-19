@@ -11,9 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       TAG_NAME: ${{ steps.version_number.outputs.TAG_NAME }}
-    if:
-      "github.event.pull_request.merged == true && startsWith( github.event.pull_request.title, ':shipit: Bump to
-      Version: ' )"
+    if: contains( github.event.pull_request.labels.*.name, 'release')
     steps:
       - uses: actions/checkout@v3
       - name: setup git config
