@@ -51,7 +51,7 @@ jobs:
       - name: Commiting Version change
         run: |
           git add --all
-          git commit -m "[BUMP] Package ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} to ${{ steps.bump_version.outputs.BUMPED_VERSION }}"
+          git commit -m "🔖 Package ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} to ${{ steps.bump_version.outputs.BUMPED_VERSION }}"
       - name: Git push
         run: |
           git push origin release
@@ -61,7 +61,7 @@ jobs:
           script: |
             const { repo, owner } = context.repo;
             const result = await github.rest.pulls.create({
-              title: ':shipit: Bump to Version: ${{ steps.bump_version.outputs.BUMPED_VERSION }}',
+              title: '🔖 Bump to Version: ${{ steps.bump_version.outputs.BUMPED_VERSION }}',
               owner,
               repo,
               head: 'release',
