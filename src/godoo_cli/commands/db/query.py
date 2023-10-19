@@ -1,6 +1,7 @@
 import logging
 
 import typer
+from psycopg2 import ProgrammingError
 
 from ...cli_common import CommonCLI
 from ...helpers.cli import check_dangerous_command
@@ -33,9 +34,15 @@ def query_database(
     )
     with connection.connect() as cursor:
         try:
+            LOGGER.info("Running Query: %s", query)
             cursor.execute(query)
-            rows = cursor.fetchall()
-            for row in rows:
-                print("\t".join(row))  # pylint: disable=print-used
-        except Exception:
+            LOGGER.info("Affected Rows: %s", cursor.rowcount)
+            try:
+                rows = cursor.fetchall()
+                for row in rows:
+                    print("\t".join(row))  # pylint: disable=print-used
+            except ProgrammingError:
+                pass
+        except Exception as e:
+            LOGGER.exception(e)
             raise typer.Exit(1)
