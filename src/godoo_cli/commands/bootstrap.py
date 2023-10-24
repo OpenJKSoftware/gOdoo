@@ -4,6 +4,9 @@ import re
 from pathlib import Path
 from typing import Any, List
 
+import typer
+from typing_extensions import Annotated
+
 from ..cli_common import CommonCLI
 from ..helpers.bootstrap import _install_py_reqs_by_odoo_cmd
 from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths
@@ -150,6 +153,14 @@ def bootstrap_odoo(
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
     languages=CLI.odoo_launch.languages,
     install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
+    install_base_modules: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            help="Install base and web modules if no other -i or -u is present in Bootstrap",
+            rich_help_panel="Odoo",
+        ),
+    ] = True,
 ):
     """Bootstrap Odoo."""
 
@@ -175,6 +186,8 @@ def bootstrap_odoo(
         multithread_worker_count=multithread_worker_count,
         languages=languages,
     )
+    if not install_base_modules:
+        cmd_string = re.sub(r"--init base,web", "", cmd_string)
 
     # Always update Pip reqs regardless of --no-update-source
     _install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
