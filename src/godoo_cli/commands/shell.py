@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 from typing import List
 
@@ -42,9 +43,12 @@ def odoo_shell(
     """
     shell_cmd = f"{str(odoo_main_path.absolute())}/odoo-bin shell -c {str(odoo_conf_path.absolute())} --no-http"
     if pipe_in_command:
+        pipe_in_command = pipe_in_command.replace('"', '\\"')  # Escape Double Quotes
         shell_cmd = f'echo "{pipe_in_command}" |' + shell_cmd
-    LOGGER.debug("Running Command: %s", shell_cmd)
-    return CLI.returner(run_cmd(shell_cmd).returncode)
+        ret = run_cmd(shell_cmd)
+    else:
+        ret = run_cmd(shell_cmd, stdin=sys.stdin)
+    return CLI.returner(ret.returncode)
 
 
 def odoo_pregenerate_assets(odoo_main_path: Path):
