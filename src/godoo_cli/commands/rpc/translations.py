@@ -106,7 +106,7 @@ def dump_translations(
     addon_path = workspace_addon_path
     addon_folders = get_odoo_module_paths(addon_path)
     valid_module_names = [str(p.stem) for p in addon_folders]
-    LOGGER.debug("Found modules:\n%s", "\n".join(["\t" + mn for mn in valid_module_names]))
+    LOGGER.debug("Found modules:\n%s", valid_module_names)
 
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,

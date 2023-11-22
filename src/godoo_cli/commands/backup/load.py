@@ -49,11 +49,11 @@ def load_pg_dump(
         command = "cat %s | psql {} >/dev/null" % dump_path
     load_return = conn.run_psql_shell_command(
         command=command,
-        log_name="Reading DB",
         text=True,
         capture_output=True,
     )
     if load_return.returncode != 0:
+        LOGGER.error("Failed to load DB Dump: %s", load_return.stderr)
         raise typer.Exit(1)
     LOGGER.info("Deleting RPC Import Cache using plain SQL")
     with conn.connect() as cur:

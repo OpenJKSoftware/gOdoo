@@ -19,7 +19,7 @@ from . import cli as godoo_cli_helpers
 LOGGER = logging.getLogger(__name__)
 
 
-def run_cmd(command: str, log_name: str = "", **kwargs) -> subprocess.CompletedProcess:
+def run_cmd(command: str, **kwargs) -> subprocess.CompletedProcess:
     """Runs command via subprocess.run
 
     Parameters
@@ -37,8 +37,7 @@ def run_cmd(command: str, log_name: str = "", **kwargs) -> subprocess.CompletedP
     if not kwargs.get("shell"):
         kwargs["shell"] = True
     proc = subprocess.run(command, **kwargs)
-    if proc.returncode != 0 and log_name:
-        LOGGER.error("Failed: %s", log_name)
+    LOGGER.debug("Return Code: %s", proc.returncode)
     return proc
 
 

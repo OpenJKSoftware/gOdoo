@@ -40,7 +40,7 @@ def odoo_load_test_data(
 
     module_list_csv = ",".join(test_modules)
 
-    LOGGER.info("Installing Test data for Odoo Modules:\n%s", "\n".join(sorted(["\t" + m for m in test_modules])))
+    LOGGER.info("Installing Test data for Odoo Modules:\n%s", sorted(test_modules))
 
     bootstrap_args = [
         f"--init {module_list_csv}",

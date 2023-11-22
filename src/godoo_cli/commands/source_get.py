@@ -65,7 +65,7 @@ def unpack_addon_archives(
                 continue
             LOGGER.debug(
                 "Found modules in Zipfile:\n%s",
-                "\n".join([str(f.relative_to(td)) for f in zip_module_paths]),
+                [str(f.relative_to(td)) for f in zip_module_paths],
             )
             target_folder = target_addon_folder / ("single_mods" if len(zip_module_paths) == 1 else zip_file.stem)
             target_folder.mkdir(exist_ok=True)
@@ -124,7 +124,7 @@ def py_depends_by_db(
             raise typer.Exit(1) from e
         module_list = [r[0] for r in conn.fetchall()]
         LOGGER.info("Ensuring Py Reqiurements for Installed Modules are met")
-        LOGGER.debug("Modules:\n%s", "\n".join(["\t" + m for m in module_list]))
+        LOGGER.debug("Modules:\n%s", module_list)
         odoo_addon_paths = get_addon_paths(
             odoo_main_repo=odoo_main_path,
             workspace_addon_path=workspace_addon_path,

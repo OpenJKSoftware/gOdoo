@@ -135,7 +135,7 @@ def get_changed_modules(
         LOGGER.debug(
             "Found Modules changed to branch '%s':\n %s",
             diff_branch,
-            "\n".join(["\t" + str(f) for f in changed_module_folders]),
+            changed_module_folders,
         )
     return changed_module_folders
 
@@ -262,7 +262,7 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
     LOGGER.debug("Checking python requirements of Modules: %s", sorted(filter_module_names))
     if unavailable_modules := set(filter_module_names).difference(available_module_names):
         LOGGER.warning("Could not find __manifest__ for: %s", unavailable_modules)
-        LOGGER.debug("Search Paths:\n%s", "\n".join(map(str, addon_paths)))
+        LOGGER.debug("Search Paths:\n%s", map(str, addon_paths))
 
     check_modules = [mp for mp in available_modules if mp.stem in filter_module_names]
 
@@ -277,9 +277,10 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
         check_modules_dependencies += get_depends_of_module(
             available_modules, module, already_done_modules=check_modules_dependencies
         )
+    check_modules_dependencies = list(set(check_modules_dependencies))
     LOGGER.debug(
         "adding children of requested modules to check list:\n%s",
-        "\n".join(sorted([p.stem for p in check_modules_dependencies])),
+        sorted([p.stem for p in check_modules_dependencies]),
     )
 
     check_modules += check_modules_dependencies
