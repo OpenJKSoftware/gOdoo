@@ -26,7 +26,7 @@ godoo-rpc = "^0.1.1"
 openupgradelib = "^3.3.4"
 psycopg2 = "^2.8.6" # Mirror Odoo Reqs
 passlib = "^1.7.3" # Mirror Odoo Reqs
-typer-common-functions = "^0.0.5"
+typer-common-functions = "^0.0.8"
 typer = "^0.9.0"
 
 pylint-odoo = { version="^8.0.16", optional = true}
