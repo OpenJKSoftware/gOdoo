@@ -1,5 +1,6 @@
 import typer
 
+from .dump import dump_instance
 from .load import load_instance_data
 from .pull import InstancePuller
 
@@ -13,5 +14,6 @@ def backup_cli_app():
 
     app.command("pull")(puller.pull_instance_data)
     app.command("load")(load_instance_data)
+    app.command("dump")(dump_instance)
 
     return app
