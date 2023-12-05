@@ -11,7 +11,7 @@ from ..helpers.odoo_files import get_odoo_module_paths, odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .db.connection import DBConnection
-from .db.query import _is_bootstrapped
+from .db.query import DB_BOOTSTRAP_STATUS, _is_bootstrapped
 from .rpc import import_to_odoo
 from .source_get import py_depends_by_db, update_odoo_conf
 
@@ -158,8 +158,7 @@ def pre_launch(
     odoo_main_path = odoo_main_path
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
-    if _is_bootstrapped(db_connection) != 0:
-        LOGGER.info("Database does not seem to be Bootstrapped. Aborting Launch...")
+    if _is_bootstrapped(db_connection) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
         return 404
 
     update_odoo_conf(
