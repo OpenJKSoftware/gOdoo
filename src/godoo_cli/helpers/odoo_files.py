@@ -4,7 +4,7 @@ import re
 from ast import literal_eval
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 from git import Repo
 
@@ -26,7 +26,7 @@ class OdooVersion:
         return f"{self.major}.{self.minor}"
 
 
-def odoo_bin_get_version(odoo_main_repo_path: Path) -> str:
+def odoo_bin_get_version(odoo_main_repo_path: Path) -> OdooVersion:
     """Get Odoo Version by calling 'odoo-bin --version'
 
     Parameters
@@ -143,7 +143,7 @@ def get_changed_modules(
 def get_depends_of_module(
     all_modules: List[Path],
     module_to_check: Path,
-    already_done_modules: List[Path] = None,
+    already_done_modules: Optional[List[Path]] = None,
 ):
     """Recursively Searches sub dependencies for Odoo modules.
 
