@@ -2,7 +2,7 @@ import typer
 
 from .connection import login_db
 from .passwords import set_passwords
-from .query import query_database
+from .query import get_installed_modules, is_bootstrapped, query_database
 
 
 def db_cli_app():
@@ -14,5 +14,7 @@ def db_cli_app():
     app.command()(set_passwords)
     app.command("login")(login_db)
     app.command("query")(query_database)
+    app.command("odoo-bootstrapped")(is_bootstrapped)
+    app.command("installed-modules")(get_installed_modules)
 
     return app

@@ -52,6 +52,17 @@ class DBConnection:
             connect_timeout=self.conn_timeout,
         )
 
+    @property
+    def cli_dict(self):
+        """Return a dict that when expanded Matches the Default DB connection Args used throuout gOdoo"""
+        return {
+            "db_host": self.hostname,
+            "db_port": self.port,
+            "db_name": self.db_name,
+            "db_user": self.username,
+            "db_password": self.password,
+        }
+
     @contextmanager
     def connect(self):
         connection = self.get_connection()

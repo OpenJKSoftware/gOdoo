@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 import typer
 from typing_extensions import Annotated
@@ -11,6 +11,7 @@ from ..cli_common import CommonCLI
 from ..helpers.bootstrap import _install_py_reqs_by_odoo_cmd
 from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths
 from ..helpers.system import run_cmd
+from .db.connection import DBConnection
 
 CLI = CommonCLI()
 
@@ -27,13 +28,9 @@ def _boostrap_command(
     odoo_conf_path: Path,
     addon_paths: List[Path],
     workspace_addon_path: Path,
-    db_host: str,
     db_filter: str,
-    db_name: str,
-    db_user: str,
-    db_password: str,
-    db_port: str,
-    extra_cmd_args: List[str] = None,
+    db_connection: DBConnection,
+    extra_cmd_args: Optional[List[str]] = None,
     install_workspace_modules: bool = True,
     multithread_worker_count: int = -1,
     languages: str = "de_DE,en_US",
@@ -53,16 +50,8 @@ def _boostrap_command(
         path to addons in dev repo
     db_filter : str
         db filter for odoo.conf
-    db_host : str
-        db hostname for odoo.conf
-    db_name : str
-        database name for odoo.conf
-    db_user : str
-        db user
-    db_password : str
-        db user password
-    db_port : str
-        db host port
+    db_connection : DBConnection
+        DB Connection
     extra_cmd_args : List[str], optional
         extra args to pass to odoo-bin, by default None
     install_workspace_modules : bool, optional
@@ -82,11 +71,11 @@ def _boostrap_command(
     odoo_conf_path.parent.mkdir(parents=True, exist_ok=True)
 
     db_command = [
-        f"--database {db_name}",
-        f"--db_user {db_user}",
-        f"--db_password {db_password}",
-        f"--db_host {db_host}" if db_host else "",
-        f"--db_port {db_port}" if db_host else "",
+        f"--database {db_connection.db_name}",
+        f"--db_user {db_connection.username}",
+        f"--db_password {db_connection.password}",
+        f"--db_host {db_connection.hostname}" if db_connection.hostname else "",
+        f"--db_port {db_connection.port}" if db_connection.hostname else "",
         f"--db-filter=^{db_filter}$",
     ]
 
@@ -170,17 +159,21 @@ def bootstrap_odoo(
         thirdparty_addon_path=thirdparty_addon_path,
     )
 
+    db_connection = DBConnection(
+        hostname=db_host,
+        port=db_port,
+        username=db_user,
+        password=db_password,
+        db_name=db_name,
+    )
+
     cmd_string = _boostrap_command(
         odoo_main_path=odoo_main_path,
         odoo_conf_path=odoo_conf_path,
         workspace_addon_path=workspace_addon_path,
         addon_paths=addon_paths,
-        db_host=db_host,
-        db_name=db_name,
         db_filter=db_filter,
-        db_user=db_user,
-        db_password=db_password,
-        db_port=db_port,
+        db_connection=db_connection,
         extra_cmd_args=extra_cmd_args,
         install_workspace_modules=install_workspace_modules,
         multithread_worker_count=multithread_worker_count,

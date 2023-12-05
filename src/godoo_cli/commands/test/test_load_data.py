@@ -5,6 +5,7 @@ import typer
 
 from ...cli_common import CommonCLI
 from ...helpers.system import run_cmd
+from ..db.connection import DBConnection
 from ..launch import pre_launch
 from ..shell import odoo_shell
 
@@ -56,17 +57,21 @@ def odoo_load_test_data(
     if extra_launch_args:
         launch_args = extra_launch_args + launch_args
 
+    db_connection = DBConnection(
+        hostname=db_host,
+        port=db_port,
+        username=db_user,
+        password=db_password,
+        db_name=db_name,
+    )
+
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
         odoo_conf_path=odoo_conf_path,
         db_filter=db_filter,
-        db_host=db_host,
-        db_port=db_port,
-        db_name=db_name,
-        db_user=db_user,
-        db_password=db_password,
+        db_connection=db_connection,
         dev_mode=False,
         install_workspace_addons=False,
         extra_launch_args=launch_args,

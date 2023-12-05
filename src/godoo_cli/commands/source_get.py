@@ -17,6 +17,7 @@ from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths, get_zip
 from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
 from .db.connection import DBConnection
+from .db.query import _get_installed_modules
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
@@ -116,21 +117,17 @@ def py_depends_by_db(
         password=db_password,
         db_name=db_name,
     )
-    with connection.connect() as conn:
-        try:
-            conn.execute("SELECT name FROM ir_module_module WHERE state='installed'")
-        except UnboundLocalError as e:
-            LOGGER.error("Could not connect to DB. Check your DB Connection settings.")
-            raise typer.Exit(1) from e
-        module_list = [r[0] for r in conn.fetchall()]
-        LOGGER.info("Ensuring Py Reqiurements for Installed Modules are met")
-        LOGGER.debug("Modules:\n%s", module_list)
-        odoo_addon_paths = get_addon_paths(
-            odoo_main_repo=odoo_main_path,
-            workspace_addon_path=workspace_addon_path,
-            thirdparty_addon_path=thirdparty_addon_path,
-        )
-        _install_py_reqs_for_modules(odoo_addon_paths, module_list)
+    module_list = _get_installed_modules(connection)
+    if isinstance(module_list, int):
+        return CLI.returner(module_list)
+    LOGGER.info("Ensuring Py Reqiurements for Installed Modules are met")
+    LOGGER.debug("Modules:\n%s", module_list)
+    odoo_addon_paths = get_addon_paths(
+        odoo_main_repo=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
+    _install_py_reqs_for_modules(odoo_addon_paths, module_list)
 
 
 @CLI.unpacker

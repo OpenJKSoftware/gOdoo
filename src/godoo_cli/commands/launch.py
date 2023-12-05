@@ -10,6 +10,8 @@ from ..cli_common import CommonCLI
 from ..helpers.odoo_files import get_odoo_module_paths, odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
+from .db.connection import DBConnection
+from .db.query import _is_bootstrapped
 from .rpc import import_to_odoo
 from .source_get import py_depends_by_db, update_odoo_conf
 
@@ -60,11 +62,7 @@ def pre_launch(
     thirdparty_addon_path: Path,
     odoo_conf_path: Path,
     db_filter: str,
-    db_host: str,
-    db_port: int,
-    db_name: str,
-    db_user: str,
-    db_password: str,
+    db_connection: DBConnection,
     odoo_demo: bool,
     dev_mode: bool,
     multithread_worker_count: int = 0,
@@ -89,16 +87,8 @@ def pre_launch(
         path to odoo conf
     db_filter : str
         odoo.conf db_filter
-    db_host : str
-        database host url. Empty string for Unix sock
-    db_port : int
-        database port. 0 for unix sock
-    db_name : str
-        odoo main database name
-    db_user : str
-        database user
-    db_password : str
-        database password
+    db_connection : DBConnection
+        DBConnection object
     odoo_demo : bool
         if false, add --without-demo to bootstrap
     dev_mode : bool
@@ -142,12 +132,8 @@ def pre_launch(
         if not odoo_demo:
             _extra_bootstrap_args += ["--without-demo all"]
         ret = bootstrap_odoo(
-            db_name=db_name,
+            **db_connection.cli_dict,
             db_filter=db_filter,
-            db_user=db_user,
-            db_password=db_password,
-            db_host=db_host,
-            db_port=db_port,
             thirdparty_addon_path=thirdparty_addon_path,
             odoo_main_path=odoo_main_path,
             odoo_conf_path=odoo_conf_path,
@@ -172,6 +158,10 @@ def pre_launch(
     odoo_main_path = odoo_main_path
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
+    if _is_bootstrapped(db_connection) != 0:
+        LOGGER.info("Database does not seem to be Bootstrapped. Aborting Launch...")
+        return 404
+
     update_odoo_conf(
         odoo_conf=odoo_conf_path,
         odoo_main_path=odoo_main_path,
@@ -183,11 +173,7 @@ def pre_launch(
             odoo_main_path=odoo_main_path,
             workspace_addon_path=workspace_addon_path,
             thirdparty_addon_path=thirdparty_addon_path,
-            db_host=db_host,
-            db_port=db_port,
-            db_name=db_name,
-            db_user=db_user,
-            db_password=db_password,
+            **db_connection.cli_dict,
         )
 
     if dev_mode:
@@ -230,20 +216,22 @@ def launch_odoo(
     languages=CLI.odoo_launch.languages,
 ):
     """
-    Launch Odoo, Bootstrap if bootstrapflag is not present.
+    Launch Odoo, Bootstrap if db is empty.
     """
-
+    db_connection = DBConnection(
+        hostname=db_host,
+        port=db_port,
+        username=db_user,
+        password=db_password,
+        db_name=db_name,
+    )
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
         odoo_conf_path=odoo_conf_path,
         db_filter=db_filter,
-        db_host=db_host,
-        db_port=db_port,
-        db_name=db_name,
-        db_user=db_user,
-        db_password=db_password,
+        db_connection=db_connection,
         odoo_demo=odoo_demo,
         dev_mode=dev_mode,
         install_workspace_addons=install_workspace_modules,
@@ -290,6 +278,13 @@ def launch_import(
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):
     """Bootstrap and Start odoo. Launches RPC import in second thread."""
+    db_connection = DBConnection(
+        hostname=db_host,
+        port=db_port,
+        username=db_user,
+        password=db_password,
+        db_name=db_name,
+    )
 
     launch_cmd = pre_launch(
         odoo_main_path=odoo_main_path,
@@ -297,11 +292,7 @@ def launch_import(
         thirdparty_addon_path=thirdparty_addon_path,
         odoo_conf_path=odoo_conf_path,
         db_filter=db_filter,
-        db_host=db_host,
-        db_port=db_port,
-        db_name=db_name,
-        db_user=db_user,
-        db_password=db_password,
+        db_connection=db_connection,
         odoo_demo=odoo_demo,
         dev_mode=dev_mode,
         install_workspace_addons=install_workspace_modules,
