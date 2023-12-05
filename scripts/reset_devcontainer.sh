@@ -22,30 +22,34 @@ reset_docker () {
     [ -z "$COMPOSE_PROJECT_NAME" ] && COMPOSE_PROJECT_NAME=$(basename $PROJ_FOLDER)
     PROJ_NAME=$COMPOSE_PROJECT_NAME
     echo "==> Deleting Containers with ProjName: $PROJ_NAME"
+    cd $PROJ_FOLDER/docker
 
-    CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep ^$PROJ_NAME)
-
-    if [ "$RESET_ALL" = "true" ]; then
-        VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME)
-    else
-        VOLUMES=$(docker volume ls --format "{{.Name}}" | grep ^$PROJ_NAME | grep -Ev '(_vscode_server$|_commandhistory|_pre_commit_cache$)')
-    fi
-
+    CONTAINERS=$(docker compose ps -a --format "{{.Names}}")
     remove_odoo_config
+    if [ ! -z "$CONTAINERS"]; then
+        # Get Docker compose volume names
+        VOLUMES=$(docker inspect $CONTAINERS --format "{{range .Mounts}}{{if .Name}}{{.Name}} {{end}}{{end}}" | xargs)
+        VOLUMES=$(echo $VOLUMES | gep -Ev '(^vscode$)') # Dont delete the vscode volume, as that is shared between all projects.
 
-    if [ ! -z "$CONTAINERS" ]; then
-        echo "==> Removing Devcontainers for Project: $PROJ_NAME"
-        docker rm -f $CONTAINERS
-    fi
+        if [ "$RESET_ALL" = "false" ]; then
+            VOLUMES=$(echo $VOLUMES | grep -Ev '(_vscode_server$|_commandhistory|_pre_commit_cache$)')
+        fi
 
-    if [ ! -z "$VOLUMES" ]; then
-        echo "==> Removing Dev-Volumes"
-        docker volume rm -f $VOLUMES
+
+        if [ ! -z "$CONTAINERS" ]; then
+            echo "==> Removing Devcontainers for Project: $PROJ_NAME"
+            docker rm -f $CONTAINERS
+        fi
+
+        if [ ! -z "$VOLUMES" ]; then
+            echo "==> Removing Dev-Volumes"
+            docker volume rm -f $VOLUMES
+        fi
     fi
 
     if [ "$RESET_ALL" = "true" ]; then
-        echo "==> Rebuilding Devcontainer Image"
-        cd $PROJ_FOLDER/docker && docker compose build --no-cache --parallel --pull
+        echo "==> Pulling latest Docker Images"
+        docker compose -f docker-compose.base.yml -f docker-compose.devcontainer.yml build --pull --no-cache
     fi
 }
 
