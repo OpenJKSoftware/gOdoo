@@ -64,7 +64,7 @@ def _is_bootstrapped(db_connection: DBConnection) -> DB_BOOTSTRAP_STATUS:
             if not cursor.fetchone()[0]:
                 LOGGER.warning("Database %s is empty", db_connection.db_name)
                 return DB_BOOTSTRAP_STATUS.EMPTY_DB
-            LOGGER.info("Database %s is not empty", db_connection.db_name)
+            LOGGER.debug("Database %s is not empty", db_connection.db_name)
             return DB_BOOTSTRAP_STATUS.BOOTSTRAPPED
     except OperationalError:
         LOGGER.warning("Database %s does not exist", db_connection.db_name)

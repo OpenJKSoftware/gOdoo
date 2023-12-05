@@ -147,9 +147,10 @@ def get_installed_module_paths(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
+    module_list = [m for m in module_list if m != "base"]
     module_paths = get_odoo_module_paths(odoo_addon_paths, module_names=module_list)
     for p in module_paths:
-        print(p)  # pylint: disable=print-used
+        print(p.absolute())  # pylint: disable=print-used
 
 
 @CLI.unpacker
