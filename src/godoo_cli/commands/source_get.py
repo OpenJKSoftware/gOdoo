@@ -110,13 +110,7 @@ def py_depends_by_db(
     db_password=CLI.database.db_password,
 ):
     """Insall Python Dependencies for all installed modules in DB."""
-    connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name=db_name,
-    )
+    connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
     module_list = _get_installed_modules(connection)
     if isinstance(module_list, int):
         return CLI.returner(module_list)
@@ -127,7 +121,35 @@ def py_depends_by_db(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
+    module_list = [m for m in module_list if m != "base"]
     _install_py_reqs_for_modules(odoo_addon_paths, module_list)
+
+
+@CLI.arg_annotator
+def get_installed_module_paths(
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
+):
+    """Get Paths of all installed modules in DB."""
+    connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
+    module_list = _get_installed_modules(connection)
+    if isinstance(module_list, int):
+        return CLI.returner(module_list)
+    LOGGER.debug("Searching Folders for:\n%s", module_list)
+    odoo_addon_paths = get_addon_paths(
+        odoo_main_repo=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
+    module_paths = get_odoo_module_paths(odoo_addon_paths, module_names=module_list)
+    for p in module_paths:
+        print(p)  # pylint: disable=print-used
 
 
 @CLI.unpacker
@@ -273,5 +295,6 @@ def source_cli_app():
     app.command("get-file")(get_source_file)
     app.command("get-dependencies")(py_depends_by_modules)
     app.command("get-dependencies-db")(py_depends_by_db)
+    app.command("installed-module-paths")(get_installed_module_paths)
 
     return app

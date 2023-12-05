@@ -71,13 +71,18 @@ def folder_is_odoo_module(folder: Path) -> bool:
     return folder.is_dir() and any(folder.glob("__manifest__.py"))
 
 
-def get_odoo_module_paths(search_folders: Union[List[Path], Path]) -> List[Path]:
+def get_odoo_module_paths(
+    search_folders: Union[List[Path], Path],
+    module_names: Optional[List[str]] = None,
+) -> List[Path]:
     """List all Valid odoo module names in one or many Odoo addons folder.
 
     Parameters
     ----------
     search_folders : Path
         Folder(s) to search in.
+    module_names : Optional[List[str]], optional
+        Filter for module names, by default None
 
     Returns
     -------
@@ -94,6 +99,11 @@ def get_odoo_module_paths(search_folders: Union[List[Path], Path]) -> List[Path]
         for folder in folder.iterdir():
             if folder_is_odoo_module(folder):
                 module_paths.append(folder)
+    if module_names:
+        filtered_module_paths = [p for p in module_paths if p.stem in module_names]
+        if unavailable_modules := set(module_names).difference([p.stem for p in filtered_module_paths]):
+            LOGGER.warning("Could not find Module folder for: %s", unavailable_modules)
+        return filtered_module_paths
     return module_paths
 
 
@@ -253,18 +263,7 @@ def _get_python_requirements_of_modules(addon_paths: List[Path], filter_module_n
         Modules to look for manifests, by default all available modules
     """
     available_modules = get_odoo_module_paths(addon_paths)
-    available_module_names = [p.stem for p in available_modules]
-
-    if not filter_module_names:
-        filter_module_names = available_module_names
-    filter_module_names = [f for f in filter_module_names if f != "base"]
-
-    LOGGER.debug("Checking python requirements of Modules: %s", sorted(filter_module_names))
-    if unavailable_modules := set(filter_module_names).difference(available_module_names):
-        LOGGER.warning("Could not find __manifest__ for: %s", unavailable_modules)
-        LOGGER.debug("Search Paths:\n%s", map(str, addon_paths))
-
-    check_modules = [mp for mp in available_modules if mp.stem in filter_module_names]
+    check_modules = get_odoo_module_paths(addon_paths, module_names=filter_module_names)
 
     if odoo_main_path := _get_odoo_main_path(addon_paths):
         # When the Odoo main path is in the supplied path, exclude those modules.
