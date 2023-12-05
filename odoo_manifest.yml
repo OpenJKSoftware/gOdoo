@@ -12,9 +12,6 @@
 odoo:
   url: https://github.com/odoo/odoo/
   branch: 16.0 # Branch is mandatory on Odoo Repo but not on OCA Repos
-  stubs: # This will all becomme uneccessary, when the vscode extension includes the stubs in the extension.
-    url: https://github.com/odoo-ide/odoo-stubs.git
-    pyright_conf: pyrightconfig.json # Autogenerate pyrightconfig.json with stubs path
 # In the thirdparty section we can add more Repos to download.
 # This can also be an ssh style Url for Odoo Enterprise for example.
 thirdparty:
