@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Publish to Pypi
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install poetry
         run: pipx install poetry
       - name: Add Poetry Version for __init__.py
@@ -29,7 +29,9 @@ jobs:
           cache: "poetry"
       - name: Build and publish
         run: |
-          poetry version $(git describe --tags --abbrev=0)
+          VERSION=$(git describe --tags --abbrev=0)
+          echo "Publishing version $VERSION"
+          poetry version $VERSION
           poetry build
           poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
           poetry publish

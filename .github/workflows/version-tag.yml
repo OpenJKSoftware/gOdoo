@@ -13,7 +13,7 @@ jobs:
       TAG_NAME: ${{ steps.version_number.outputs.TAG_NAME }}
     if: contains( github.event.pull_request.labels.*.name, 'release')
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: setup git config
         run: |
           git config user.name "GitHub Actions Bot"
