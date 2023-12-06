@@ -209,7 +209,7 @@ def launch_odoo(
     dev_mode=CLI.odoo_launch.dev_mode,
     install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
     extra_args=CLI.odoo_launch.extra_cmd_args,
-    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args,
+    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
     log_file_path=CLI.odoo_launch.log_file_path,
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
     languages=CLI.odoo_launch.languages,
@@ -272,7 +272,7 @@ def launch_import(
     dev_mode=CLI.odoo_launch.dev_mode,
     install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
     extra_launch_args=CLI.odoo_launch.extra_cmd_args,
-    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args,
+    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
     log_file_path=CLI.odoo_launch.log_file_path,
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):

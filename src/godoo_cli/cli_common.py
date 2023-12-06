@@ -8,7 +8,15 @@ from typer_common_functions import get_type_from_default, typer_retuner, typer_u
 
 @dataclass
 class OdooLaunchArgs:
-    extra_cmd_args: List[str] = Option(None, help="extra agruments to pass to odoo-bin", rich_help_panel="Odoo")
+    extra_cmd_args: List[str] = Option(
+        None, help="extra agruments to pass to odoo-bin", envvar="ODOO_BIN_ARGS", rich_help_panel="Odoo"
+    )
+    extra_cmd_args_bootstrap: List[str] = Option(
+        None,
+        help="extra agruments to pass to odoo-bin in bootstrap mode",
+        envvar="ODOO_BIN_BOOTSTRAP_ARGS",
+        rich_help_panel="Odoo",
+    )
     multithread_worker_count: int = Option(
         -1, help="count of worker threads. will enable proxy_mode if >0. (Autodetect with -1)", rich_help_panel="Odoo"
     )

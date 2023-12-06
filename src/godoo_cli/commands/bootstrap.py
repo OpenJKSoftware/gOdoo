@@ -138,7 +138,7 @@ def bootstrap_odoo(
     db_name=CLI.database.db_name,
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
-    extra_cmd_args=CLI.odoo_launch.extra_cmd_args,
+    extra_cmd_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
     languages=CLI.odoo_launch.languages,
     install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
