@@ -29,6 +29,7 @@ jobs:
           cache: "poetry"
       - name: Build and publish
         run: |
+          git fetch --tags
           VERSION=$(git describe --tags --abbrev=0)
           echo "Publishing version $VERSION"
           poetry version $VERSION
