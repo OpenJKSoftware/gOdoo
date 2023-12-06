@@ -27,6 +27,7 @@ jobs:
 
       - name: Git tag & push
         run: |
+          echo "Tagging Commit: ${{ github.sha }} with ${{ steps.version_number.outputs.TAG_NAME }}"
           git tag ${{ steps.version_number.outputs.TAG_NAME }}
           git push --tags
 
