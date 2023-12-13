@@ -83,7 +83,7 @@ def _boostrap_command(
 
     init_modules = []
     extra_cmd_args_str = " ".join(extra_cmd_args or [])
-    if not re.match(r"(-i|--init) ", extra_cmd_args_str):
+    if not re.match(r"(-i|--init|-u|--upgrade) ", extra_cmd_args_str):
         if install_workspace_modules:
             workspace_addons = get_odoo_module_paths(workspace_addon_path)
             if install_workspace_modules and workspace_addons:
