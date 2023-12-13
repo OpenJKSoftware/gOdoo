@@ -83,13 +83,15 @@ def _boostrap_command(
 
     init_modules = []
     extra_cmd_args_str = " ".join(extra_cmd_args or [])
-    if not re.match(r"(-i|--init|-u|--upgrade) ", extra_cmd_args_str):
+    if not re.search(r"(-i|--init) ", extra_cmd_args_str):
         if install_workspace_modules:
-            workspace_addons = get_odoo_module_paths(workspace_addon_path)
-            if install_workspace_modules and workspace_addons:
+            if workspace_addons := get_odoo_module_paths(workspace_addon_path):
                 init_modules += [f.name for f in workspace_addons]
-        elif not re.match(r"(-u|--update) ", extra_cmd_args_str):
-            # If Upgrade command is present, we assume base and web are already installed
+        elif re.search(r"(-u|--update) ", extra_cmd_args_str):
+            # if -u is present, do not install any modules
+            pass
+        else:
+            # if no -i or -u is present, install base and web modules
             init_modules = ["base", "web"]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
