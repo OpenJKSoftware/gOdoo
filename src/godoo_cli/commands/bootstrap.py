@@ -87,12 +87,6 @@ def _boostrap_command(
         if install_workspace_modules:
             if workspace_addons := get_odoo_module_paths(workspace_addon_path):
                 init_modules += [f.name for f in workspace_addons]
-        elif re.search(r"(-u|--update) ", extra_cmd_args_str):
-            # if -u is present, do not install any modules
-            pass
-        else:
-            # if no -i or -u is present, install base and web modules
-            init_modules = ["base", "web"]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
     addon_paths = [str(p.absolute()) for p in addon_paths]
