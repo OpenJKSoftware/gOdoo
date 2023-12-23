@@ -100,6 +100,7 @@ def get_odoo_module_paths(
             if folder_is_odoo_module(folder):
                 module_paths.append(folder)
     if module_names:
+        module_names = [m for m in module_names if m != "base"]
         filtered_module_paths = [p for p in module_paths if p.stem in module_names]
         if unavailable_modules := set(module_names).difference([p.stem for p in filtered_module_paths]):
             LOGGER.warning("Could not find Module folder for: %s", unavailable_modules)
