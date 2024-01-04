@@ -21,7 +21,7 @@ CLI = CommonCLI()
 
 @CLI.arg_annotator
 def query_database(
-    query: str = typer.Argument(..., help="SQL Query"),
+    query: str = typer.Argument(..., help="SQL Query. Use '-' to read from stdin."),
     db_host=CLI.database.db_host,
     db_port=CLI.database.db_port,
     db_name=CLI.database.db_name,
@@ -29,6 +29,11 @@ def query_database(
     db_password=CLI.database.db_password,
 ):
     """Run a Query against the database."""
+
+    # read stdin if query is not provided
+    if query == "-":
+        stdin = typer.get_text_stream("stdin")
+        query = stdin.read()
 
     check_dangerous_command()
     # regex to check if SQL query contains writing command
@@ -47,8 +52,14 @@ def query_database(
             LOGGER.info("Affected Rows: %s", cursor.rowcount)
             try:
                 rows = cursor.fetchall()
+                print("QUERY_OUTPUT")  # pylint: disable=print-used
                 for row in rows:
-                    print("\t".join(row))  # pylint: disable=print-used
+                    if isinstance(row, tuple):
+                        print_line = "\t".join(map(str, row))
+                    else:
+                        print_line = str(row)
+                    print(print_line)  # pylint: disable=print-used
+                print("END QUERY_OUTPUT")  # pylint: disable=print-used
             except ProgrammingError:
                 pass
         except Exception as e:
