@@ -2,22 +2,21 @@
 
 launch: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
-	godoo source get
-	godoo launch --dev-mode --odoo-demo --multithread-worker-count=4
+	GODOO_BOOSTRAP_ARGS="--odoo-demo" GODOO_LAUNCH_ARGS="--dev-mode" scripts/launchodoo.sh
 
 quick: # To be called from inside the Devcontainer
 # Bootstrap or Launch, Install/Upgrade Workspace addons, Keep running.
 	godoo launch --dev-mode --no-install-workspace-modules
 
 kill: # to be called from inside the devcontainer
-	kill $(ps aux | grep 'odoo-bin -' | awk '{print $2}')
+	pgrep -f odoo-bin | xargs kill -s KILL
 
 offline:
 # Bootstrap, but without git clone/pull
 	godoo launch --dev-mode --no-update-source
 
 bare:
-	godoo launch --no-install-modules
+	GODOO_BOOSTRAP_ARGS="--no-install-workspace-modules" scripts/launchodoo.sh
 
 reset:
 # Deletes Devcontainer Volumes and Restarts devcontainer
@@ -28,4 +27,4 @@ reset-hard: # To be called from Outside the Devcontainer
 	scripts/reset_devcontainer.sh --hard
 
 rebuild:
-	DOCKER_BUILDKIT=1 docker build --ssh default --target devcontainer . --no-cache
+	DOCKER_BUILDKIT=1 docker build --ssh default --target devcontainer ./docker --no-cache

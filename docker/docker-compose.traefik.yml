@@ -5,26 +5,15 @@ services:
     networks:
       - default
       - traefik
+    environment:
+      - ODOO_DB_HOST=db.${COMPOSE_PROJECT_NAME}_default # To avoid conflicts with other Odoo instances through the traefik network
     labels:
       - traefik.enable=true
 
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.service=${COMPOSE_PROJECT_NAME}
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=websecure
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=HostRegexp(`${TRAEFIK_HOST_REGEX}`)
-      - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=8069
-
-      # Odoo <=15 Longpolling Config
-      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}-longpoll.service=${COMPOSE_PROJECT_NAME}-longpoll
-      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}-longpoll.entrypoints=websecure
-      # - traefik.http.routers.${COMPOSE_PROJECT_NAME}-longpoll.rule=HostRegexp(`${TRAEFIK_HOST_REGEX}`) && PathPrefix(`/longpolling`)
-      # - traefik.http.services.${COMPOSE_PROJECT_NAME}-longpoll.loadbalancer.server.port=8072
-
-      - traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-websocket.service=${COMPOSE_PROJECT_NAME}-websocket
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-websocket.entrypoints=websecure
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-websocket.rule=HostRegexp(`${TRAEFIK_HOST_REGEX}`) &&
-        PathPrefix(`/websocket`)
-      - traefik.http.services.${COMPOSE_PROJECT_NAME}-websocket.loadbalancer.server.port=8072
+      - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=80
 
 networks:
   traefik:

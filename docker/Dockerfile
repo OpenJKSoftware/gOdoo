@@ -11,6 +11,8 @@ ARG PROD_IMAGE=python:3.8-slim-bullseye
 
 ARG NODE_VERSION=16.17.1
 ARG NVM_VERSION=v0.39.1
+ARG SOURCE_CLONE_ARCHIVE=False
+
 
 FROM ${DEV_IMAGE} as dev_base
 ARG WORKSPACE
@@ -23,15 +25,14 @@ ENV ODOO_CONF_PATH=${WORKSPACE}/config/odoo.conf \
     ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
     ODOO_THIRDPARTY_ZIP_LOCATION=${WORKSPACE}/thirdparty
 
-
 ARG VIRTUAL_ENV
 # Path Env Vars:
 ENV VIRTUAL_ENV=${VIRTUAL_ENV}
-ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE/src:$PYTHONPATH" \
+ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
     PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$VIRTUAL_ENV/bin:$PATH"
-RUN python -m venv ${VIRTUAL_ENV}
+RUN set -ex; python -m venv ${VIRTUAL_ENV}
 
-ARG SOURCE_CLONE_ARCHIVE=False
+ARG SOURCE_CLONE_ARCHIVE
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
 # Install Dependencies
@@ -62,7 +63,6 @@ RUN touch README.md && poetry install --all-extras --no-interaction --no-ansi
 # RUN pip install godoo-cli[devcontainer,codequality]
 # ---------------------------------------------------------------------------------------------------------
 
-
 COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml ./
 
 # Install everything from Odoo requirements.txt, by downloading its raw contents
@@ -83,12 +83,12 @@ RUN set -ex ; \
 # Download Odoo Addons and unpack .zip Addons
 FROM dev_base as oodo_addon_source
 ARG USERNAME
-COPY thirdparty thirdparty
 RUN --mount=type=ssh set -ex; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
     && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK || true \
-    && godoo source get thirdparty \
-    && godoo source get zip
+    && godoo source get thirdparty
+COPY thirdparty thirdparty
+RUN godoo source get zip
 
 
 # Image for Devserver (Start in Entrypoint)
@@ -109,29 +109,56 @@ ENV VIRTUAL_ENV=$VIRTUAL_ENV
 ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
     PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$VIRTUAL_ENV/bin:$PATH"
 
+
+RUN set -ex ;\
+    apt-get update \
+    && apt-get install \
+    lsb-release \
+    git \
+    libpq-dev \
+    libldap2-dev \
+    libsasl2-2 \
+    nginx \
+    supervisor \
+    libcupsimage2-dev \
+    cups-client \
+    rsync \
+    curl \
+    postgresql-client \
+    -y --no-install-recommends
 COPY docker/install_wkhtmltopdf.sh /tmp/install_wkhtmltopdf.sh
 RUN bash /tmp/install_wkhtmltopdf.sh
-
-RUN apt-get update && apt-get install git libpq-dev libldap2-dev libsasl2-2 -y --no-install-recommends
 
 COPY --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
 COPY --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
 COPY --from=odoo_requirements $VIRTUAL_ENV $VIRTUAL_ENV
 
-RUN set -x; \
+COPY ../config/nginx.conf /etc/nginx/nginx.conf
+COPY ../config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY ../scripts/launchodoo.sh launchodoo.sh
+COPY ../scripts/migrations migrations
+
+COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml $ODOO_MANIFEST
+ARG SOURCE_CLONE_ARCHIVE
+ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
+
+RUN set -ex; \
     mkdir -p /var/lib/odoo \
     && rm -rf {/tmp/*,/var/cache/apt,/var/lib/apt/lists/*}
 COPY ./addons $ODOO_WORKSPACE_ADDON_LOCATION
 
 EXPOSE 8069 8071 8072
-ENTRYPOINT [ "godoo" ,"launch"]
+ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
 
 
 # Copy Addons and Odoo Source into image with requirements.
 FROM dev_base as dev_odoo
 # Intall WKHTMLtoPDF
 COPY docker/install_wkhtmltopdf.sh /tmp/install_wkhtmltopdf.sh
-RUN bash /tmp/install_wkhtmltopdf.sh
+RUN set -ex; sudo bash /tmp/install_wkhtmltopdf.sh
+RUN sef -ex; \
+    sudo apt-get install imagemagick poppler-utils -y --no-install-recommends \
+    && pip install diff-pdf-visually
 
 ARG USERNAME
 COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
@@ -141,31 +168,31 @@ RUN set -ex; \
     sudo mkdir -p /var/lib/odoo \
     && sudo chown -R ${USERNAME}:${USERNAME} /var/lib/odoo
 
-
 # Stage for testing, because we need the workspace with git available for delta checking
 FROM dev_odoo as test
 ARG USERNAME
-RUN sudo rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
+RUN set -ex; sudo rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
 ADD --chown=${USERNAME}:${USERNAME} . .
-ENTRYPOINT [ "godoo","-v", "test" ,"all" ]
+ENTRYPOINT [ "godoo", "test" ,"all" ]
 
 
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
 FROM dev_odoo as devcontainer
 
 # Instal godoo autocomplete. Env var to disable shellingham, as docker doesnt run in a shell
-RUN _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
+RUN set -ex; _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
 
 ARG USERNAME
 ARG NVM_VERSION
 ARG NODE_VERSION
 ENV NVM_DIR=/usr/local/nvm \
     NODE_VERSION=${NODE_VERSION}
-RUN sudo install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
+RUN set -ex; sudo install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
 USER ${USERNAME}
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
 # install node and npm
-RUN source $NVM_DIR/nvm.sh \
+RUN set -ex; \
+    source $NVM_DIR/nvm.sh \
     && nvm install $NODE_VERSION \
     && nvm alias default $NODE_VERSION \
     && npm config -g set cafile /etc/ssl/certs/ca-certificates.crt \
@@ -180,21 +207,26 @@ RUN set -ex; \
     echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
-    && apt-get -y install --no-install-recommends postgresql-client-15 netcat \
+    && apt-get -y install --no-install-recommends postgresql-client-16 netcat \
     && mkdir -p /home/${USERNAME}/{.vscode-server/extensions,.cache/pre-commit} \
     && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache} \
     && mkdir -p /etc/cups \
     && echo "ServerName cups:631" > /etc/cups/client.conf \
     && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf
+
 ARG WORKSPACE
 ENV ODOO_PRINT_PDF_LOCATION=$WORKSPACE
 
-# Separate statement, because it removes cache.
-# We also remove everything in $workspace here, because we expect that to be mounted in in a devcontainer
-RUN rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}
+RUN set -ex; \
+    rm -rf /tmp/* \
+    && apt-get install nginx -y --no-install-recommends \
+    && usermod -a -G www-data ${USERNAME} \
+    && chown -R ${USERNAME} {/var/lib/nginx,/var/log/nginx}
 
 USER ${USERNAME}
-RUN npm install -g prettier eslint
-RUN pip install pydevd-odoo pre-commit && git config --global --add safe.directory ${WORKSPACE}
+RUN set -ex; \
+    npm install -g prettier eslint \
+    && pip install pydevd-odoo pre-commit jingtrang \
+    && git config --global --add safe.directory ${WORKSPACE}
 ENV EDITOR=code
-ENTRYPOINT [ "sleep", "infinity" ]
+ENTRYPOINT  [ "/bin/sh", "-c", "sudo nginx -c /odoo/config/nginx.conf; sleep infinity"]

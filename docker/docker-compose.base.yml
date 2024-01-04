@@ -12,6 +12,8 @@ services:
     environment:
       - ODOO_DB_HOST=db
       - ODOO_DB_PORT=5432
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Link host as dns
     env_file:
       - .env
     depends_on:
@@ -20,9 +22,10 @@ services:
       - "/etc/localtime:/etc/localtime:ro"
       - "odoo_web:/var/lib/odoo"
       - "config:/odoo/config"
+      - "cache:/var/cache"
 
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     environment:
       - TZ=${TZ:-Europe/Berlin}
       - POSTGRES_DB=postgres
@@ -35,5 +38,6 @@ services:
 
 volumes:
   config:
+  cache:
   db:
   odoo_web:

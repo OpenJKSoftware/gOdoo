@@ -26,10 +26,10 @@ reset_docker () {
 
     CONTAINERS=$(docker compose ps -a --format "{{.Names}}")
     remove_odoo_config
-    if [ ! -z "$CONTAINERS"]; then
+    if [ ! -z "$CONTAINERS" ]; then
         # Get Docker compose volume names
         VOLUMES=$(docker inspect $CONTAINERS --format "{{range .Mounts}}{{if .Name}}{{.Name}} {{end}}{{end}}" | xargs)
-        VOLUMES=$(echo $VOLUMES | gep -Ev '(^vscode$)') # Dont delete the vscode volume, as that is shared between all projects.
+        VOLUMES=$(echo $VOLUMES | grep -Ev '(^vscode$)') # Dont delete the vscode volume, as that is shared between all projects.
 
         if [ "$RESET_ALL" = "false" ]; then
             VOLUMES=$(echo $VOLUMES | grep -Ev '(_vscode_server$|_commandhistory|_pre_commit_cache$)')
@@ -45,11 +45,16 @@ reset_docker () {
             echo "==> Removing Dev-Volumes"
             docker volume rm -f $VOLUMES
         fi
-    fi
 
-    if [ "$RESET_ALL" = "true" ]; then
-        echo "==> Pulling latest Docker Images"
-        docker compose -f docker-compose.base.yml -f docker-compose.devcontainer.yml build --pull --no-cache
+        if [ "$RESET_ALL" = "true" ]; then
+            echo "==> Pulling latest Docker Images"
+            cd $PROJ_FOLDER/docker
+            docker compose pull
+            echo "==> Removing Docker Images"
+            docker compose rm -f
+            rm -rf $PROJ_FOLDER/remote_instance_data/upgrade_extract
+        fi
+
     fi
 }
 
@@ -70,19 +75,22 @@ reset_native () {
     PGPASSWORD=$ODOO_DB_PASSWORD createdb -U $ODOO_DB_USER -h $ODOO_DB_HOST -p $ODOO_DB_PORT $ODOO_MAIN_DB --owner=$ODOO_DB_USER
 
     echo "==> Deleting Valib"
-    sudo rm -rf /var/lib/odoo/*
+    if [ ! -n $RESET_KEEP_VARLIB ]; then
+        sudo rm -rf /var/lib/odoo/*
+    fi
 
     remove_odoo_config
 
     if [ "$RESET_ALL" = "true"  ] && [ ! -z $ODOO_THIRDPARTY_LOCATION ]; then
         echo "==> Clearing Thirdparty Volume"
         rm -rf $ODOO_THIRDPARTY_LOCATION/*
+        rm -rf $PROJ_FOLDER/remote_instance_data/upgrade_extract
     fi
 
 }
 
 
-if [ ! "$WORKSPACE_IS_DEV" = true ]  ; then
+if [ ! "$WORKSPACE_IS_DEV" = true ]; then
     read -p "==> This is not a Dev Env. Continue (y/n)?" choice
     case "$choice" in
     n|N ) exit 1;;
@@ -91,8 +99,7 @@ if [ ! "$WORKSPACE_IS_DEV" = true ]  ; then
     esac
 fi
 
-if [ ! -z $(which odoo-bin) ] # If odoo-bin is in path, were probably native.
-then
+if [ ! -z $(which odoo-bin) ]; then
     reset_native
     exit 0
 fi

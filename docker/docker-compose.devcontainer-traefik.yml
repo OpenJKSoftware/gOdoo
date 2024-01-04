@@ -7,11 +7,20 @@ services:
       - traefik
     labels:
       - traefik.enable=true
-
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}-cups.service=${COMPOSE_PROJECT_NAME}-cups
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}-cups.entrypoints=websecure
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}-cups.rule=HostRegexp(`cups-${TRAEFIK_HOST_REGEX}`)
       - traefik.http.services.${COMPOSE_PROJECT_NAME}-cups.loadbalancer.server.port=631
+  db:
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.tcp.routers.${COMPOSE_PROJECT_NAME}-psql.entrypoints=internal
+      - traefik.tcp.routers.${COMPOSE_PROJECT_NAME}-psql.rule=HostSNIRegexp(`db-${TRAEFIK_HOST_REGEX}`)
+      - traefik.tcp.routers.${COMPOSE_PROJECT_NAME}-psql.tls=true
+      - traefik.tcp.services.${COMPOSE_PROJECT_NAME}-psql.loadbalancer.server.port=5432
 
 networks:
   traefik:

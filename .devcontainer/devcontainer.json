@@ -20,20 +20,18 @@
       "extensions": [
         // Python:
         "ms-python.python",
-        "ms-python.vscode-pylance",
+        "ms-python.isort",
         "ms-python.pylint",
         "ms-python.black-formatter",
-        "ms-python.isort",
         "oderwat.indent-rainbow",
         "njpwerner.autodocstring",
-        "visualstudioexptteam.vscodeintellicode",
         // Database:
         "mtxr.sqltools",
         "mtxr.sqltools-driver-pg",
         // Odoo:
         "jigar-patel.odoosnippets",
-        "scapigliato.vsc-odoo-development",
-        // "trinhanhngoc.vscode-odoo",
+        "trinhanhngoc.vscode-odoo",
+        "Odoo.owl-vision",
         // Git Tools:
         "eamodio.gitlens",
         "mhutchie.git-graph",
@@ -45,31 +43,44 @@
         "mechatroner.rainbow-csv",
         "janisdd.vscode-edit-csv",
         // Misc:
-        "bungcip.better-toml",
+        "tamasfe.even-better-toml",
         "gruntfuggly.todo-tree",
         "naumovs.color-highlight",
         "esbenp.prettier-vscode",
-        "christian-kohler.path-intellisense",
         "yzhang.markdown-all-in-one",
+        "alefragnani.Bookmarks",
+        "stackbreak.comment-divider",
+        "tomoki1207.pdf",
         "seatonjiang.gitmoji-vscode",
         // Copilot:
-        "Github.copilot",
-        "GitHub.copilot-chat"
+        "github.copilot",
+        "github.copilot-chat"
       ],
       "settings": {
+        // General Settings:
         "files.insertFinalNewline": true,
-        "editor.snippetSuggestions": "bottom",
         "editor.formatOnSave": true,
-        "editor.codeActionsOnSave": {
-          "source.sortImports": true
-        },
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
         "terminal.integrated.scrollback": 10000,
+        // Python Settings:
+        "python.pythonPath": "/odoo/venv/bin/python",
+        "python.defaultInterpreterPath": "/odoo/venv/bin/python",
+        "python.languageServer": "None", // Disable because of Odoo IDE Extension
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+          // XML Settings:
+        },
+        "xml.format.preserveAttributeLineBreaks": false,
+        "xml.format.joinCommentLines": false,
+        "xml.format.maxLineWidth": 0,
+        "[xml]": {
+          "editor.defaultFormatter": "redhat.vscode-xml"
+        },
         // SQL Tools with Connection to db devcontainer:
         "sqltools.connections": [
           {
             "name": "OdooDB",
             "driver": "PostgreSQL",
-            "previewLimit": 50,
             "server": "db",
             "port": 5432,
             "database": "odoo",
@@ -79,21 +90,9 @@
         ],
         "sqltools.autoOpenSessionFiles": false,
         "sqltools.highlightQuery": true,
-        // Python Settings:
-        "python.pythonPath": "/odoo/venv/bin/python",
-        "python.defaultInterpreterPath": "/odoo/venv/bin/python",
-        "python.languageServer": "Pylance",
-        "[python]": {
-          "editor.codeActionsOnSave": {
-            "source.organizeImports": true
-          },
-          "editor.defaultFormatter": "ms-python.black-formatter"
-        },
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
-        "[xml]": {
-          "editor.defaultFormatter": "redhat.vscode-xml",
-          "xml.format.joinCommentLines": false
-        }
+        // Misc Addons Settings:
+        "todo-tree.general.tags": ["BUG", "HACK", "FIXME", "TODO", "XXX", "[ ]", "[x]", "V16"],
+        "bookmarks.sideBar.expanded": true
       }
     }
   }
