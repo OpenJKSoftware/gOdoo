@@ -91,7 +91,6 @@ def is_bootstrapped(
     db_password=CLI.database.db_password,
 ):
     """Check if the database is empty. Return code  = 1 if database does not exist, 2 if database is empty, 0 if database is not empty."""
-    check_dangerous_command()
     connection = DBConnection(
         hostname=db_host,
         port=db_port,
