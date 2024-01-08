@@ -12,4 +12,4 @@ def check_dangerous_command():
 Please set 'WORKSPACE_IS_DEV=true' as environment Variable to continue
             """
         )
-        exit(1)
+        exit(420)
