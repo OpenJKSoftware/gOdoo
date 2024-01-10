@@ -28,7 +28,9 @@ def query_database(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
 ):
-    """Run a Query against the database."""
+    """Run a Query against the database.
+    Queries, with return values will be printed to stdout between "START QUERY_OUTPUT" and "END QUERY_OUTPUT".
+    """
 
     # read stdin if query is not provided
     if query == "-":
@@ -47,20 +49,20 @@ def query_database(
     )
     with connection.connect() as cursor:
         try:
-            LOGGER.info("Running Query: %s", query)
+            LOGGER.info("Running Query against Odoo DB: %s", query)
             cursor.execute(query)
             LOGGER.info("Affected Rows: %s", cursor.rowcount)
             try:
                 rows = cursor.fetchall()
-                print("QUERY_OUTPUT")  # pylint: disable=print-used
+                # Use Print here to write to Stdout.
+                # START and END query are there to help parsing the actual output
+                print("START QUERY_OUTPUT")  # pylint: disable=print-used
                 for row in rows:
-                    if isinstance(row, tuple):
-                        print_line = "\t".join(map(str, row))
-                    else:
-                        print_line = str(row)
+                    print_line = "\t".join(map(str, row)) if isinstance(row, tuple) else str(row)
                     print(print_line)  # pylint: disable=print-used
                 print("END QUERY_OUTPUT")  # pylint: disable=print-used
             except ProgrammingError:
+                # When there is nothing to fetch, fetchall() raises a ProgrammingError
                 pass
         except Exception as e:
             LOGGER.exception(e)
