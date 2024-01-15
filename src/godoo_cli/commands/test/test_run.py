@@ -30,7 +30,7 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
                 addon_path=workspace_addon_path,
             )
             out_modules = changed_modules
-            return [p.stem for p in out_modules]
+        return [p.stem for p in out_modules]
     return in_modules
 
 
