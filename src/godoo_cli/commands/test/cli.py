@@ -1,7 +1,7 @@
 import typer
 
 from .test_load_data import odoo_load_test_data
-from .test_run import odoo_run_tests
+from .test_run import odoo_get_changed_modules, odoo_run_tests
 
 
 def test_cli_app():
@@ -11,5 +11,6 @@ def test_cli_app():
     )
     app.command(name="run")(odoo_run_tests)
     app.command(name="load-data")(odoo_load_test_data)
+    app.command(name="get-changed-modules")(odoo_get_changed_modules)
 
     return app

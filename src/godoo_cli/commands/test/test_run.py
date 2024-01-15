@@ -7,7 +7,7 @@ import typer
 from typing_extensions import Annotated
 
 from ...cli_common import CommonCLI
-from ...helpers.odoo_files import get_changed_modules, get_depends_of_module, get_odoo_module_paths
+from ...helpers.odoo_files import get_changed_modules_and_depends, get_odoo_module_paths
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
 from ..launch import pre_launch
@@ -19,26 +19,31 @@ LOGGER = logging.getLogger(__name__)
 
 def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Path):
     if len(in_modules) == 1:
-        command = in_modules[0]
         out_modules = []
+        command = in_modules[0]
         if command == "all":
             out_modules = get_odoo_module_paths(workspace_addon_path)
-
-        if re_match := re.match(r"changes\:(.*)", command):
+        elif re_match := re.match(r"changes\:(.*)", command):
             compare_branch = re_match.group(1)
-            changed_modules = get_changed_modules(addon_path=workspace_addon_path, diff_branch=compare_branch)
-            if not changed_modules:
-                return []
-            change_modules_depends = []
-            for module in changed_modules:
-                change_modules_depends += get_depends_of_module(
-                    out_modules, module, already_done_modules=change_modules_depends
-                )
-            out_modules = changed_modules + change_modules_depends
-        if out_modules:
-            out_modules_with_tests = [p for p in out_modules if any(p.rglob("tests/__init__.py"))]
-            return [p.stem for p in out_modules_with_tests]
+            changed_modules = get_changed_modules_and_depends(
+                diff_ref=compare_branch,
+                addon_path=workspace_addon_path,
+            )
+            out_modules = changed_modules
+            return [p.stem for p in out_modules]
     return in_modules
+
+
+@CLI.arg_annotator
+def odoo_get_changed_modules(
+    diff_ref: str = typer.Argument(..., help="Git Ref/Branch to compare against"),
+    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+):
+    """Get Modules that have changed compared to diff_ref"""
+    changed_modules = get_changed_modules_and_depends(diff_ref=diff_ref, addon_path=workspace_addon_path)
+    if not changed_modules:
+        return
+    print("\n".join(sorted([p.stem for p in changed_modules])))  # pylint: disable=print-used
 
 
 @CLI.arg_annotator

@@ -98,7 +98,7 @@ def get_odoo_module_paths(
             raise FileNotFoundError(f"Could not find odoo addon folder: '{folder}'")
         for folder in folder.iterdir():
             if folder_is_odoo_module(folder):
-                module_paths.append(folder)
+                module_paths.append(folder.absolute())
     if module_names:
         module_names = [m for m in module_names if m != "base"]
         filtered_module_paths = [p for p in module_paths if p.stem in module_names]
@@ -110,7 +110,7 @@ def get_odoo_module_paths(
 
 def get_changed_modules(
     addon_path: Path,
-    diff_branch: str,
+    diff_ref: str,
 ) -> List[Path]:
     """Get Paths of changed modules since git diff.
 
@@ -118,7 +118,7 @@ def get_changed_modules(
     ----------
     addon_path : Path
         Folder in git repo where to look for changes
-    diff_branch : str
+    diff_ref : str
         Branch or diffable ref for git
 
     Returns
@@ -127,10 +127,11 @@ def get_changed_modules(
         List of Paths where something has changed since git diff
     """
     addon_path = addon_path.absolute()
+    odoo_module_paths = get_odoo_module_paths(addon_path)
     repo = Repo(addon_path, search_parent_directories=True)
     git_root = Path(repo.git.rev_parse("--show-toplevel"))
     changed_module_files = []
-    for change in repo.git.diff("--name-status", diff_branch).split("\n"):
+    for change in repo.git.diff("--name-status", diff_ref).split("\n"):
         path = git_root / change.split("\t")[1]
         if addon_path in path.parents:
             changed_module_files.append(path)
@@ -138,14 +139,15 @@ def get_changed_modules(
     changed_module_folders = []
     for f in changed_module_files:
         for pf in f.parents:
-            if pf.absolute() == addon_path.absolute():
-                break
-            if pf.absolute() not in changed_module_folders and folder_is_odoo_module(pf):
+            if pf.absolute() in odoo_module_paths:
                 changed_module_folders.append(pf.absolute())
+                break
+            if pf.absolute() == addon_path:
+                break
     if changed_module_folders:
         LOGGER.debug(
             "Found Modules changed to branch '%s':\n %s",
-            diff_branch,
+            diff_ref,
             changed_module_folders,
         )
     return changed_module_folders
@@ -196,6 +198,25 @@ def get_depends_of_module(
             LOGGER.warn("Could not find Dependency: '%s' in available modules", dep)
 
     return list(set(sub_depends))
+
+
+def get_changed_modules_and_depends(diff_ref: str, addon_path: Path):
+    """Get Modules that have changed compared to diff_ref and all their dependencies downstream"""
+    all_modules = get_odoo_module_paths(addon_path)
+    changed_modules = get_changed_modules(addon_path=addon_path, diff_ref=diff_ref)
+    if not changed_modules:
+        return []
+    change_modules_depends = []
+    changed_module_names = [p.stem for p in changed_modules]
+    for module in all_modules:
+        # Check if there are other modules in addon path, that depend on a changed module
+        module_manifest = module / "__manifest__.py"
+        manifest = literal_eval(module_manifest.read_text())
+        depends = manifest.get("depends", [])
+        for depend in depends:
+            if depend in changed_module_names:
+                change_modules_depends.append(module)
+    return list(set(changed_modules + change_modules_depends))
 
 
 def get_addon_paths(
