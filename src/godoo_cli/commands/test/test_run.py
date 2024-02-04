@@ -7,7 +7,12 @@ import typer
 from typing_extensions import Annotated
 
 from ...cli_common import CommonCLI
-from ...helpers.odoo_files import get_changed_modules_and_depends, get_odoo_module_paths
+from ...helpers.odoo_files import (
+    get_addon_paths,
+    get_changed_modules_and_depends,
+    get_depends_of_module,
+    get_odoo_module_paths,
+)
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
 from ..launch import pre_launch
@@ -19,6 +24,7 @@ LOGGER = logging.getLogger(__name__)
 
 def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Path):
     if len(in_modules) == 1:
+        # In _modules could be a command
         out_modules = []
         command = in_modules[0]
         if command == "all":
@@ -30,6 +36,8 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
                 addon_path=workspace_addon_path,
             )
             out_modules = changed_modules
+        else:
+            return in_modules
         return [p.stem for p in out_modules]
     return in_modules
 
@@ -75,6 +83,13 @@ def odoo_run_tests(
     """Bootstrap or Launch odoo in Testing Mode. Exits after Run, so no webserver is started. (Will set weird odoo.conf if it needs to bootstrap)"""
 
     test_modules = _test_modules_special_cases(test_modules, workspace_addon_path)
+    addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)
+    all_modules = get_odoo_module_paths(addon_paths)
+    depends = []
+    for module in test_modules:
+        module_path = next((p for p in all_modules if p.stem == module), None)
+        depends += get_depends_of_module(all_modules, module_path)
+    depends = list(set(depends))
 
     if skip_test_modules:
         skip_test_modules = [
@@ -92,13 +107,11 @@ def odoo_run_tests(
     module_list = ",".join(test_modules)
 
     LOGGER.info("Testing Odoo Modules:\n%s", sorted(test_modules))
-
-    bootstrap_args = [
-        f"--init {module_list}",
-        f"--log-level {odoo_log_level}",
-    ]
-    if re.search("(sale|account)", test_module_list, re.IGNORECASE):
-        bootstrap_args[0] += ",l10n_generic_coa"
+    if "account" in [p.stem for p in depends]:
+        bootstrap_args = [f"--init {module_list},l10n_generic_coa"]
+    else:
+        bootstrap_args = [f"--init {module_list}"]
+    bootstrap_args.append(f"--log-level {odoo_log_level}")
 
     launch_args = [
         f"-u {module_list}",

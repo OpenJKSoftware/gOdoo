@@ -34,11 +34,6 @@ def odoo_load_test_data(
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):
     """Run tests.data.generate_test_data fnction in Odoo shell for given modules. Ensures Modules are installed and odoo is bootstrapped"""
-
-    if not test_modules:
-        LOGGER.info("Nothing to Test. Skipping.")
-        return
-
     module_list_csv = ",".join(test_modules)
 
     LOGGER.info("Installing Test data for Odoo Modules:\n%s", sorted(test_modules))
