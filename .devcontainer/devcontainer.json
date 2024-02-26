@@ -11,7 +11,7 @@
   "shutdownAction": "stopCompose",
   "remoteUser": "ContainerUser",
   "initializeCommand": "./scripts/container_requirements.sh",
-  "postCreateCommand": "pre-commit install --install-hooks && echo 'Post Create Done'",
+  "postCreateCommand": "pre-commit install --install-hooks && echo '####################################################\nPost Create Done'",
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}/" // For Docker compose workspace bindmount
   },

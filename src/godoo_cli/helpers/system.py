@@ -80,11 +80,12 @@ def set_logging(verbose: bool = False) -> None:
         install_rich_traceback(suppress=[click, godoo_cli_helpers])
         logging.basicConfig(
             level=logging.DEBUG,
-            format="{message}",
+            format="[italic bright_black]{name}:[/] {message}",
             style="{",
             handlers=[
                 RichHandler(
                     level=logging.DEBUG,
+                    markup=True,
                     show_path=True,
                     rich_tracebacks=True,
                     tracebacks_show_locals=True,

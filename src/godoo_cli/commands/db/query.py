@@ -76,12 +76,12 @@ def _is_bootstrapped(db_connection: DBConnection) -> DB_BOOTSTRAP_STATUS:
         with db_connection.connect() as cursor:
             cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public');")
             if not cursor.fetchone()[0]:
-                LOGGER.warning("Database %s is empty", db_connection.db_name)
+                LOGGER.debug("Database '%s' is empty", db_connection.db_name)
                 return DB_BOOTSTRAP_STATUS.EMPTY_DB
-            LOGGER.debug("Database %s is not empty", db_connection.db_name)
+            LOGGER.debug("Database '%s' is not empty", db_connection.db_name)
             return DB_BOOTSTRAP_STATUS.BOOTSTRAPPED
     except OperationalError:
-        LOGGER.warning("Database %s does not exist", db_connection.db_name)
+        LOGGER.debug("Database '%s' does not exist", db_connection.db_name)
         return DB_BOOTSTRAP_STATUS.NO_DB
 
 
