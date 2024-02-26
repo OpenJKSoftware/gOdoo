@@ -7,12 +7,8 @@ import typer
 from typing_extensions import Annotated
 
 from ...cli_common import CommonCLI
-from ...helpers.odoo_files import (
-    get_addon_paths,
-    get_changed_modules_and_depends,
-    get_depends_of_module,
-    get_odoo_module_paths,
-)
+from ...helpers.modules import get_addon_paths, godooModules
+from ...helpers.modules_git import get_changed_modules_and_depends
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
 from ..launch import pre_launch
@@ -28,7 +24,7 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
         out_modules = []
         command = in_modules[0]
         if command == "all":
-            out_modules = get_odoo_module_paths(workspace_addon_path)
+            out_modules = godooModules(workspace_addon_path).get_modules()
         elif re_match := re.match(r"changes\:(.*)", command):
             compare_branch = re_match.group(1)
             changed_modules = get_changed_modules_and_depends(
@@ -38,7 +34,7 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
             out_modules = changed_modules
         else:
             return in_modules
-        return [p.stem for p in out_modules]
+        return [p.name for p in out_modules]
     return in_modules
 
 
@@ -82,32 +78,33 @@ def odoo_run_tests(
 ):
     """Bootstrap or Launch odoo in Testing Mode. Exits after Run, so no webserver is started. (Will set weird odoo.conf if it needs to bootstrap)"""
 
-    test_modules = _test_modules_special_cases(test_modules, workspace_addon_path)
+    test_module_names = _test_modules_special_cases(test_modules, workspace_addon_path)
     addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)
-    all_modules = get_odoo_module_paths(addon_paths)
+    module_reg = godooModules(addon_paths)
+    test_modules = list(module_reg.get_modules(test_module_names))
     depends = []
-    for module in test_modules:
-        module_path = next((p for p in all_modules if p.stem == module), None)
-        depends += get_depends_of_module(all_modules, module_path)
+    for mod in test_modules:
+        depends += module_reg.get_module_dependencies(mod)
     depends = list(set(depends))
 
     if skip_test_modules:
-        skip_test_modules = [
-            m for m in skip_test_modules if m in test_modules
-        ]  # Filter out skip mods that arent requested
+        skip_test_modules = [m for m in skip_test_modules if m not in test_module_names]
+        # Double filter for better logging here.
+        # First check if skippable modules are in the test_modules
         if skip_test_modules:
             LOGGER.info("Skipping Tests for Modules:\n%s", skip_test_modules)
-            test_modules = [m for m in test_modules if m not in skip_test_modules]
+            test_modules = [m for m in test_modules if m.name not in skip_test_modules]
 
     if not test_modules:
         LOGGER.info("Nothing to Test. Skipping.")
         return
 
-    test_module_list = ",".join(["/" + m for m in test_modules])
-    module_list = ",".join(test_modules)
+    module_names = [m.name for m in test_modules]
+    test_module_list = ",".join(["/" + m for m in module_names])
+    module_list = ",".join(module_names)
 
-    LOGGER.info("Testing Odoo Modules:\n%s", sorted(test_modules))
-    if "account" in [p.stem for p in depends]:
+    LOGGER.info("Testing Odoo Modules:\n%s", sorted(module_names))
+    if "account" in [p.name for p in depends]:
         bootstrap_args = [f"--init {module_list},l10n_generic_coa"]
     else:
         bootstrap_args = [f"--init {module_list}"]

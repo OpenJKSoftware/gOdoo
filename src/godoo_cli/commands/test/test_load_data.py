@@ -4,6 +4,7 @@ from typing import List
 import typer
 
 from ...cli_common import CommonCLI
+from ...helpers.modules import get_addon_paths, godooModules
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
 from ..launch import pre_launch
@@ -15,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 
 @CLI.arg_annotator
 def odoo_load_test_data(
-    test_modules: List[str] = typer.Argument(
+    test_module_names: List[str] = typer.Argument(
         ...,
         help="Modules to install and test (Use 'all' for all Workspace modules), ('changes:<branch> to compare git changes)",
     ),
@@ -34,9 +35,25 @@ def odoo_load_test_data(
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):
     """Run tests.data.generate_test_data fnction in Odoo shell for given modules. Ensures Modules are installed and odoo is bootstrapped"""
-    module_list_csv = ",".join(test_modules)
 
-    LOGGER.info("Installing Test data for Odoo Modules:\n%s", sorted(test_modules))
+    addon_paths = get_addon_paths(
+        odoo_main_repo=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
+    test_modules = list(godooModules(addon_paths).get_modules(test_module_names))
+    test_module_names = [m.name for m in test_modules]
+    module_list_csv = ",".join(test_module_names)
+    LOGGER.info("Installing Test data for Odoo Modules:\n%s", sorted(test_module_names))
+
+    missing = False
+    for module in test_modules:
+        data_file = module.path / "tests" / "data.py"
+        if not data_file.exists():
+            missing = True
+            LOGGER.error("Test Data.py file not found for module: %s", module)
+    if missing:
+        return CLI.returner(1)
 
     bootstrap_args = [
         f"--init {module_list_csv}",
@@ -85,12 +102,9 @@ def odoo_load_test_data(
         return CLI.returner(launch_cmd)
 
     for module in test_modules:
-        load_cmd = (
-            f"from odoo.addons.{module}.tests.data import generate_test_data; generate_test_data(env);env.cr.commit()"
-        )
+        load_cmd = f"from odoo.addons.{module.name}.tests.data import generate_test_data; generate_test_data(env);env.cr.commit()"
         LOGGER.info("Calling Test Data Generator for Module: %s", module)
         ret = odoo_shell(pipe_in_command=load_cmd, odoo_main_path=odoo_main_path, odoo_conf_path=odoo_conf_path)
         if ret != 0:
             LOGGER.error("Failed to generate test data for module: %s", module)
             return CLI.returner(ret)
-        LOGGER.info("Test Data Generated for Module: %s", module)

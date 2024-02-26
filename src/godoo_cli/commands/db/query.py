@@ -10,9 +10,9 @@ from .connection import DBConnection
 
 
 class DB_BOOTSTRAP_STATUS(Enum):
-    BOOTSTRAPPED = 0
-    NO_DB = 1
-    EMPTY_DB = 2
+    BOOTSTRAPPED = "bootstrapped"
+    NO_DB = "db missing"
+    EMPTY_DB = "db empty"
 
 
 LOGGER = logging.getLogger(__name__)

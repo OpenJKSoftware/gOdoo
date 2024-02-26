@@ -1,4 +1,5 @@
 """Commands to clone Odoo and addon source code"""
+
 import configparser
 import logging
 import shutil
@@ -12,8 +13,8 @@ from ruamel.yaml import YAML
 
 from ..cli_common import CommonCLI
 from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
-from ..helpers.bootstrap import _install_py_reqs_for_modules
-from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths, get_zip_addon_path
+from ..helpers.modules import get_addon_paths, get_zip_addon_path, godooModules
+from ..helpers.modules_py import _install_py_reqs_for_modules
 from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
 from .db.connection import DBConnection
@@ -60,20 +61,21 @@ def unpack_addon_archives(
             # We can have zip files with one or more modules.
             # Either the first folder contains multiple or its a module by itself
             # So first get the real modules form the zip root or one level down and then move them to subpaths
-            zip_module_paths = get_odoo_module_paths([td] + list(td.glob("*/")))
-            if not zip_module_paths:
+            possible_paths = [td] + list(td.glob("*/"))
+            zip_modules = list(godooModules(possible_paths).get_modules())
+            if not zip_modules:
                 LOGGER.warning("Could not find valid modules in thirdparty zip: %s", zip_file)
                 continue
             LOGGER.debug(
                 "Found modules in Zipfile:\n%s",
-                [str(f.relative_to(td)) for f in zip_module_paths],
+                [str(f.path.relative_to(td)) for f in zip_modules],
             )
-            target_folder = target_addon_folder / ("single_mods" if len(zip_module_paths) == 1 else zip_file.stem)
+            target_folder = target_addon_folder / ("single_mods" if len(zip_modules) == 1 else zip_file.stem)
             target_folder.mkdir(exist_ok=True)
-            for m in zip_module_paths:
-                module_target = target_folder / m.stem
+            for m in zip_modules:
+                module_target = target_folder / m.name
                 shutil.rmtree(module_target, ignore_errors=True)
-                shutil.move(m, module_target)
+                shutil.move(m.path, module_target)
 
 
 def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
@@ -122,7 +124,8 @@ def py_depends_by_db(
         thirdparty_addon_path=thirdparty_addon_path,
     )
     module_list = [m for m in module_list if m != "base"]
-    _install_py_reqs_for_modules(odoo_addon_paths, module_list)
+    modules = list(godooModules(odoo_addon_paths).get_modules(module_list))
+    _install_py_reqs_for_modules(modules)
 
 
 @CLI.arg_annotator
@@ -147,10 +150,10 @@ def get_installed_module_paths(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    module_list = [m for m in module_list if m != "base"]
-    module_paths = get_odoo_module_paths(odoo_addon_paths, module_names=module_list)
-    for p in module_paths:
-        print(p.absolute())  # pylint: disable=print-used
+    module_list = [m for m in module_list if not m == "base"]
+    modules = godooModules(odoo_addon_paths).get_modules(module_list)
+    for m in modules:
+        print(m.path.absolute())  # pylint: disable=print-used
 
 
 @CLI.unpacker
@@ -170,10 +173,13 @@ def py_depends_by_modules(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
+
     if len(module_list) == 1 and module_list[0] == "all":
         search_addon_paths = [p for p in odoo_addon_paths if odoo_main_path not in p.parents]
-        module_list = [p.stem for p in get_odoo_module_paths(search_addon_paths)]
-    _install_py_reqs_for_modules(odoo_addon_paths, module_list)
+        module_list = godooModules(search_addon_paths).get_modules()
+    else:
+        module_list = godooModules(odoo_addon_paths).get_modules(module_list)
+    _install_py_reqs_for_modules(module_list)
 
 
 @CLI.unpacker

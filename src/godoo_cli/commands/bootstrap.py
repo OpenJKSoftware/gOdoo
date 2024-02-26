@@ -8,8 +8,8 @@ import typer
 from typing_extensions import Annotated
 
 from ..cli_common import CommonCLI
-from ..helpers.bootstrap import _install_py_reqs_by_odoo_cmd
-from ..helpers.odoo_files import get_addon_paths, get_odoo_module_paths
+from ..helpers.modules import get_addon_paths, godooModules
+from ..helpers.modules_py import _install_py_reqs_by_odoo_cmd
 from ..helpers.system import run_cmd
 from .db.connection import DBConnection
 
@@ -85,7 +85,8 @@ def _boostrap_command(
     extra_cmd_args_str = " ".join(extra_cmd_args or [])
     if not re.search(r"(-i|--init) ", extra_cmd_args_str):
         if install_workspace_modules:
-            if workspace_addons := get_odoo_module_paths(workspace_addon_path):
+            workspace_modules = godooModules([workspace_addon_path])
+            if workspace_addons := workspace_modules.get_modules():
                 init_modules += [f.name for f in workspace_addons]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 

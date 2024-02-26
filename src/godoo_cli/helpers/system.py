@@ -1,8 +1,11 @@
 """Helper functions around the host system"""
+
 import datetime
+import json
 import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import List, Union
 
@@ -177,3 +180,24 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
         return True
     LOGGER.info("Aborting")
     return False
+
+
+def pip_install(package_names: List[str]):
+    """Ensure Pip Package is installed. But only when not already installed."""
+    installed_packages = run_cmd(
+        f"{sys.executable} -m pip list --format json --disable-pip-version-check",
+        check=True,
+        shell=True,
+        stdout=subprocess.PIPE,
+    ).stdout.decode("utf-8")
+    installed_packages = json.loads(installed_packages)
+    installed_packages = [p.get("name") for p in installed_packages]
+    if missing_packages := [p for p in package_names if p not in installed_packages]:
+        LOGGER.info("Installing Python requirements: %s", missing_packages)
+        res = run_cmd(
+            f"{sys.executable} -m pip install {' '.join(missing_packages)} --disable-pip-version-check", shell=True
+        )
+        if res.returncode != 0:
+            raise FileNotFoundError("Pip installation error at: %s" % missing_packages)
+        return res
+    LOGGER.debug("No py Requirements to be installed")

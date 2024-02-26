@@ -7,7 +7,8 @@ from typing import List
 import typer
 
 from ..cli_common import CommonCLI
-from ..helpers.odoo_files import get_odoo_module_paths, odoo_bin_get_version
+from ..helpers.modules import godooModules
+from ..helpers.odoo_files import odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .db.connection import DBConnection
@@ -42,7 +43,7 @@ def _launch_command(
     upgrade_workspace_modules : bool, optional
         upgrade workspace addons, by default True
     """
-    upgrade_addons = [f.name for f in get_odoo_module_paths(workspace_addon_path)] if upgrade_workspace_modules else []
+    upgrade_addons = [f.name for f in godooModules(workspace_addon_path)] if upgrade_workspace_modules else []
     if any(["-u" in i or "--update" in i for i in extra_cmd_args]):
         upgrade_addons = []
     update_addon_string = "--update " + ",".join(upgrade_addons) if upgrade_addons else ""
@@ -73,7 +74,7 @@ def pre_launch(
     launch_or_bootstrap: bool = False,
     languages: str = "de_DE,en_US",
 ):
-    """Start Bootstrap if no config file is found. And return Launch CMD.
+    """Start Bootstrap if database is not bootstrapped. And return Launch CMD.
 
     Parameters
     ----------
@@ -121,11 +122,11 @@ def pre_launch(
         log_file_path.unlink(missing_ok=True)
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
-    bootstraped = odoo_conf_path.exists()
-    LOGGER.info("Bootstrap Flag Status: %s", bootstraped)
+    bootstraped = _is_bootstrapped(db_connection)
+    LOGGER.info("Bootstrap Flag Status: '%s'", bootstraped.value)
     ret = ""
     did_bootstrap = False
-    if not bootstraped:
+    if bootstraped != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
         _extra_bootstrap_args = extra_odoo_args.copy()
         if ea := extra_bootstrap_args:
             _extra_bootstrap_args += ea
@@ -143,14 +144,10 @@ def pre_launch(
             languages=languages,
         )
         bootstraped = ret == 0
-        if not bootstraped:
+        if not bootstraped or launch_or_bootstrap:
             return ret
         did_bootstrap = True
-        if install_workspace_addons and bootstraped:
-            install_workspace_addons = False
-
-        if launch_or_bootstrap:
-            return ret
+        install_workspace_addons = False
 
     if ea := extra_launch_args:
         extra_odoo_args += ea
@@ -158,7 +155,11 @@ def pre_launch(
     odoo_main_path = odoo_main_path
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
-    if _is_bootstrapped(db_connection) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
+    if (
+        bootstraped != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED
+        and _is_bootstrapped(db_connection) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED
+    ):
+        LOGGER.error("404 Database not found. Aborting Launch...")
         return 404
 
     update_odoo_conf(

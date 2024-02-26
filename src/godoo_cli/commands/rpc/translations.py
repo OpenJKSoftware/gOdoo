@@ -6,7 +6,7 @@ import typer
 from godoo_rpc.login import wait_for_odoo
 
 from ...cli_common import CommonCLI
-from ...helpers.odoo_files import get_odoo_module_paths
+from ...helpers.modules import godooModule, godooModules
 from .modules import rpc_get_modules
 
 CLI = CommonCLI()
@@ -36,19 +36,17 @@ def _dump_translation_for_module(module, target_path: Path):
 
 def _dump_translations(
     modules,
-    workspace_addon_path: Path,
+    godoo_modules: list[godooModule],
     upgrade_modules: bool = True,
 ):
     """Dump translations of given Modules into their addon folders.
 
     Parameters
     ----------
-    odoo_api : OdooApiWrapper
-        Odoo Api Wrapper
-    modules : _type_
+    modules : rpc modules
         Api Models of modules
-    workspace_addon_path : Path
-        path where those modules are installed
+    godoo_modules : list[godooModule]
+        godoo_module instances of modules
     upgrade_modules : bool, optional
         Wether to upgrade modules before dumping, by default True
     """
@@ -58,8 +56,11 @@ def _dump_translations(
         modules.button_immediate_upgrade()
 
     for mod in modules:
-        ex_path: Path = workspace_addon_path / mod.name / "i18n"
-        pot_path: Path = ex_path / (mod.name + ".pot")
+        godoo_mod = [m for m in godoo_modules if m.name == mod.name]
+        if not godoo_mod:
+            raise ValueError(f"Module {mod.name} not found in godoo_modules")
+        godoo_mod = godoo_mod[0]
+        pot_path: Path = godoo_mod.path / "i18n" / (mod.name + ".pot")
         _dump_translation_for_module(mod, pot_path)
 
 
@@ -82,17 +83,18 @@ def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
     if not workspace_folder:
         return
     workspace_folder = Path(workspace_folder)
-    addon_folders = get_odoo_module_paths(workspace_folder)
-    for fold in addon_folders:
-        if not incomplete or fold.name.startswith(incomplete):
-            yield fold.name
+
+    addons = godooModules(workspace_folder).get_modules()
+    for addon in addons:
+        if not incomplete or addon.name.startswith(incomplete):
+            yield addon.name
 
 
 @CLI.arg_annotator
 def dump_translations(
-    module_query=typer.Argument(
+    modules: list[str] = typer.Argument(
         ...,
-        help="Module Name(s) comma Seperated. Add % to force =ilike match. Only works in workspace addon path",
+        help="Module Name(s) space Seperated. Only works in workspace addon path",
         autocompletion=complete_workspace_addon_names,
     ),
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
@@ -103,10 +105,9 @@ def dump_translations(
     upgrade_modules: bool = typer.Option(True, help="Upgrade modules before exporting"),
 ):
     """Dump Translations of module to <module_folder>/i18n/<module_name>.pot"""
-    addon_path = workspace_addon_path
-    addon_folders = get_odoo_module_paths(addon_path)
-    valid_module_names = [str(p.stem) for p in addon_folders]
-    LOGGER.debug("Found modules:\n%s", valid_module_names)
+    godoo_modules = godooModules(workspace_addon_path).get_modules(modules)
+    module_names = [m.name for m in godoo_modules]
+    LOGGER.debug("Found modules: %s", module_names)
 
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,
@@ -115,13 +116,13 @@ def dump_translations(
         odoo_password=rpc_password,
     )
 
-    modules = rpc_get_modules(odoo_api, module_query, valid_module_names)
-    if not modules:
-        LOGGER.warning("No installed Modules found for Query string: '%s'", module_query)
+    rpc_modules = rpc_get_modules(odoo_api, modules, module_names)
+    if not rpc_modules:
+        LOGGER.warning("No installed Modules found for Query: '%s'", modules)
         return CLI.returner(1)
 
     _dump_translations(
-        modules=modules,
-        workspace_addon_path=addon_path,
+        modules=rpc_modules,
+        godoo_modules=godoo_modules,
         upgrade_modules=upgrade_modules,
     )
