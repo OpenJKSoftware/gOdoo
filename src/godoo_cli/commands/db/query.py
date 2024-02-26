@@ -61,6 +61,7 @@ def query_database(
                     print_line = "\t".join(map(str, row)) if isinstance(row, tuple) else str(row)
                     print(print_line)  # pylint: disable=print-used
                 print("END QUERY_OUTPUT")  # pylint: disable=print-used
+                cursor.commit()
             except ProgrammingError:
                 # When there is nothing to fetch, fetchall() raises a ProgrammingError
                 pass

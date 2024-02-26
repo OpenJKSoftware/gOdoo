@@ -51,6 +51,7 @@ def set_passwords(
     with connection.connect() as conn:
         try:
             conn.execute(f"UPDATE res_users SET password='{hashed_pw}'")
+            conn.commit()
         except Exception:
             raise typer.Exit(1)
     LOGGER.info("Password for all users set to: '%s'", new_password)
