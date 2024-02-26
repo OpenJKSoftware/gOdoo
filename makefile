@@ -27,4 +27,4 @@ reset-hard: # To be called from Outside the Devcontainer
 	scripts/reset_devcontainer.sh --hard
 
 rebuild:
-	DOCKER_BUILDKIT=1 docker build --ssh default --target devcontainer ./docker --no-cache
+	cd docker && docker compose -f docker-compose.base.yml -f docker-compose.devcontainer.yml build
