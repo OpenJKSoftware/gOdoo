@@ -184,6 +184,7 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
 
 def pip_install(package_names: List[str]):
     """Ensure Pip Package is installed. But only when not already installed."""
+    LOGGER.debug("Ensuring Pip Packages are installed:\n%s", package_names)
     installed_packages = run_cmd(
         f"{sys.executable} -m pip list --format json --disable-pip-version-check",
         check=True,
@@ -200,4 +201,3 @@ def pip_install(package_names: List[str]):
         if res.returncode != 0:
             raise FileNotFoundError("Pip installation error at: %s" % missing_packages)
         return res
-    LOGGER.debug("No py Requirements to be installed")
