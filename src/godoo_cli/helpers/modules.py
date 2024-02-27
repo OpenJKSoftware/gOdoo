@@ -29,6 +29,9 @@ class godooModule:
             return self.path.absolute() == __value.path.absolute()
         return False
 
+    def __hash__(self) -> int:
+        return hash(self.path.absolute())
+
     @property
     def manifest_file(self) -> Path:
         return self.path / "__manifest__.py"
@@ -63,8 +66,7 @@ class godooModules:
         """Get all Modules in Addon Paths or only the ones specified in module_names"""
         if module_names:
             for name in module_names:
-                if mod := self.get_module(name):
-                    yield mod
+                yield self.get_module(name)
         else:
             yield from self._get_modules()
 
@@ -100,13 +102,14 @@ class godooModules:
         deps = module.odoo_depends
         if dont_follow:
             deps = [d for d in deps if d not in dont_follow]
-        dont_follow = (dont_follow or []) + deps
-        dep_modules = [self.get_module(dep) for dep in deps]
-        for dep in dep_modules:
-            if not dep:
-                continue
-            deps += self.get_module_dependencies(dep, dont_follow)
-        return deps
+        if deps:
+            dont_follow = (dont_follow or []) + deps
+            dep_modules = list(self.get_modules(deps))
+            sub_dep_modules = []
+            for dep in dep_modules:
+                sub_dep_modules += self.get_module_dependencies(dep, dont_follow)
+            return dep_modules + sub_dep_modules
+        return []
 
 
 def get_zip_addon_path(thirdparty_path: Path) -> Path:
@@ -135,7 +138,7 @@ def get_addon_paths(
     List[Path]
         List of valid addon Paths
     """
-    odoo_addon_paths = [odoo_main_repo / "addons"]
+    odoo_addon_paths = [odoo_main_repo / "addons", odoo_main_repo / "odoo" / "addons"]
     if godooModules(workspace_addon_path).get_modules():
         odoo_addon_paths.append(workspace_addon_path)
     zip_addon_path = get_zip_addon_path(thirdparty_addon_path)

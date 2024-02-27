@@ -123,7 +123,7 @@ def py_depends_by_db(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    module_list = [m for m in module_list if m != "base"]
+    module_list = [m for m in module_list]
     modules = list(godooModules(odoo_addon_paths).get_modules(module_list))
     _install_py_reqs_for_modules(modules)
 
@@ -150,7 +150,7 @@ def get_installed_module_paths(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    module_list = [m for m in module_list if not m == "base"]
+    module_list = [m for m in module_list]
     modules = godooModules(odoo_addon_paths).get_modules(module_list)
     for m in modules:
         print(m.path.absolute())  # pylint: disable=print-used
