@@ -54,7 +54,13 @@ def odoo_get_changed_modules(
 def odoo_run_tests(
     test_modules: List[str] = typer.Argument(
         ...,
-        help="Modules to install and test (Use 'all' for all Workspace modules), ('changes:<branch> to compare git changes)",
+        help="""
+        Space separated list of Modules to Test or special commands:
+
+         'all' for all modules in `workspace_addon_path`
+
+         'changes:<ref>' detect modules by changed files compared to <ref> (git diff)
+        """,
     ),
     odoo_main_path=CLI.odoo_paths.bin_path,
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
@@ -76,7 +82,10 @@ def odoo_run_tests(
     odoo_log_level: str = typer.Option("test", help="Log level"),
     pregenerate_assets: Annotated[bool, typer.Option(help="Pregenerate assets before running tests")] = True,
 ):
-    """Bootstrap or Launch odoo in Testing Mode. Exits after Run, so no webserver is started. (Will set weird odoo.conf if it needs to bootstrap)"""
+    """Bootstrap or Launch odoo in Testing Mode. Exits after Run, so no webserver is started.
+
+    Will set test specific odoo.conf if it needs to bootstrap
+    """
 
     test_module_names = _test_modules_special_cases(test_modules, workspace_addon_path)
     addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)

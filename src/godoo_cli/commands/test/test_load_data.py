@@ -16,9 +16,15 @@ LOGGER = logging.getLogger(__name__)
 
 @CLI.arg_annotator
 def odoo_load_test_data(
-    test_module_names: List[str] = typer.Argument(
+    test_modules: List[str] = typer.Argument(
         ...,
-        help="Modules to install and test (Use 'all' for all Workspace modules), ('changes:<branch> to compare git changes)",
+        help="""
+        Space separated list of Modules to Test or special commands:
+
+         'all' for all modules in `workspace_addon_path`
+
+         'changes:<ref>' detect modules by changed files compared to <ref> (git diff)
+        """,
     ),
     odoo_main_path=CLI.odoo_paths.bin_path,
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
@@ -34,20 +40,24 @@ def odoo_load_test_data(
     odoo_log_level: str = typer.Option("test", help="Log level"),
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):
-    """Run tests.data.generate_test_data fnction in Odoo shell for given modules. Ensures Modules are installed and odoo is bootstrapped"""
+    """Loads Test Data from test/data.py of given modules into Odoo DB.
+
+    Makes sure Odoo is Bootstrapped with the given modules and then
+    Calls `tests.data.generate_test_data(env)` for each module.
+    """
 
     addon_paths = get_addon_paths(
         odoo_main_repo=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    test_modules = list(godooModules(addon_paths).get_modules(test_module_names))
-    test_module_names = [m.name for m in test_modules]
+    godoo_test_modules = list(godooModules(addon_paths).get_modules(test_modules))
+    test_module_names = [m.name for m in godoo_test_modules]
     module_list_csv = ",".join(test_module_names)
     LOGGER.info("Installing Test data for Odoo Modules:\n%s", sorted(test_module_names))
 
     missing = False
-    for module in test_modules:
+    for module in godoo_test_modules:
         data_file = module.path / "tests" / "data.py"
         if not data_file.exists():
             missing = True
@@ -101,7 +111,7 @@ def odoo_load_test_data(
         LOGGER.debug("Launch Return: %s", launch_cmd)
         return CLI.returner(launch_cmd)
 
-    for module in test_modules:
+    for module in godoo_test_modules:
         load_cmd = f"from odoo.addons.{module.name}.tests.data import generate_test_data; generate_test_data(env);env.cr.commit()"
         LOGGER.info("Calling Test Data Generator for Module: %s", module)
         ret = odoo_shell(pipe_in_command=load_cmd, odoo_main_path=odoo_main_path, odoo_conf_path=odoo_conf_path)
