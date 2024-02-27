@@ -25,16 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
       - name: Install Poetry
         run: pipx install poetry
       - name: Add Poetry Version for __init__.py
         run: poetry self add poetry-bumpversion
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.8"
-          cache: "poetry"
       - name: Setup git config
         run: |
           git config user.name "GitHub Actions Bot"
@@ -54,24 +49,57 @@ jobs:
           git commit -m "🔖 Package ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} to ${{ steps.bump_version.outputs.BUMPED_VERSION }}"
       - name: Git push
         run: |
-          git push origin release
+          git push origin release --force
       - name: Create Pull Request
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const { repo, owner } = context.repo;
+
+            let page = 1;
+            let bumpCommits = [];
+            let shouldContinue = true;
+
+            while (shouldContinue) {
+              const { data: commits } = await github.rest.repos.listCommits({
+                owner: owner,
+                repo: repo,
+                per_page: 100,
+                page: page++
+              });
+
+              for (const commit of commits) {
+                if (commit.commit.message.startsWith('🔖')) {
+                  shouldContinue = false;
+                  break;
+                } else {
+                  const firstLine = commit.commit.message.split('\n')[0];
+                  const commitLink = `- [${firstLine}](${commit.html_url})`;
+                  bumpCommits.push(commitLink);
+                }
+              }
+              if (commits.length < 100) {
+                // Break on last page
+                shouldContinue = false;
+              }
+            }
+
+            let bodyText = [
+              'Bumps Package Version ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} --> ${{ steps.bump_version.outputs.BUMPED_VERSION }},',
+              '',
+              '# What\'s Changed',
+              '',
+              ...bumpCommits
+            ].join('\n');
+            console.log("PR Text: ", bodyText)
+
             const result = await github.rest.pulls.create({
               title: '🔖 Bump to Version: ${{ steps.bump_version.outputs.BUMPED_VERSION }}',
               owner,
               repo,
               head: 'release',
               base: 'main',
-              body: [
-                'Bumps Package Version ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} --> ${{ steps.bump_version.outputs.BUMPED_VERSION }}',
-                "",
-                "# What's new?",
-                "- "
-              ].join('\n')
+              body: bodyText,
             });
             github.rest.issues.addLabels({
               owner,
