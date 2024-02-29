@@ -184,6 +184,13 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
 
 def pip_install(package_names: List[str]):
     """Ensure Pip Package is installed. But only when not already installed."""
+
+    # Some packages have different names on pypi and in odoo Manifests. Key is Odoo manigest, Value is pypi
+    odoo_wrong_pkg_names = {
+        "ldap": "python-ldap",
+    }
+    package_names = [odoo_wrong_pkg_names.get(p, p) for p in package_names]
+
     LOGGER.debug("Ensuring Pip Packages are installed:\n%s", package_names)
     installed_packages = run_cmd(
         f"{sys.executable} -m pip list --format json --disable-pip-version-check",
