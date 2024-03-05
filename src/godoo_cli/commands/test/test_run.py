@@ -97,7 +97,7 @@ def odoo_run_tests(
     depends = list(set(depends))
 
     if skip_test_modules:
-        skip_test_modules = [m for m in skip_test_modules if m not in test_module_names]
+        skip_test_modules = [m for m in skip_test_modules if m in test_module_names]
         # Double filter for better logging here.
         # First check if skippable modules are in the test_modules
         if skip_test_modules:
