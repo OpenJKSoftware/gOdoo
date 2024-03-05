@@ -18,7 +18,7 @@ class OdooLaunchArgs:
         rich_help_panel="Odoo",
     )
     multithread_worker_count: int = Option(
-        -1,
+        2,
         help="count of worker threads. will enable proxy_mode if >0. (Autodetect with -1)",
         rich_help_panel="Odoo",
         envvar="ODOO_WORKER_COUNT",
