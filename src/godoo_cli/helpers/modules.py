@@ -3,7 +3,7 @@
 from ast import literal_eval
 from logging import getLogger
 from pathlib import Path
-from typing import Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Union
 
 LOGGER = getLogger(__name__)
 
@@ -37,7 +37,7 @@ class godooModule:
         return self.path / "__manifest__.py"
 
     @property
-    def manifest(self):
+    def manifest(self) -> Dict[str, Any]:
         return literal_eval(self.manifest_file.read_text())
 
     @property
@@ -97,9 +97,17 @@ class godooModules:
             f"Module '{name}' not found in Paths: {[str(s.absolute()) for s in self.addon_paths]}"
         )
 
-    def get_module_dependencies(self, module: godooModule, dont_follow: Optional[List[str]] = None) -> List[str]:
-        """Get dependant modules of a module. Recursively follows dependencies."""
-        deps = module.odoo_depends
+    def get_module_dependencies(
+        self, module: Union[godooModule, List[godooModule]], dont_follow: Optional[List[str]] = None
+    ) -> List[str]:
+        """Get dependant modules of module(s). Recursively follows dependencies."""
+        if isinstance(module, godooModule):
+            module = [module]
+        deps = []
+        for mod in module:
+            deps += mod.odoo_depends
+        deps = list(set(deps))
+
         if dont_follow:
             deps = [d for d in deps if d not in dont_follow]
         if deps:
@@ -108,7 +116,7 @@ class godooModules:
             sub_dep_modules = []
             for dep in dep_modules:
                 sub_dep_modules += self.get_module_dependencies(dep, dont_follow)
-            return dep_modules + sub_dep_modules
+            return list(set(dep_modules + sub_dep_modules))
         return []
 
 

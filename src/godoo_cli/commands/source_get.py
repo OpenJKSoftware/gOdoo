@@ -124,8 +124,9 @@ def py_depends_by_db(
         thirdparty_addon_path=thirdparty_addon_path,
     )
     module_list = [m for m in module_list]
-    modules = list(godooModules(odoo_addon_paths).get_modules(module_list))
-    _install_py_reqs_for_modules(modules)
+    module_reg = godooModules(odoo_addon_paths)
+    modules = list(module_reg.get_modules(module_list))
+    _install_py_reqs_for_modules(modules, module_reg)
 
 
 @CLI.arg_annotator
@@ -175,11 +176,10 @@ def py_depends_by_modules(
     )
 
     if len(module_list) == 1 and module_list[0] == "all":
-        search_addon_paths = [p for p in odoo_addon_paths if odoo_main_path not in p.parents]
-        module_list = godooModules(search_addon_paths).get_modules()
-    else:
-        module_list = godooModules(odoo_addon_paths).get_modules(module_list)
-    _install_py_reqs_for_modules(module_list)
+        module_list = []
+    module_reg = godooModules(odoo_addon_paths)
+    modules = godooModules.get_modules(module_list)
+    _install_py_reqs_for_modules(modules, module_reg)
 
 
 @CLI.unpacker
