@@ -178,7 +178,7 @@ def py_depends_by_modules(
     if len(module_list) == 1 and module_list[0] == "all":
         module_list = []
     module_reg = godooModules(odoo_addon_paths)
-    modules = godooModules.get_modules(module_list)
+    modules = module_reg.get_modules(module_list)
     _install_py_reqs_for_modules(modules, module_reg)
 
 

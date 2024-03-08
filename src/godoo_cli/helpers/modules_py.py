@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+from types import GeneratorType
 from typing import List
 
 from .modules import godooModule, godooModules
@@ -24,6 +25,8 @@ def _install_py_reqs_for_modules(modules: List[godooModule], module_reg: godooMo
     CompletedProcess
     """
     reqs = []
+    if isinstance(modules, GeneratorType):
+        modules = list(modules)
     all_modules = modules + module_reg.get_module_dependencies(modules)
     all_modules = list(set(all_modules))
     for mod in all_modules:

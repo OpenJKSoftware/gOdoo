@@ -62,11 +62,18 @@ class godooModules:
         self.addon_paths = addon_paths
         self.godoo_modules: Dict[str, godooModule] = {}
 
-    def get_modules(self, module_names: Optional[List[str]] = None) -> Generator[godooModule, None, None]:
+    def get_modules(
+        self, module_names: Optional[List[str]] = None, raise_missing_names=True
+    ) -> Generator[godooModule, None, None]:
         """Get all Modules in Addon Paths or only the ones specified in module_names"""
         if module_names:
             for name in module_names:
-                yield self.get_module(name)
+                try:
+                    yield self.get_module(name)
+                except ModuleNotFoundError as e:
+                    if raise_missing_names:
+                        raise e
+                    LOGGER.debug(e.msg)
         else:
             yield from self._get_modules()
 
@@ -112,7 +119,7 @@ class godooModules:
             deps = [d for d in deps if d not in dont_follow]
         if deps:
             dont_follow = (dont_follow or []) + deps
-            dep_modules = list(self.get_modules(deps))
+            dep_modules = list(self.get_modules(deps, raise_missing_names=False))
             sub_dep_modules = []
             for dep in dep_modules:
                 sub_dep_modules += self.get_module_dependencies(dep, dont_follow)
