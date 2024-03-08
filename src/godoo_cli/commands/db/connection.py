@@ -69,6 +69,8 @@ class DBConnection:
         cr = connection.cursor()
         try:
             yield cr
+            LOGGER.debug("Committing DB cursor")
+            connection.commit()
         except Exception as e:
             LOGGER.warning("Rolling Back DB cursor. Got Exception: %s", e)
             connection.rollback()

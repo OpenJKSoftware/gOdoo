@@ -48,10 +48,9 @@ def set_passwords(
         db_name=db_name,
     )
     hashed_pw = _hash_odoo_password(new_password)
-    with connection.connect() as conn:
+    with connection.connect() as cur:
         try:
-            conn.execute(f"UPDATE res_users SET password='{hashed_pw}'")
-            conn.commit()
+            cur.execute(f"UPDATE res_users SET password='{hashed_pw}'")
         except Exception:
             raise typer.Exit(1)
     LOGGER.info("Password for all users set to: '%s'", new_password)

@@ -64,8 +64,6 @@ def query_database(
             except ProgrammingError:
                 # When there is nothing to fetch, fetchall() raises a ProgrammingError
                 pass
-            cursor.commit()
-
         except Exception as e:
             LOGGER.exception(e)
             raise typer.Exit(1)
