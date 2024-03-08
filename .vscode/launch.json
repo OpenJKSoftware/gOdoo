@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "LaunchOdoo",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "stopOnEntry": false,
       "program": "/odoo/odoo/odoo-bin",
@@ -23,7 +23,7 @@
     },
     {
       "name": "LaunchOdooTests",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "stopOnEntry": false,
       "program": "/odoo/odoo/odoo-bin",
@@ -46,15 +46,16 @@
     },
     {
       "name": "godoo",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "justMyCode": false,
       "module": "src.godoo_cli",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "args": ["source", "get-dependencies", "sale", "stock"]
     },
     {
       "name": "Python: Aktuelle Datei",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "program": "${file}",
       "args": [],
