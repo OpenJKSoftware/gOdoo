@@ -125,7 +125,7 @@ def py_depends_by_db(
     )
     module_list = [m for m in module_list]
     module_reg = godooModules(odoo_addon_paths)
-    modules = list(module_reg.get_modules(module_list))
+    modules = list(module_reg.get_modules(module_list, raise_missing_names=False))
     _install_py_reqs_for_modules(modules, module_reg)
 
 
