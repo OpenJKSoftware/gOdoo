@@ -105,7 +105,7 @@ def dump_translations(
     upgrade_modules: bool = typer.Option(True, help="Upgrade modules before exporting"),
 ):
     """Dump Translations of module to <module_folder>/i18n/<module_name>.pot"""
-    godoo_modules = godooModules(workspace_addon_path).get_modules(modules)
+    godoo_modules = list(godooModules(workspace_addon_path).get_modules(modules))
     module_names = [m.name for m in godoo_modules]
     LOGGER.debug("Found modules: %s", module_names)
 
