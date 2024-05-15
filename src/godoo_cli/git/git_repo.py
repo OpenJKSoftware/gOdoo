@@ -1,4 +1,5 @@
 """ Module to provide GIT interaction."""
+
 import logging
 import shutil
 from pathlib import Path
@@ -64,7 +65,7 @@ def git_pull_checkout_reset(
     if pull:
         LOGGER.debug("Pulling Repo: %s, %s", repo.working_dir, pull)
         try:
-            repo.remotes[0].pull(pull)
+            repo.remotes[0].pull(None if isinstance(pull, bool) else pull)
         except GitCommandError as e:
             if "fatal: refusing to merge unrelated histories" in e.stderr:
                 clone_kwargs = {}
