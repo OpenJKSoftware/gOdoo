@@ -43,4 +43,12 @@ def git_ensure_odoo_repo(
         single_branch=True,
     )
 
+    # make sure odoo-bin is executable
+    odoo_bin = target_folder / "odoo-bin"
+    if odoo_bin.exists():
+        LOGGER.debug("chmod odoo-bin +executable")
+        odoo_bin.chmod(0o755)
+    else:
+        LOGGER.warning("Could not find odoo-bin in %s", target_folder)
+
     yaml.dump(git_repos, manifest_file)
