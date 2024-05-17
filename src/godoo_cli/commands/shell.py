@@ -37,11 +37,27 @@ def odoo_shell(
     pipe_in_command: str = typer.Argument("", help="Python command, that will be piped into odoo-bin shell"),
     odoo_main_path=CLI.odoo_paths.bin_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
 ):
     """
     Start Odoo session in an Interactive shell.
+
+    Odoo Conf is Preferred, but if not found, Database Options are used.
     """
-    shell_cmd = f"{str(odoo_main_path.absolute())}/odoo-bin shell -c {str(odoo_conf_path.absolute())} --no-http"
+    shell_cmd = f"{str(odoo_main_path.absolute())}/odoo-bin shell --no-http"
+    if odoo_conf_path.exists():
+        shell_cmd += f" -c {str(odoo_conf_path.absolute())}"
+    else:
+        LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
+        if not all([db_host, db_port, db_name, db_user, db_password]):
+            LOGGER.error("Missing database options and Config File. Aborting.")
+            return CLI.returner(1)
+        shell_cmd += f" --db_host={db_host} --db_port={db_port} --database={db_name} --db_user={db_user} --db_password={db_password}"
+
     if pipe_in_command:
         pipe_in_command = pipe_in_command.replace('"', '\\"')  # Escape Double Quotes
         shell_cmd = f'echo "{pipe_in_command}" |' + shell_cmd
