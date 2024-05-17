@@ -104,12 +104,15 @@ def is_bootstrapped(
     raise typer.Exit(boot.value)
 
 
-def _get_installed_modules(db_connection: DBConnection):
-    """Get list of installed modules in database"""
+def _get_installed_modules(db_connection: DBConnection, to_install=False):
+    """Get list of installed modules in database (to_install includes the modules marked for installation)"""
     if boot := _is_bootstrapped(db_connection=db_connection) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
         return boot.value
+    lookup_states = ["installed", "to upgrade"]
+    if to_install:
+        lookup_states.append("to install")
     with db_connection.connect() as cursor:
-        cursor.execute("SELECT name FROM ir_module_module WHERE state = 'installed';")
+        cursor.execute("SELECT name FROM ir_module_module WHERE state IN %s;", [tuple(lookup_states)])
         sql_res = cursor.fetchall()
         return [r[0] for r in sql_res]
 
@@ -121,6 +124,11 @@ def get_installed_modules(
     db_name=CLI.database.db_name,
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
+    to_install: bool = typer.Option(
+        False,
+        "--to-install",
+        help="Include modules marked for installation",
+    ),
 ):
     """Returns Modules Marked as installed by Odoo in the database"""
     db_connection = DBConnection(
@@ -130,7 +138,7 @@ def get_installed_modules(
         password=db_password,
         db_name=db_name,
     )
-    installed_modules = _get_installed_modules(db_connection=db_connection)
+    installed_modules = _get_installed_modules(db_connection=db_connection, to_install=to_install)
     if isinstance(installed_modules, int):
         raise typer.Exit(installed_modules)
     for module in sorted(installed_modules):
