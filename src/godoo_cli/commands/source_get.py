@@ -111,9 +111,10 @@ def py_depends_by_db(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
 ):
-    """Insall Python Dependencies for all installed modules in DB."""
+    """Insall Python Dependencies for all installed modules in DB.
+    (Will not raise error if Module not found in Source for Upgrade Purposes)"""
     connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
-    module_list = _get_installed_modules(connection)
+    module_list = _get_installed_modules(connection, to_install=True)
     if isinstance(module_list, int):
         return CLI.returner(module_list)
     LOGGER.info("Ensuring Py Reqiurements for Installed Modules are met")
