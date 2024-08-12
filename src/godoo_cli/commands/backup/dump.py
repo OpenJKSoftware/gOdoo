@@ -23,6 +23,7 @@ def dump_instance(
         dir_okay=True,
         writable=True,
         resolve_path=True,
+        envvar="GODOO_DUMP_PATH",
     ),
     db_name=CLI.database.db_name,
     db_host=CLI.database.db_host,

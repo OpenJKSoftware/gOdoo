@@ -71,6 +71,7 @@ def load_instance_data(
             file_okay=False,
             dir_okay=True,
             exists=True,
+            envvar="GODOO_DUMP_PATH",
         ),
     ],
     filestore_target_folder: Annotated[
