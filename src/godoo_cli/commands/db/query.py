@@ -101,7 +101,9 @@ def is_bootstrapped(
         db_name=db_name,
     )
     boot = _is_bootstrapped(db_connection=connection)
-    raise typer.Exit(boot.value)
+    LOGGER.info("Odoo Database Status: %s", boot.value)
+    return_code = 1 if boot == DB_BOOTSTRAP_STATUS.NO_DB else 2 if boot == DB_BOOTSTRAP_STATUS.EMPTY_DB else 0
+    raise typer.Exit(return_code)
 
 
 def _get_installed_modules(db_connection: DBConnection, to_install=False):
