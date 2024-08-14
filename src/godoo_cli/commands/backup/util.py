@@ -16,7 +16,6 @@ def call_rsync(source_folder: Path, target_folder: Path, rsync_delete: bool = Tr
         args += ["--delete"]
     args += [f"{source_folder}/", f"{target_folder}/"]
     command = " ".join(map(str, args))
-    LOGGER.info("Rysnc filestore to: %s", source_folder)
     LOGGER.debug("Running: %s", command)
     return subprocess.run(command, shell=True).returncode
 

@@ -1,5 +1,4 @@
 import logging
-import shutil
 from configparser import ConfigParser
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +8,7 @@ import typer
 from ...cli_common import CommonCLI
 from ...helpers.odoo_files import odoo_bin_get_version
 from ..db.connection import DBConnection
+from .util import call_rsync
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
@@ -41,33 +41,32 @@ def dump_instance(
         password=db_password,
         port=db_port,
     )
-    dump_path.mkdir(parents=True, exist_ok=True)
+    if not conf_path.exists():
+        raise typer.Exit("No Odoo Conf Path provided or doesnt exists: '%s'" % conf_path)
 
-    if not conf_path:
-        raise typer.Exit("No Odoo Conf Path provided. Cannot dump Filestore")
+    if not dump_path.exists():
+        raise typer.Exit("No Dump Path provided or doesnt exists: %s" % dump_path)
 
     # Read .conf value [options] datad_dir
-    conf_path = Path(conf_path)
     parser = ConfigParser()
     parser.read(conf_path)
     data_dir = parser["options"]["data_dir"]
     data_dir = Path(data_dir)
 
     # Copy Filestore
-    LOGGER.info("Dumping Filestore")
     filestore_target = dump_path / "odoo_filestore"
-    shutil.rmtree(filestore_target, ignore_errors=True)
-    shutil.copytree(data_dir, filestore_target)
+    LOGGER.info("Dumping Filestore -> %s", filestore_target)
+    call_rsync(source_folder=data_dir, target_folder=filestore_target)
 
     # Dump DB using pg_dump
-    LOGGER.info("Dumping DB")
     db_dump_target = dump_path / "odoo.dump"
+    LOGGER.info("Dumping DB -> %s", db_dump_target)
     db_dump_target.unlink(missing_ok=True)
     db_connection.run_psql_shell_command("pg_dump --format c {} > %s" % db_dump_target)
+    LOGGER.info("SQL Dump Completed with size -> %.2f MB", db_dump_target.stat().st_size / (1024 * 1024))
 
-    readme_path = Path(dump_path) / "README.md"
+    readme_path = dump_path / "README.md"
     readme_path.unlink(missing_ok=True)
-
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
     readme_content = f"""
@@ -84,3 +83,4 @@ SQL Dump and Filestore of gOdoo Instance.
 
 """
     readme_path.write_text(readme_content)
+    LOGGER.info("Odoo Dump Completed -> %s", dump_path)

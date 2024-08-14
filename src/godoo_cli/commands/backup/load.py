@@ -22,7 +22,7 @@ def load_pg_dump(
 ):
     """Drop and recreate db_name and restore dump_path into it."""
     if not dump_path.exists():
-        raise FileNotFoundError("Cannot find PG dump @ %s" % dump_path)
+        raise FileNotFoundError("Cannot find Odoo Dump @ %s" % dump_path)
 
     conn = DBConnection(
         db_name="postgres",
