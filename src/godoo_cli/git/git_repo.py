@@ -71,7 +71,7 @@ def git_pull_checkout_reset(
                 clone_kwargs = {}
                 if branch:
                     clone_kwargs["branch"] = branch
-                repo = _git_clean_clone(repo.remotes[0].url, repo.working_dir, **clone_kwargs)
+                repo = _git_clean_clone(repo.remotes[0].url, Path(repo.working_dir), **clone_kwargs)
             else:
                 raise e
     if commit:
@@ -140,7 +140,7 @@ def git_ensure_ref(
             LOGGER.info("Pulled Repo from: '%s'. Head is now at: %s", repo_src, repo.head.commit)
     except InvalidGitRepositoryError:
         repo = _git_clean_clone(repo_src, target_folder, branch=branch, **kwargs)
-        git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=False)
+        git_pull_checkout_reset(repo=repo, branch=branch, commit=commit)
 
         LOGGER.info(
             "Cloned Repo: '%s'. Branch='%s' Head='%s'",

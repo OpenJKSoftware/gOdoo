@@ -136,7 +136,7 @@ class DatabaseCLIArgs:
         help="db password",
         rich_help_panel="Database Options",
     )
-    db_port: str = Option(
+    db_port: int = Option(
         "",
         envvar="ODOO_DB_PORT",
         help="db host port (empty for socket)",

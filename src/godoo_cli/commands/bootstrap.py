@@ -90,8 +90,8 @@ def _boostrap_command(
                 init_modules += [f.name for f in workspace_addons]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
-    addon_paths = [str(p.absolute()) for p in addon_paths]
-    addon_paths = ", ".join(list(filter(None, addon_paths)))
+    addon_paths_str_list = [str(p.absolute()) for p in addon_paths if p and p.exists()]
+    addon_paths_str = ", ".join(addon_paths_str_list)
 
     base_cmds = [
         str(odoo_main_path.absolute()) + "/odoo-bin",
@@ -100,7 +100,7 @@ def _boostrap_command(
         "--save",
         f"--load-language {languages}",
         "--stop-after-init",
-        f"--addons-path '{addon_paths}'",
+        f"--addons-path '{addon_paths_str}'",
     ]
     odoo_cmd = base_cmds + db_command
     if extra_cmd_args:
@@ -109,7 +109,7 @@ def _boostrap_command(
     _add_default_argument(cmd_list=odoo_cmd, arg="--data-dir", arg_val="/var/lib/odoo")
 
     if multithread_worker_count == -1:
-        multithread_worker_count = (os.cpu_count() or 2) / 2
+        multithread_worker_count = int(os.cpu_count() or 2 / 2)
 
     if multithread_worker_count > 0:
         odoo_cmd += [

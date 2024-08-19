@@ -2,7 +2,7 @@ import logging
 import re
 import threading
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import typer
 
@@ -43,7 +43,9 @@ def _launch_command(
     upgrade_workspace_modules : bool, optional
         upgrade workspace addons, by default True
     """
-    upgrade_addons = [f.name for f in godooModules(workspace_addon_path)] if upgrade_workspace_modules else []
+    upgrade_addons = (
+        [f.name for f in godooModules(workspace_addon_path).get_modules()] if upgrade_workspace_modules else []
+    )
     if any(["-u" in i or "--update" in i for i in extra_cmd_args]):
         upgrade_addons = []
     update_addon_string = "--update " + ",".join(upgrade_addons) if upgrade_addons else ""
@@ -67,9 +69,9 @@ def pre_launch(
     odoo_demo: bool,
     dev_mode: bool,
     multithread_worker_count: int = 0,
-    extra_launch_args: List[str] = None,
-    extra_bootstrap_args: List[str] = None,
-    log_file_path: Path = None,
+    extra_launch_args: Optional[List[str]] = None,
+    extra_bootstrap_args: Optional[List[str]] = None,
+    log_file_path: Optional[Path] = None,
     install_workspace_addons: bool = True,
     launch_or_bootstrap: bool = False,
     languages: str = "de_DE,en_US",

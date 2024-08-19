@@ -56,7 +56,7 @@ class godooModule:
 class godooModules:
     """Abstract interface to Addon-Paths. Finds modules and their dependencies."""
 
-    def __init__(self, addon_paths: List[Path]) -> None:
+    def __init__(self, addon_paths: Union[List[Path], Path]) -> None:
         if not isinstance(addon_paths, list):
             addon_paths = [addon_paths]
         self.addon_paths = addon_paths
@@ -69,7 +69,8 @@ class godooModules:
         if module_names:
             for name in module_names:
                 try:
-                    yield self.get_module(name)
+                    if module := self.get_module(name):
+                        yield module
                 except ModuleNotFoundError as e:
                     if raise_missing_names:
                         raise e
@@ -106,7 +107,7 @@ class godooModules:
 
     def get_module_dependencies(
         self, module: Union[godooModule, List[godooModule]], dont_follow: Optional[List[str]] = None
-    ) -> List[str]:
+    ) -> List[godooModule]:
         """Get dependant modules of module(s). Recursively follows dependencies."""
         if isinstance(module, godooModule):
             module = [module]

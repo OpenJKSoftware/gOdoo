@@ -108,7 +108,7 @@ def is_bootstrapped(
 
 def _get_installed_modules(db_connection: DBConnection, to_install=False):
     """Get list of installed modules in database (to_install includes the modules marked for installation)"""
-    if boot := _is_bootstrapped(db_connection=db_connection) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
+    if (boot := _is_bootstrapped(db_connection=db_connection)) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
         return boot.value
     lookup_states = ["installed", "to upgrade"]
     if to_install:
