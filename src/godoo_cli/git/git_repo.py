@@ -135,7 +135,7 @@ def git_ensure_ref(
         git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=pull)
 
         if current == str(repo.head.commit):
-            LOGGER.info("Repo Commit matches. Skipping: '%s' --> '%s'", repo_src, target_folder)
+            LOGGER.debug("Repo Commit matches. Skipping: '%s' --> '%s'", repo_src, current)
         else:
             LOGGER.info("Pulled Repo from: '%s'. Head is now at: %s", repo_src, repo.head.commit)
     except InvalidGitRepositoryError:
