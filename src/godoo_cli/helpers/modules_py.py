@@ -50,7 +50,7 @@ def _install_py_reqs_by_odoo_cmd(addon_paths: List[Path], odoo_bin_cmd: str):
     CompletedProcess
     """
     install_modules = []
-    for m in re.finditer(r'(--init|-i) "?([^ \n]+)"?', odoo_bin_cmd):
+    for m in re.finditer(r'(--init|-i|--load) "?([^ \n]+)"?', odoo_bin_cmd):
         install_modules += m.group(2).split(",")
     if install_modules:
         LOGGER.debug("Found Modules to install in odoo-bin command: %s", install_modules)
