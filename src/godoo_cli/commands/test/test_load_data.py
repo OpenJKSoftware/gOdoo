@@ -8,7 +8,7 @@ from ...helpers.modules import get_addon_paths, godooModules
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
 from ..launch import pre_launch
-from ..shell import odoo_shell
+from ..shell.shell import odoo_shell
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)

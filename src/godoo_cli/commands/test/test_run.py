@@ -12,7 +12,7 @@ from ...helpers.modules_git import get_changed_modules_and_depends
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
 from ..launch import pre_launch
-from ..shell import odoo_pregenerate_assets
+from ..shell.shell import odoo_pregenerate_assets
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)

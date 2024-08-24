@@ -5,9 +5,9 @@ from typing import List
 
 import typer
 
-from ..cli_common import CommonCLI
-from ..helpers.odoo_files import odoo_bin_get_version
-from ..helpers.system import run_cmd
+from ...cli_common import CommonCLI
+from ...helpers.odoo_files import odoo_bin_get_version
+from ...helpers.system import run_cmd
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
@@ -65,6 +65,44 @@ def odoo_shell(
     else:
         ret = run_cmd(shell_cmd, stdin=sys.stdin)
     return CLI.returner(ret.returncode)
+
+
+def complete_script_name():
+    script_folder = Path(__file__).parent / "scripts"
+    return [p.stem for p in script_folder.glob("*.py")]
+
+
+@CLI.unpacker
+@CLI.arg_annotator
+def odoo_shell_run_script(
+    script_name: str = typer.Argument(..., help="Internal Script to run", autocompletion=complete_script_name),
+    odoo_main_path=CLI.odoo_paths.bin_path,
+    odoo_conf_path=CLI.odoo_paths.conf_path,
+    db_host=CLI.database.db_host,
+    db_port=CLI.database.db_port,
+    db_name=CLI.database.db_name,
+    db_user=CLI.database.db_user,
+    db_password=CLI.database.db_password,
+):
+    """
+    Run Predefined Script using Odoo-Shell (Script selection in Tab-Complete).
+    """
+    script_folder = Path(__file__).parent / "scripts"
+    script_path = script_folder / f"{script_name}.py"
+    if not script_path.exists():
+        LOGGER.error("Script '%s' not found in %s", script_name, script_folder)
+        return CLI.returner(1)
+    LOGGER.info("Running Script: %s", script_path)
+    odoo_shell(
+        pipe_in_command=script_path.read_text(),
+        odoo_main_path=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_user=db_user,
+        db_password=db_password,
+    )
 
 
 def odoo_pregenerate_assets(odoo_main_path: Path):

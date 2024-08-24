@@ -1,4 +1,5 @@
 """Main CLI."""
+
 from typing import Optional
 
 import typer
@@ -14,6 +15,7 @@ from .commands import (
     launch_odoo,
     odoo_run_tests,
     odoo_shell,
+    odoo_shell_run_script,
     rpc_cli_app,
     set_odoo_config,
     source_cli_app,
@@ -80,6 +82,7 @@ def main_cli():
     app.command("test")(odoo_run_tests)
     app.command("config")(set_odoo_config)
     app.command("shell")(odoo_shell)
+    app.command("shell-script")(odoo_shell_run_script)
     app.command("uninstall")(uninstall_modules)
     return app
 
