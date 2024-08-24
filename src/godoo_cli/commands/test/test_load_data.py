@@ -7,7 +7,7 @@ from ...cli_common import CommonCLI
 from ...helpers.modules import get_addon_paths, godooModules
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
-from ..launch import pre_launch
+from ..launch import bootstrap_and_prep_launch_cmd
 from ..shell.shell import odoo_shell
 
 CLI = CommonCLI()
@@ -87,7 +87,7 @@ def odoo_load_test_data(
         db_name=db_name,
     )
 
-    launch_cmd = pre_launch(
+    launch_cmd = bootstrap_and_prep_launch_cmd(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,

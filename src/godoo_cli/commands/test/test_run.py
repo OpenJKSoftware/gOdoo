@@ -4,14 +4,14 @@ from pathlib import Path
 from typing import List
 
 import typer
-from typing_extensions import Annotated
+from typing_extensions import Annotated, Optional
 
 from ...cli_common import CommonCLI
 from ...helpers.modules import get_addon_paths, godooModules
 from ...helpers.modules_git import get_changed_modules_and_depends
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
-from ..launch import pre_launch
+from ..launch import bootstrap_and_prep_launch_cmd
 from ..shell.shell import odoo_pregenerate_assets
 
 CLI = CommonCLI()
@@ -47,12 +47,12 @@ def odoo_get_changed_modules(
     changed_modules = get_changed_modules_and_depends(diff_ref=diff_ref, addon_path=workspace_addon_path)
     if not changed_modules:
         return
-    print("\n".join(sorted([p.stem for p in changed_modules])))  # pylint: disable=print-used
+    print("\n".join(sorted([p.name for p in changed_modules])))  # pylint: disable=print-used
 
 
 @CLI.arg_annotator
 def odoo_run_tests(
-    test_modules: List[str] = typer.Argument(
+    test_module_names: List[str] = typer.Argument(
         ...,
         help="""
         Space separated list of Modules to Test or special commands:
@@ -76,7 +76,7 @@ def odoo_run_tests(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
     skip_test_modules: Annotated[
-        List[str],
+        Optional[List[str]],
         typer.Option(envvar="ODOO_TEST_SKIP_MODULES", help="Modules not to Test even if specified in test_modules"),
     ] = None,
     odoo_log_level: str = typer.Option("test", help="Log level"),
@@ -87,7 +87,7 @@ def odoo_run_tests(
     Will set test specific odoo.conf if it needs to bootstrap
     """
 
-    test_module_names = _test_modules_special_cases(test_modules, workspace_addon_path)
+    test_module_names = _test_modules_special_cases(test_module_names, workspace_addon_path)
     addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)
     module_reg = godooModules(addon_paths)
     test_modules = list(module_reg.get_modules(test_module_names))
@@ -146,7 +146,7 @@ def odoo_run_tests(
         db_name=db_name,
     )
 
-    launch_cmd = pre_launch(
+    launch_cmd = bootstrap_and_prep_launch_cmd(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,

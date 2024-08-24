@@ -59,7 +59,7 @@ def _launch_command(
     return " ".join(odoo_cmd)
 
 
-def pre_launch(
+def bootstrap_and_prep_launch_cmd(
     odoo_main_path: Path,
     workspace_addon_path: Path,
     thirdparty_addon_path: Path,
@@ -76,7 +76,7 @@ def pre_launch(
     launch_or_bootstrap: bool = False,
     languages: str = "de_DE,en_US",
 ):
-    """Start Bootstrap if database is not bootstrapped. And return Launch CMD.
+    """Start Bootstrap if database is not bootstrapped. Install Py Depends And return Launch CMD.
 
     Parameters
     ----------
@@ -227,7 +227,7 @@ def launch_odoo(
         password=db_password,
         db_name=db_name,
     )
-    launch_cmd = pre_launch(
+    launch_cmd = bootstrap_and_prep_launch_cmd(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
@@ -288,7 +288,7 @@ def launch_import(
         db_name=db_name,
     )
 
-    launch_cmd = pre_launch(
+    launch_cmd = bootstrap_and_prep_launch_cmd(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
