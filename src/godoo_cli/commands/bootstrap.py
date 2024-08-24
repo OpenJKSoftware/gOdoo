@@ -12,6 +12,7 @@ from ..helpers.modules import get_addon_paths, godooModules
 from ..helpers.modules_py import _install_py_reqs_by_odoo_cmd
 from ..helpers.system import run_cmd
 from .db.connection import DBConnection
+from .shell.shell import odoo_shell_run_script
 
 CLI = CommonCLI()
 
@@ -142,11 +143,12 @@ def bootstrap_odoo(
     install_base_modules: Annotated[
         bool,
         typer.Option(
-            ...,
             help="Install base and web modules if no other -i or -u is present in Bootstrap",
             rich_help_panel="Odoo",
         ),
     ] = True,
+    banner_text=CLI.odoo_launch.banner_text,
+    banner_bg_color=CLI.odoo_launch.banner_bg_color,
 ):
     """Bootstrap Odoo."""
 
@@ -186,4 +188,8 @@ def bootstrap_odoo(
     ret = run_cmd(cmd_string).returncode
     if ret != 0:
         LOGGER.error("Odoo-Bin Returned %d", ret)
+    if banner_text:
+        os.environ["ODOO_BANNER_TEXT"] = banner_text
+        os.environ["ODOO_BANNER_BG_COLOR"] = banner_bg_color
+        odoo_shell_run_script(script_name="odoo_banner", odoo_main_path=odoo_main_path, odoo_conf_path=odoo_conf_path)
     return CLI.returner(ret)

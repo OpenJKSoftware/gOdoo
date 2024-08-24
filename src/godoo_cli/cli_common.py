@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from typer import Option
+from typer import Argument, Option
 from typer_common_functions import get_type_from_default, typer_retuner, typer_unpacker
 
 
@@ -42,6 +42,16 @@ class OdooLaunchArgs:
         rich_help_panel="Odoo",
     )
     log_file_path: Path = Option(None, dir_okay=False, writable=True, help="Logfile Path", rich_help_panel="Odoo")
+    banner_text: str = Argument(
+        ...,
+        help="Banner Text to add to Odoo Log",
+        envvar="ODOO_BANNER_TEXT",
+    )
+    banner_bg_color: str = Option(
+        "green",
+        help="Banner Background Color",
+        envvar="ODOO_BANNER_BG_COLOR",
+    )
 
 
 @dataclass
