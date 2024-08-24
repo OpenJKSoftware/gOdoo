@@ -100,10 +100,14 @@ def is_bootstrapped(
         password=db_password,
         db_name=db_name,
     )
-    boot = _is_bootstrapped(db_connection=connection)
-    LOGGER.info("Odoo Database Status: %s", boot.value)
-    return_code = 1 if boot == DB_BOOTSTRAP_STATUS.NO_DB else 2 if boot == DB_BOOTSTRAP_STATUS.EMPTY_DB else 0
-    raise typer.Exit(return_code)
+    bootstrap_value = _is_bootstrapped(db_connection=connection)
+    LOGGER.info("Odoo Database Status: %s", bootstrap_value.value)
+    ret_mapping = {
+        DB_BOOTSTRAP_STATUS.BOOTSTRAPPED: 0,
+        DB_BOOTSTRAP_STATUS.NO_DB: 20,
+        DB_BOOTSTRAP_STATUS.EMPTY_DB: 21,
+    }
+    raise typer.Exit(ret_mapping[bootstrap_value])
 
 
 def _get_installed_modules(db_connection: DBConnection, to_install=False):

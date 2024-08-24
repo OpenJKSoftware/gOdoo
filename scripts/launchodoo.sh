@@ -27,7 +27,7 @@ apply_shell_migrations() {
 godoo db odoo-bootstrapped > /dev/null
 GODOO_DB_STATE=$?
 set -e
-if [ ! $GODOO_DB_STATE -eq 0 ]; then
+if [ $GODOO_DB_STATE -eq 21 ] || [ $GODOO_DB_STATE -eq 20 ]; then
     echo "=> Odoo DB Does Not Exist"
     ODOO_BIN_BOOTSTRAP_ARGS+=" --x-sendfile"
 
@@ -36,10 +36,6 @@ if [ ! $GODOO_DB_STATE -eq 0 ]; then
     # Because of X-sendfile, we need to set the report.url to go through Nginx
     godoo db query "UPDATE ir_config_parameter SET value='http://127.0.0.1:80' WHERE key = 'report.url'"
 
-    if [ -n "$ODOO_BANNER_TEXT" ]; then
-        echo "=> Adding Banner Text"
-        godoo shell "$(cat $MIGRATIONS_DIR/development/add_banner.py)"
-    fi
     if [ -n "$GODOO_LAUNCH_STAGE" ]; then
         if [[ -n $GODOO_DEV_SET_PW ]]; then
             echo "=> Setting Passwords"
@@ -48,8 +44,15 @@ if [ ! $GODOO_DB_STATE -eq 0 ]; then
         fi
         apply_shell_migrations "$MIGRATIONS_DIR/staging"
     fi
-
+    godoo db odoo-bootstrapped > /dev/null
+    GODOO_DB_STATE=$?
 fi
 
-echo "=> Running gOdoo"
-godoo launch --no-install-workspace-modules $GODOO_LAUNCH_ARGS
+if [ $GODOO_DB_STATE -eq 0 ]; then
+    echo "=> Running gOdoo"
+    godoo launch --no-install-workspace-modules $GODOO_LAUNCH_ARGS
+else
+    echo "=> Odoo DB State Return Code: $GODOO_DB_STATE"
+    echo "=> gOdoo Failed to Bootstrap"
+    exit 1
+fi
