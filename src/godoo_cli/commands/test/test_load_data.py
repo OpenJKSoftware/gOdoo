@@ -31,6 +31,7 @@ def odoo_load_test_data(
     thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
     extra_launch_args=CLI.odoo_launch.extra_cmd_args,
+    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
     db_filter=CLI.database.db_filter,
     db_host=CLI.database.db_host,
     db_port=CLI.database.db_port,
@@ -78,6 +79,8 @@ def odoo_load_test_data(
 
     if extra_launch_args:
         launch_args = extra_launch_args + launch_args
+    if extra_bootstrap_args:
+        bootstrap_args = extra_bootstrap_args + bootstrap_args
 
     db_connection = DBConnection(
         hostname=db_host,

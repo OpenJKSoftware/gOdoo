@@ -136,7 +136,8 @@ def odoo_run_tests(
         launch_or_bootstrap = True
         bootstrap_args.append(f"--test-tags {test_module_list}")
 
-    bootstrap_args = extra_bootstrap_args + bootstrap_args
+    if extra_bootstrap_args:
+        bootstrap_args = extra_bootstrap_args + bootstrap_args
 
     db_connection = DBConnection(
         hostname=db_host,
