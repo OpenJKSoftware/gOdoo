@@ -92,17 +92,19 @@ def odoo_shell_run_script(
     if not script_path.exists():
         LOGGER.error("Script '%s' not found in %s", script_name, script_folder)
         return CLI.returner(1)
+
+    shell_cmd = f"{str(odoo_main_path.absolute())}/odoo-bin shell --no-http"
+    if odoo_conf_path.exists():
+        shell_cmd += f" -c {str(odoo_conf_path.absolute())}"
+    else:
+        LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
+        if not all([db_host, db_port, db_name, db_user, db_password]):
+            LOGGER.error("Missing database options and Config File. Aborting.")
+            return CLI.returner(1)
+        shell_cmd += f" --db_host={db_host} --db_port={db_port} --database={db_name} --db_user={db_user} --db_password={db_password}"
+
     LOGGER.info("Running Script: %s", script_path)
-    odoo_shell(
-        pipe_in_command=script_path.read_text(),
-        odoo_main_path=odoo_main_path,
-        odoo_conf_path=odoo_conf_path,
-        db_host=db_host,
-        db_port=db_port,
-        db_name=db_name,
-        db_user=db_user,
-        db_password=db_password,
-    )
+    run_cmd(shell_cmd, stdin=script_path.open("r"))
 
 
 def odoo_pregenerate_assets(odoo_main_path: Path):
