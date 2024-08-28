@@ -7,6 +7,7 @@ concurrency:
 on:
   release:
     types: [created]
+  workflow_dispatch:
   workflow_call:
     secrets:
       PYPI_TOKEN:
@@ -30,7 +31,7 @@ jobs:
       - name: Build and publish
         run: |
           git fetch --tags
-          VERSION=$(git describe --tags --abbrev=0)
+            VERSION=$(git describe --tags --abbrev=0 --always)
           echo "Publishing version $VERSION"
           poetry version $VERSION
           poetry build
