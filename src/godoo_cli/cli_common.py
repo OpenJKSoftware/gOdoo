@@ -43,7 +43,7 @@ class OdooLaunchArgs:
     )
     log_file_path: Path = Option(None, dir_okay=False, writable=True, help="Logfile Path", rich_help_panel="Odoo")
     banner_text: str = Argument(
-        ...,
+        "",
         help="Banner Text to add to Odoo Log",
         envvar="ODOO_BANNER_TEXT",
     )
