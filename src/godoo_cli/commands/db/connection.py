@@ -96,7 +96,7 @@ class DBConnection:
         if p := self.password:
             command_env["PGPASSWORD"] = p
 
-        arg_str = " ".join(arg_list)
+        arg_str = " ".join([str(arg) for arg in arg_list])
         if "{}" in command:
             command = command.format(arg_str)
         else:
