@@ -6,11 +6,11 @@ ARG USERNAME=ContainerUser
 ARG WORKSPACE=/odoo/godoo_workspace
 ARG VIRTUAL_ENV=/odoo/venv
 
-ARG DEV_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.9
-ARG PROD_IMAGE=python:3.8-slim-bullseye
+ARG DEV_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.12
+ARG PROD_IMAGE=python:3.12-slim-bullseye
 
-ARG NODE_VERSION=16.17.1
-ARG NVM_VERSION=v0.39.1
+ARG NODE_VERSION=20.18.0
+ARG NVM_VERSION=v0.40.1
 ARG SOURCE_CLONE_ARCHIVE=False
 
 
@@ -207,7 +207,7 @@ RUN set -ex; \
     echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && apt-get update \
-    && apt-get -y install --no-install-recommends postgresql-client-16 netcat \
+    && apt-get -y install --no-install-recommends postgresql-client-16 netcat-openbsd \
     && mkdir -p /home/${USERNAME}/{.vscode-server/extensions,.cache/pre-commit} \
     && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache} \
     && mkdir -p /etc/cups \
