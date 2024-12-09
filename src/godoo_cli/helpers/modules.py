@@ -88,7 +88,7 @@ class godooModules:
                         mod = godooModule(module)
                         self.godoo_modules[mod.name] = mod
                     if mod.path != module:
-                        raise IndexError(f"Module {mod.name} is found in multiple paths")
+                        raise IndexError(f"Module {mod.name} is found in multiple paths:\n{mod.path}\n{module}")
                     yield mod
                 except ValueError:
                     # Silently skip dir, as it's not a Odoo Module
