@@ -22,6 +22,7 @@
         "ms-python.python",
         "ms-python.isort",
         "ms-python.pylint",
+        "ms-python.flake8",
         "ms-python.black-formatter",
         "oderwat.indent-rainbow",
         "njpwerner.autodocstring",
