@@ -8,6 +8,10 @@ from typing import Any, Dict, Generator, List, Optional, Union
 LOGGER = getLogger(__name__)
 
 
+class NotAValidModuleError(ValueError):
+    """Raised when a path is not a valid odoo module folder"""
+
+
 class godooModule:
     """Encapsulates a odoo module folder"""
 
@@ -17,9 +21,9 @@ class godooModule:
         self.validate_is_module()
 
     def validate_is_module(self):
-        """Throws ValueError if path is not a valid odoo module folder"""
+        """Throws NotAModuleError if path is not a valid odoo module folder"""
         if not self.path.is_dir() or not self.manifest_file.exists():
-            raise ValueError(f"{self.path} is not a valid odoo module")
+            raise NotAValidModuleError(f"{self.path} is not a valid odoo module")
 
     def __repr__(self) -> str:
         return f"godooModule({str(self.path.absolute())})"
@@ -81,16 +85,18 @@ class godooModules:
     def _get_modules(self) -> Generator[godooModule, None, None]:
         """Generator that Iterates Addon Paths and yields all godooModules found in them."""
         for path in self.addon_paths:
-            for module in path.iterdir():
+            for addon_folder_child in path.iterdir():
                 try:
-                    mod = self.godoo_modules.get(module.stem)
+                    mod = self.godoo_modules.get(addon_folder_child.name)
                     if not mod:
-                        mod = godooModule(module)
+                        mod = godooModule(addon_folder_child)
                         self.godoo_modules[mod.name] = mod
-                    if mod.path != module:
-                        raise IndexError(f"Module {mod.name} is found in multiple paths:\n{mod.path}\n{module}")
+                    if mod.path != addon_folder_child:
+                        raise IndexError(
+                            f"Module {mod.name} is found in multiple paths:\n{mod.path}\n{addon_folder_child}"
+                        )
                     yield mod
-                except ValueError:
+                except NotAValidModuleError:
                     # Silently skip dir, as it's not a Odoo Module
                     continue
 
