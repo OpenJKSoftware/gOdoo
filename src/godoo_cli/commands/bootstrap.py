@@ -115,7 +115,7 @@ def _boostrap_command(
     if multithread_worker_count > 0:
         odoo_cmd += [
             "--proxy-mode",
-            f"--workers {int( multithread_worker_count )}",
+            f"--workers {int(multithread_worker_count)}",
         ]
 
     odoo_cmd = list(filter(None, odoo_cmd))
@@ -188,6 +188,7 @@ def bootstrap_odoo(
     ret = run_cmd(cmd_string).returncode
     if ret != 0:
         LOGGER.error("Odoo-Bin Returned %d", ret)
+        return CLI.returner(ret)
     if banner_text:
         os.environ["ODOO_BANNER_TEXT"] = banner_text
         os.environ["ODOO_BANNER_BG_COLOR"] = banner_bg_color
