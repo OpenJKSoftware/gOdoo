@@ -14,7 +14,7 @@ ARG NVM_VERSION=v0.40.1
 ARG SOURCE_CLONE_ARCHIVE=False
 
 
-FROM ${DEV_IMAGE} as dev_base
+FROM ${DEV_IMAGE} AS dev_base
 ARG WORKSPACE
 WORKDIR $WORKSPACE
 
@@ -66,7 +66,7 @@ RUN touch README.md && poetry install --all-extras --no-interaction --no-ansi
 COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml ./
 
 # Install everything from Odoo requirements.txt, by downloading its raw contents
-FROM dev_base as odoo_requirements
+FROM dev_base AS odoo_requirements
 ARG ODOO_CONF_PATH
 RUN set -ex; \
     godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
@@ -74,14 +74,14 @@ RUN set -ex; \
     && pip install pycups
 
 # Download Odoo Source Code
-FROM dev_base as odoo_source
+FROM dev_base AS odoo_source
 ARG ODOO_MAIN_FOLDER
 RUN set -ex ; \
     godoo source get  odoo \
     && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
 
 # Download Odoo Addons and unpack .zip Addons
-FROM dev_base as oodo_addon_source
+FROM dev_base AS oodo_addon_source
 ARG USERNAME
 RUN --mount=type=ssh set -ex; \
     mkdir -p $ODOO_THIRDPARTY_LOCATION \
@@ -152,7 +152,7 @@ ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.co
 
 
 # Copy Addons and Odoo Source into image with requirements.
-FROM dev_base as dev_odoo
+FROM dev_base AS dev_odoo
 # Intall WKHTMLtoPDF
 COPY docker/install_wkhtmltopdf.sh /tmp/install_wkhtmltopdf.sh
 RUN set -ex; sudo bash /tmp/install_wkhtmltopdf.sh
@@ -177,7 +177,7 @@ ENTRYPOINT [ "godoo", "test" ,"all" ]
 
 
 # Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
-FROM dev_odoo as devcontainer
+FROM dev_odoo AS devcontainer
 
 # Instal godoo autocomplete. Env var to disable shellingham, as docker doesnt run in a shell
 RUN set -ex; _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh

@@ -10,8 +10,7 @@ services:
       target: prod
     init: true
     environment:
-      - ODOO_DB_HOST=db
-      - ODOO_DB_PORT=5432
+      - ODOO_DB_HOST=/var/run/postgresql
     extra_hosts:
       - "host.docker.internal:host-gateway" # Link host as dns
     env_file:
@@ -23,6 +22,7 @@ services:
       - "odoo_web:/var/lib/odoo"
       - "config:/odoo/config"
       - "cache:/var/cache"
+      - "postgres_socket:/var/run/postgresql"
 
   db:
     image: postgres:16-alpine
@@ -35,9 +35,11 @@ services:
       - "db:/var/lib/postgresql/data"
       - "/etc/localtime:/etc/localtime:ro"
       - "../config/postgresql.conf:/etc/postgresql/postgresql.conf"
+      - "postgres_socket:/var/run/postgresql"
 
 volumes:
   config:
   cache:
   db:
   odoo_web:
+  postgres_socket:

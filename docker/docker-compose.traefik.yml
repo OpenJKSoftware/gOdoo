@@ -5,8 +5,6 @@ services:
     networks:
       - default
       - traefik
-    environment:
-      - ODOO_DB_HOST=db.${COMPOSE_PROJECT_NAME}_default # To avoid conflicts with other Odoo instances through the traefik network
     labels:
       - traefik.enable=true
 

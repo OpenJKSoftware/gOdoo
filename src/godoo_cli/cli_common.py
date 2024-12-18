@@ -147,7 +147,7 @@ class DatabaseCLIArgs:
         rich_help_panel="Database Options",
     )
     db_port: int = Option(
-        "",
+        0,
         envvar="ODOO_DB_PORT",
         help="db host port (empty for socket)",
         rich_help_panel="Database Options",
