@@ -1,72 +1,54 @@
-[tool.poetry]
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
 name = "gOdoo-cli"
 version = "0.12.9"
 description = "Wrapper around Odoo-Bin with some convinience RPC functions."
-authors = ["Joshua Kreuder <Joshua_Kreuder@outlook.com>"]
+authors = [{name="Joshua Kreuder", email="Joshua_Kreuder@outlook.com"}]
 license = "LGPL-3"
 readme = "README.md"
 packages = [{include = "godoo_cli",  from = "src"}]
-repository = "https://github.com/OpenJKSoftware/gOdoo"
 keywords = ["odoo", "godoo","devcontainer"]
+requires-python = ">=3.9"
+urls=  {repository = "https://github.com/OpenJKSoftware/gOdoo"}
+scripts = {godoo = "godoo_cli:launch_cli"}
+dependencies = [
+    "python-dotenv>=0.20.0",
+    "ruamel-yaml>=0.17.21",
+    "gitpython>=3.1.27",
+    "godoo-rpc>=0.1.4",
+    "openupgradelib>=3.3.4",
+    "psycopg2-binary>=2.9.10",
+    "passlib>=1.7.3", # Mirror Odoo Reqs
+    "typer-common-functions>=0.0.12",
+    "typer>=0.9.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-pre-commit = ">=3.4.0"
-
-[tool.poetry_bumpversion.file."src/godoo_cli/version.py"]
-
-[tool.poetry.scripts]
-godoo = "godoo_cli:launch_cli"
-
-[tool.poetry.dependencies]
-python = ">=3.9"
-python-dotenv = ">=0.20.0"
-ruamel-yaml = ">=0.17.21"
-gitpython = ">=3.1.27"
-godoo-rpc = ">=0.1.4"
-openupgradelib = ">=3.3.4"
-psycopg2-binary = "^2.9.10"
-passlib = ">=1.7.3" # Mirror Odoo Reqs
-typer-common-functions = ">=0.0.12"
-typer = ">=0.9.0"
-
-pylint-odoo = { version=">=8.0.16", optional = true}
-ipdb = { version=">=0.13.9", optional = true}
-debugpy = { version=">=1.6.0", optional = true}
-black = { version=">=22.10.0", optional = true}
-isort = { version=">=5.10.1", optional = true}
-watchdog = { version=">=2.1.7", optional = true}
-py-spy = { version=">=0.3.11", optional = true}
-rope = { version=">=0.23.0", optional = true}
-flake8 = { version=">=5.0.4", optional = true}
-inotify = { version=">=0.2.10",optional = true}
-mock = { version=">=4.0.3", optional= true}
-pytest = { version=">=7.2.1", optional= true}
-pytest-cov = {version=">=4.0.0",optional=true}
-pydevd-odoo = { version=">=1.2.1",optional=true}
-
-[tool.poetry.extras]
+[project.optional-dependencies]
 devcontainer = [
-    "ipdb",
-    "debugpy",
-    "watchdog",
-    "rope",
-    "py-spy",
-    "inotify",
-    "mock",
-    "pydevd-odoo"
+    "ipdb>=0.13.9",
+    "debugpy>=1.6.0",
+    "watchdog>=2.1.7",
+    "rope>=0.23.0",
+    "py-spy>=0.3.11",
+    "inotify>=0.2.10",
+    "mock>=4.0.3",
+    "pydevd-odoo>=1.2.1"
 ]
 codequality = [
-    "pylint-odoo",
-    "black",
-    "isort",
-    "flake8",
-    "pytest",
-    "pytest-cov"
+    "pylint-odoo>=8.0.16",
+    "black>=22.10.0",
+    "isort>=5.10.1",
+    "flake8>=5.0.4",
+    "pytest>=7.2.1",
+    "pytest-cov>=4.0.0",
+    "pre-commit>=3.4.0"
 ]
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.poetry_bumpversion]
+file = "src/godoo_cli/version.py"
 
 [tool.pytest.ini_options]
 log_cli = true
