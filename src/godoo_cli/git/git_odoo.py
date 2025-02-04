@@ -37,7 +37,7 @@ def git_ensure_odoo_repo(
         repo_src=odoo_url,
         branch=odoo_branch,
         commit=odoo_commit,
-        pull=force_fetch,
+        pull=odoo_commit or odoo_branch if force_fetch else "",
         zip_mode=download_archive,
         filter="blob:none",
         single_branch=True,
