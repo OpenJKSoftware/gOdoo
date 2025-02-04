@@ -24,7 +24,7 @@ def _install_py_reqs_for_modules(modules: List[godooModule], module_reg: godooMo
     -------
     CompletedProcess
     """
-    reqs = []
+    reqs: list[str] = []
     if isinstance(modules, GeneratorType):
         modules = list(modules)
     all_modules = modules + module_reg.get_module_dependencies(modules)
@@ -32,7 +32,7 @@ def _install_py_reqs_for_modules(modules: List[godooModule], module_reg: godooMo
     for mod in all_modules:
         reqs += mod.py_depends
     if reqs:
-        return pip_install(set(reqs))
+        return pip_install(list(set(reqs)))
 
 
 def _install_py_reqs_by_odoo_cmd(addon_paths: List[Path], odoo_bin_cmd: str):
@@ -56,4 +56,5 @@ def _install_py_reqs_by_odoo_cmd(addon_paths: List[Path], odoo_bin_cmd: str):
         LOGGER.debug("Found Modules to install in odoo-bin command: %s", install_modules)
         module_reg = godooModules(addon_paths)
         modules = [module_reg.get_module(m) for m in install_modules]
+        modules = [m for m in modules if m]
         return _install_py_reqs_for_modules(modules, module_reg)

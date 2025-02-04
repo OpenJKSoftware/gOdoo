@@ -1,7 +1,7 @@
 import concurrent.futures
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 from git import Commit
 
@@ -66,14 +66,14 @@ def _git_clone_addon_repos(
     Dict[str:Commit]
         dict of {git_src_url:HeadCommit}
     """
-    default_branch = git_repos["odoo"].get("branch")
+    default_branch = git_repos["odoo"].get("branch", "master")
     LOGGER.info("Cloning Thirdparty Addons source.")
     with concurrent.futures.ThreadPoolExecutor(8) as executor:
         futures = []
-        thirdparty_repos = git_repos.get("thirdparty")
+        thirdparty_repos: Dict[str, List[Dict[str, str]]] = git_repos.get("thirdparty")  # type: ignore
         if not thirdparty_repos:
             LOGGER.info("No Thirdparty Key in manifest. Skipping...")
-            return
+            return {}
         for prefix, repos in thirdparty_repos.items():
             for repo in repos:
                 repo_url = GitUrl(repo["url"])
@@ -84,7 +84,7 @@ def _git_clone_addon_repos(
                         target_folder=Path(root_folder / name),
                         repo_src=repo_url.url,
                         branch=repo.get("branch", default_branch),
-                        commit=repo.get("commit"),
+                        commit=repo.get("commit"),  # type: ignore
                         zip_mode=download_archive,
                         filter="blob:none",
                         single_branch=True,

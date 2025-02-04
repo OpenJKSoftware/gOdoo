@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from typer import Argument, Option
 from typer_common_functions import get_type_from_default, typer_retuner, typer_unpacker
@@ -162,7 +162,7 @@ class SourceGetArgs:
         help="godoo manifest path, when downloading odoo source (skip repo_url)",
     )
 
-    source_download_archive: Optional[bool] = Option(
+    source_download_archive: bool = Option(
         False,
         "--source-download-archive",
         envvar="SOURCE_CLONE_ARCHIVE",
