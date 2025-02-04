@@ -47,8 +47,7 @@ codequality = [
     "pre-commit>=3.4.0"
 ]
 
-[tool.poetry_bumpversion]
-file = "src/godoo_cli/version.py"
+[tool.poetry_bumpversion.file."src/godoo_cli/version.py"]
 
 [tool.pytest.ini_options]
 log_cli = true
