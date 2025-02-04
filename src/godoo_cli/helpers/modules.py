@@ -26,7 +26,7 @@ class godooModule:
             raise NotAValidModuleError(f"{self.path} is not a valid odoo module")
 
     def __repr__(self) -> str:
-        return f"godooModule({str(self.path.absolute())})"
+        return f"godooModule({str(self.path.name)})"
 
     def __eq__(self, __value: object) -> bool:
         if isinstance(__value, godooModule):
@@ -50,7 +50,8 @@ class godooModule:
 
     @property
     def py_depends(self) -> List[str]:
-        return self.manifest.get("external_dependencies", {}).get("python", [])
+        module_depends = self.manifest.get("external_dependencies", {}).get("python", [])
+        return module_depends
 
     @property
     def odoo_depends(self) -> List[str]:

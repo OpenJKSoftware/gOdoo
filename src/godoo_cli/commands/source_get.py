@@ -92,10 +92,11 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
         raise FileNotFoundError("Odoo.conf not found at: %s" % odoo_conf)
     config = configparser.ConfigParser()
     config.read(odoo_conf)
-    addon_paths = ",".join([str(p.absolute()) for p in addon_paths])
-    config["options"]["addons_path"] = addon_paths
+    path_strings = [str(p.absolute()) for p in addon_paths]
+    addon_path_option = ",".join(path_strings)
+    config["options"]["addons_path"] = addon_path_option
     LOGGER.info("Writing Addon Paths to Odoo Config.")
-    LOGGER.debug(addon_paths)
+    LOGGER.debug(addon_path_option)
     config.write(odoo_conf.open("w"))
 
 
@@ -179,7 +180,7 @@ def py_depends_by_modules(
     if len(module_list) == 1 and module_list[0] == "all":
         module_list = []
     module_reg = godooModules(odoo_addon_paths)
-    modules = module_reg.get_modules(module_list)
+    modules = list(module_reg.get_modules(module_list))
     _install_py_reqs_for_modules(modules, module_reg)
 
 
