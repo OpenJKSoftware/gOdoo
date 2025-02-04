@@ -148,7 +148,7 @@ def git_ensure_ref(
             repo.active_branch.name if not repo.head.is_detached else "Detached",
             repo.head.commit,
         )
-    return repo_src, repo.head.commit
+    return repo
 
 
 def git_ensure_repo(

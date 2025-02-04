@@ -13,6 +13,7 @@ def git_ensure_odoo_repo(
     force_fetch: bool,
     add_compare_comment: bool,
     download_archive: bool,
+    pin_commit: bool = False,
 ):
     yaml = yaml_roundtrip_loader()
     git_repos = yaml.load(manifest_file.resolve())
@@ -32,7 +33,7 @@ def git_ensure_odoo_repo(
     else:
         yaml_remove_compare_commit(odoo_data)
 
-    git_ensure_repo(
+    clone_ret = git_ensure_repo(
         target_folder=target_folder,
         repo_src=odoo_url,
         branch=odoo_branch,
@@ -42,6 +43,8 @@ def git_ensure_odoo_repo(
         filter="blob:none",
         single_branch=True,
     )
+    if pin_commit and clone_ret:
+        odoo_data["commit"] = clone_ret.head.commit.hexsha
 
     # make sure odoo-bin is executable
     odoo_bin = target_folder / "odoo-bin"

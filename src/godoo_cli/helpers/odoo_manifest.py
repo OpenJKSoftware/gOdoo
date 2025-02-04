@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 from typing import List
 
+from git import Repo
 from ruamel.yaml import YAML
 
 from ..git.git_url import GitUrl
@@ -36,7 +37,9 @@ def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_fo
 
 def update_yml(
     repo_yml,
+    clone_results: dict[str, Repo],
     generate_yml_compare_comments: bool = False,
+    generate_yml_commit_pins: bool = False,
 ):
     """Process yaml after thirdparty clone.
 
@@ -44,8 +47,12 @@ def update_yml(
     ----------
     repo_yml : Yaml Dict
         Ruamel Yaml Dict of prefix and list of repos (url,commit,branch)
+    clone_results: dict[str,Commit]
+        Git url to currently cloned commit. Gets returned from Git Downloader
     generate_yml_compare_comments : bool, optional
         add github compare links as comment to repo yml, by default False
+    generate_yml_commit_pins: bool, optional
+        adds commit pins to currently checked out head commit
     """
     thirdparty_repos = repo_yml["thirdparty"]
     odoo_default_branch = repo_yml["odoo"].get("branch")
@@ -55,6 +62,8 @@ def update_yml(
 
     for prefix in thirdparty_repos:
         for repo in thirdparty_repos[prefix]:
+            if generate_yml_commit_pins and (c := clone_results.get(repo.get("url"))):
+                repo["commit"] = c.head.commit.hexsha
             if generate_yml_compare_comments:
                 yaml_add_compare_commit(repo, odoo_default_branch)
             else:

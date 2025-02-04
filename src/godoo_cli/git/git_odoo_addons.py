@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List
 
-from git import Commit
+from git import Repo
 
 from ..helpers.odoo_manifest import update_yml, yaml_roundtrip_loader
 from .git_repo import git_ensure_repo
@@ -17,6 +17,7 @@ def git_ensure_addon_repos(
     git_yml_path: Path,
     generate_yml_compare_comments: bool = False,
     download_archive: bool = False,
+    pin_commits: bool = False,
 ):
     """
     Clone repos specified in Yml.
@@ -31,11 +32,15 @@ def git_ensure_addon_repos(
         wether to add three dot compare on remote to repo urls
     download_archive : bool, optional
         wether to download as .zip (fast but no history), by default False
+    pin_commits : bool, optional
+        pin commits in yml, by default False
     """
     yaml = yaml_roundtrip_loader()
     git_repos = yaml.load(git_yml_path.resolve())
-    if _git_clone_addon_repos(root_folder=root_folder, git_repos=git_repos, download_archive=download_archive):
-        update_yml(git_repos, generate_yml_compare_comments)
+    if result := _git_clone_addon_repos(
+        root_folder=root_folder, git_repos=git_repos, download_archive=download_archive
+    ):
+        update_yml(git_repos, result, generate_yml_compare_comments, pin_commits)
         LOGGER.info("Updating Git Thirdparty Repo Commit hashes")
         yaml.dump(git_repos, git_yml_path)
 
@@ -46,7 +51,7 @@ def _git_clone_addon_repos(
     root_folder: Path,
     git_repos: Dict[str, Dict[str, str]],
     download_archive: bool = False,
-) -> Dict[str, Commit]:
+) -> Dict[str, Repo]:
     """
     Clones Git repos specified in dict into Root folder.
     Ensures repo names are prefixed and uses 8 threads to clone.
@@ -76,20 +81,23 @@ def _git_clone_addon_repos(
             return {}
         for prefix, repos in thirdparty_repos.items():
             for repo in repos:
-                repo_url = GitUrl(repo["url"])
+                url = repo["url"]
+                repo_url = GitUrl(url)
                 name = f"{prefix}_{repo_url.name}"
                 futures.append(
-                    executor.submit(
-                        git_ensure_repo,
-                        target_folder=Path(root_folder / name),
-                        repo_src=repo_url.url,
-                        branch=repo.get("branch", default_branch),
-                        commit=repo.get("commit"),  # type: ignore
-                        zip_mode=download_archive,
-                        filter="blob:none",
-                        single_branch=True,
+                    (
+                        url,
+                        executor.submit(
+                            git_ensure_repo,
+                            target_folder=Path(root_folder / name),
+                            repo_src=repo_url.url,
+                            branch=repo.get("branch", default_branch),
+                            commit=repo.get("commit"),  # type: ignore
+                            zip_mode=download_archive,
+                            filter="blob:none",
+                            single_branch=True,
+                        ),
                     )
                 )
-        clone_results = [f.result() for f in futures]
-        clone_results = {r[0]: r[1] for r in clone_results if r}
+        clone_results: Dict[str, Repo] = {r: f.result() for r, f in futures if r}
     return clone_results

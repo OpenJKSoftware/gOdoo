@@ -8,13 +8,13 @@
 
 # When `--source-download-archive` or it's envvar is passed to godoo, Downloads will be even faster for big repos, because Zip Blobs will directly be downloaded.
 
-# The Odoo section describes where to Clone the odoo source code form. (the one with odoo-bin)
 odoo:
+  # The Odoo section describes where to Clone the odoo source code form. (the one with odoo-bin)
   url: https://github.com/odoo/odoo/
   branch: 16.0 # Branch is mandatory on Odoo Repo but not on OCA Repos
-# In the thirdparty section we can add more Repos to download.
-# This can also be an ssh style Url for Odoo Enterprise for example.
 thirdparty:
+  # In the thirdparty section we can add more Repos to download.
+  # This can also be an ssh style Url for Odoo Enterprise for example.
   OCA: # This repo folder will be called "OCA_server-tools" when downloading.
     - url: https://github.com/OCA/server-tools
       branch: 16.0

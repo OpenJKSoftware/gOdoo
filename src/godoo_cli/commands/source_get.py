@@ -228,6 +228,7 @@ def get_source(
     add_compare_comments: bool = typer.Option(
         False, "--add-compare-comments", help="Wether to add github.com three dot compare links as comments."
     ),
+    pin_commits: bool = typer.Option(False, "--pin-commits", help="Pin commits in manifest to current commit in repo"),
     remove_unspecified_addons: bool = typer.Option(
         False, "--remove-unspecified-addons", help="Remove Addon folders that are not in YML or thirdparty.zip"
     ),
@@ -251,6 +252,7 @@ def get_source(
             force_fetch=force_fetch,
             add_compare_comment=add_compare_comments,
             download_archive=download_zipmode,
+            pin_commit=pin_commits,
         )
 
     if update_mode in ["all", "thirdparty"]:
@@ -259,6 +261,7 @@ def get_source(
             git_yml_path=manifest_path,
             generate_yml_compare_comments=add_compare_comments,
             download_archive=download_zipmode,
+            pin_commits=pin_commits,
         )
         if remove_unspecified_addons:
             remove_unused_folders(
