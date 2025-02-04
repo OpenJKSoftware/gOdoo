@@ -21,9 +21,9 @@ def login_db(
     db_password=CLI.database.db_password,
 ):
     """Login Interactive psql CLI using provided credentials"""
-    command = ["psql", f"-h {db_host}", f"-U {db_user}", f"-d {db_name}"]
+    command = ["psql", f"-h{db_host}", f"-U{db_user}", f"-d{db_name}"]
     if db_port != 0:
-        command.append(f"-p {db_port}")
+        command.append(f"-p{db_port}")
     subprocess.run(command, env={"PGPASSWORD": db_password})
 
 
