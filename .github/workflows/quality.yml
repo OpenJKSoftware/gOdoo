@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: hatch env create
 
+      - name: Run Check
+        run: hatch run lint:check
+
       - name: Run Pylint & Flake8
         run: hatch run lint:ci
 
