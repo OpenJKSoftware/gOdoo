@@ -6,6 +6,7 @@ import typer
 from dotenv import load_dotenv
 from rich import print as rich_print
 
+from . import __about__
 from .cli_common import CommonCLI
 from .commands import (
     backup_cli_app,
@@ -24,9 +25,18 @@ from .commands import (
 )
 from .helpers.odoo_files import odoo_bin_get_version
 from .helpers.system import set_logging
-from .version import __version__
 
 CLI = CommonCLI()
+
+
+@CLI.arg_annotator
+def print_versions(odoo_main_path=CLI.odoo_paths.bin_path):
+    """
+    Print gOdoo and Odoo Version info.
+    """
+    rich_print(f"gOdoo Version: [bold green]{__about__.__version__}[/bold green]")
+    odoo_version = odoo_bin_get_version(odoo_main_path)
+    rich_print(f"Odoo Version: [bold green]{odoo_version.raw}[/bold green]")
 
 
 def main_callback(
@@ -36,28 +46,22 @@ def main_callback(
         "-v",
         envvar="GODOO_VERBOSE",
         help="Verbose Logging with Error stacktraces",
-    )
+    ),
 ):
-    set_logging(verbose=verbose)
-
-
-@CLI.arg_annotator
-def print_versions(
-    odoo_main_path=CLI.odoo_paths.bin_path,
-):
-    """
-    Print gOdoo and Odoo Version info.
-    """
-    rich_print(f"gOdoo Version: [bold green]{__version__}[/bold green]")
-    odoo_version = odoo_bin_get_version(odoo_main_path)
-    rich_print(f"Odoo Version: [bold green]{odoo_version.raw}[/bold green]")
+    set_logging(verbose=bool(verbose) if verbose is not None else False)
 
 
 def main_cli():
     load_dotenv(".env", override=True)
 
     help_text = "gOdoo CLI for Interacting with Odoo"
-    app = typer.Typer(no_args_is_help=True, callback=main_callback, rich_markup_mode="rich", help=help_text)
+    app = typer.Typer(
+        no_args_is_help=True,
+        callback=main_callback,
+        rich_markup_mode="rich",
+        help=help_text,
+    )
+
     # Nested Subcommands
     app.add_typer(
         typer_instance=rpc_cli_app(),

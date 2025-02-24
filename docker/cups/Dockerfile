@@ -1,10 +1,10 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # ENV variables
-ENV DEBIAN_FRONTEND noninteractive
-ENV TZ "Europe/Berlin"
-ENV CUPSADMIN admin
-ENV CUPSPASSWORD admin
+ENV DEBIAN_FRONTEND="noninteractive" \
+    TZ="Europe/Berlin" \
+    CUPSADMIN="admin" \
+    CUPSPASSWORD="admin"
 
 # Install dependencies
 RUN set -ex; \
@@ -38,7 +38,7 @@ RUN set -ex; \
     echo '*' > /etc/mdns.allow \
     && sed -i "s/hosts:.*/hosts:          files mdns4 dns/g" /etc/nsswitch.conf
 
-ADD cups_entrypoint.sh /
+COPY cups_entrypoint.sh /
 RUN chmod +x /cups_entrypoint.sh
 
 COPY config /etc/cups

@@ -1,2 +1,2 @@
 from .cli import launch_cli
-from .version import __version__
+from .__about__ import __version__

@@ -18,21 +18,25 @@ jobs:
     name: Publish to Pypi
     steps:
       - uses: actions/checkout@v4
-      - name: Install poetry
-        run: pipx install poetry
-      - name: Add Poetry Version for __init__.py
-        run: poetry self add poetry-bumpversion
-      - name: Set up Python
-        uses: actions/setup-python@v4
         with:
-          python-version: "3.8"
-          cache: "poetry"
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: "pip"
+
+      - name: Install Hatch
+        uses: pypa/hatch@install
+
       - name: Build and publish
+        env:
+          HATCH_INDEX_AUTH: ${{ secrets.PYPI_TOKEN }}
         run: |
           git fetch --tags
           VERSION=$(git describe --tags --abbrev=0)
           echo "Publishing version $VERSION"
-          poetry version $VERSION
-          poetry build
-          poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
-          poetry publish
+          hatch version $VERSION
+          hatch build
+          hatch publish

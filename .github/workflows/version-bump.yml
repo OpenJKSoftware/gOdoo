@@ -18,38 +18,55 @@ on:
           - minor
           - major
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   deploy:
     name: Version bump on release branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Set up Python
         uses: actions/setup-python@v5
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Add Poetry Version for __init__.py
-        run: poetry self add poetry-bumpversion
+        with:
+          python-version: "3.x"
+          cache: "pip"
+
+      - name: Install Hatch
+        uses: pypa/hatch@install
+
       - name: Setup git config
         run: |
           git config user.name "GitHub Actions Bot"
-          git config user.email "<>"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b release
+
+      - name: Get Current Version
+        id: current_version
+        run: echo "VERSION=$(hatch version)" >> $GITHUB_OUTPUT
+
       - name: Bump Version
         id: bump_version
         run: |
-          VERSION=$(poetry version --short)
-          poetry version ${{ github.event.inputs.versionPart }}
-          BUMPED_VERSION=$(poetry version --short)
+          hatch version ${{ github.event.inputs.versionPart }}
+          BUMPED_VERSION=$(hatch version)
           echo "BUMPED_VERSION=$BUMPED_VERSION" >> $GITHUB_OUTPUT
-          echo "PRE_BUMP_VERSION=$VERSION" >> $GITHUB_OUTPUT
-      - name: Commiting Version change
+          echo "PRE_BUMP_VERSION=${{ steps.current_version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+
+      - name: Commit Version change
         run: |
           git add --all
           git commit -m "🔖 Package ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} to ${{ steps.bump_version.outputs.BUMPED_VERSION }}"
+
       - name: Git push
         run: |
           git push origin release --force
+
       - name: Create Pull Request
         uses: actions/github-script@v7
         with:
@@ -79,7 +96,6 @@ jobs:
                 }
               }
               if (commits.length < 100) {
-                // Break on last page
                 shouldContinue = false;
               }
             }

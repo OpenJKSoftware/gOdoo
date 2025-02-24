@@ -52,7 +52,7 @@ reset_docker () {
         docker compose down
         if [ ! -z "$VOLUMES" ]; then
             echo "==> Removing Volumes: $VOLUMES"
-            docker volume rm $VOLUMES
+            docker volume rm $VOLUMES || echo "==> Failed to remove Volume $VOLUMES"
         fi
     fi
 

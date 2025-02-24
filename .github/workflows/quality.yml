@@ -21,38 +21,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install poetry
-        run: pipx install poetry==2.0.1
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          cache: poetry
-          python-version: 3.9
-      - name: Install Poetry Package
-        run: poetry install --extras "codequality"
-      - name: Check poetry.lock
-        run: poetry check --lock
+          python-version: "3.9"
+          cache: "pip"
+
+      - name: Install Hatch
+        uses: pypa/hatch@install
+
+      - name: Install dependencies
+        run: hatch env create
+
       - name: Ensure Junit Dir
         run: mkdir -p junit
-      - name: Pylint
-        run: poetry run pylint --version && poetry run pylint src addons
-      - name: Flake8
-        run: poetry run flake8 --format junit-xml src addons > junit/flake8-python.xml
-      - name: Pytest
-        run: |
-          poetry run pytest src \
-          --verbose \
-          --exitfirst --failed-first \
-          --junitxml=junit/pytest-results.xml \
-          --cov=src --cov-report=xml
+
+      - name: Run Pylint & Flake8
+        run: hatch run lint:ci
+
+      - name: Run Tests with Coverage
+        run: hatch run test:ci
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
+
       - name: Upload junit results
         uses: actions/upload-artifact@v4
         with:
           name: Lint-results-python
           path: junit/*.xml
-        if: ${{ always() }} # Also run when steps before failed
+        if: ${{ always() }}
 
   build-and-push-image:
     runs-on: ubuntu-latest

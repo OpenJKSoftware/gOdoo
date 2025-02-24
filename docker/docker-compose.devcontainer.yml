@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   app:
     build:
@@ -20,7 +18,6 @@ services:
   cups:
     build:
       context: cups
-      dockerfile: Dockerfile.cups
 
 volumes:
   venv:
