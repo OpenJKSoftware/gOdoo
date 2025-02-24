@@ -23,8 +23,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  deploy:
-    name: Version bump on release branch
+  version-bump:
+    name: Version bump and PR creation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,78 +46,73 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b release
 
-      - name: Get Current Version
-        id: current_version
-        run: echo "VERSION=$(hatch version)" >> $GITHUB_OUTPUT
-
-      - name: Bump Version
-        id: bump_version
+      - name: Get Current Version and Bump
+        id: version
         run: |
+          CURRENT_VERSION=$(hatch version)
+          echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           hatch version ${{ github.event.inputs.versionPart }}
-          BUMPED_VERSION=$(hatch version)
-          echo "BUMPED_VERSION=$BUMPED_VERSION" >> $GITHUB_OUTPUT
-          echo "PRE_BUMP_VERSION=${{ steps.current_version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+          NEW_VERSION=$(hatch version)
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Commit Version change
+      - name: Create Branch and Commit
         run: |
-          git add --all
-          git commit -m "🔖 Package ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} to ${{ steps.bump_version.outputs.BUMPED_VERSION }}"
-
-      - name: Git push
-        run: |
+          git add src/godoo_cli/__about__.py
+          git commit -m "🔖 Bump version ${{ steps.version.outputs.CURRENT_VERSION }} → ${{ steps.version.outputs.NEW_VERSION }}"
           git push origin release --force
 
       - name: Create Pull Request
         uses: actions/github-script@v7
+        id: create-pr
         with:
           script: |
             const { repo, owner } = context.repo;
 
-            let page = 1;
-            let bumpCommits = [];
-            let shouldContinue = true;
+            // Get commit history since last release
+            const { data: tags } = await github.rest.repos.listTags({
+              owner,
+              repo,
+              per_page: 1
+            });
 
-            while (shouldContinue) {
-              const { data: commits } = await github.rest.repos.listCommits({
-                owner: owner,
-                repo: repo,
-                per_page: 100,
-                page: page++
-              });
+            const lastTag = tags[0]?.commit.sha || 'HEAD~100';
+            const { data: commits } = await github.rest.repos.compareCommits({
+              owner,
+              repo,
+              base: lastTag,
+              head: 'HEAD'
+            });
 
-              for (const commit of commits) {
-                if (commit.commit.message.startsWith('🔖')) {
-                  shouldContinue = false;
-                  break;
-                } else {
-                  const firstLine = commit.commit.message.split('\n')[0];
-                  const commitLink = `- [${firstLine}](${commit.html_url})`;
-                  bumpCommits.push(commitLink);
-                }
-              }
-              if (commits.length < 100) {
-                shouldContinue = false;
-              }
-            }
+            // Format commit history for release notes
+            const changes = commits.commits
+              .filter(commit => !commit.commit.message.startsWith('🔖'))
+              .map(commit => {
+                const firstLine = commit.commit.message.split('\n')[0];
+                return `- ${firstLine} ([${commit.sha.substring(0, 7)}](${commit.html_url}))`;
+              })
+              .join('\n');
 
-            let bodyText = [
-              'Bumps Package Version ${{ steps.bump_version.outputs.PRE_BUMP_VERSION }} --> ${{ steps.bump_version.outputs.BUMPED_VERSION }},',
+            const releaseNotes = [
+              `# 🔖 Release v${{ steps.version.outputs.NEW_VERSION }}`,
               '',
-              '# What\'s Changed',
+              '## What\'s Changed',
               '',
-              ...bumpCommits
+              changes || '_No changes since last release_',
+              '',
+              '## Version',
+              `${{ steps.version.outputs.CURRENT_VERSION }} → ${{ steps.version.outputs.NEW_VERSION }}`
             ].join('\n');
-            console.log("PR Text: ", bodyText)
 
             const result = await github.rest.pulls.create({
-              title: '🔖 Bump to Version: ${{ steps.bump_version.outputs.BUMPED_VERSION }}',
+              title: '🔖 Release v${{ steps.version.outputs.NEW_VERSION }}',
               owner,
               repo,
               head: 'release',
               base: 'main',
-              body: bodyText,
+              body: releaseNotes
             });
-            github.rest.issues.addLabels({
+
+            await github.rest.issues.addLabels({
               owner,
               repo,
               issue_number: result.data.number,

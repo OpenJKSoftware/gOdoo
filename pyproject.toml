@@ -2,6 +2,9 @@
 requires = ["hatchling>=1.21.0"]
 build-backend = "hatchling.build"
 
+[tool.hatch]
+installer = "uv"
+
 [tool.hatch.version]
 path = "src/godoo_cli/__about__.py"
 
@@ -10,7 +13,7 @@ packages = ["src/godoo_cli"]
 
 [project]
 name = "gOdoo-cli"
-version = "0.13.2"
+dynamic = ["version"]
 description = "Wrapper around Odoo-Bin with some convinience RPC functions."
 authors = [{name="Joshua Kreuder", email="Joshua_Kreuder@outlook.com"}]
 license = {text = "LGPL-3.0-only"}

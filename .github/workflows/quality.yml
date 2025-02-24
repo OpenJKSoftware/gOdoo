@@ -1,32 +1,41 @@
-name: Test Build Push
+name: Quality Checks
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # Cancel any running workflow for the same PR/branch
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, ready_for_review, auto_merge_enabled]
+    types: [opened, synchronize, auto_merge_enabled]
+  pull_request_target:
+    types: [opened, synchronize, auto_merge_enabled]
 
 env:
+  PYTHON_VERSION: "3.9"
   REGISTRY: ghcr.io
   IMAGE_NAME: "${{ github.repository }}"
 
 jobs:
-  QualitChecks:
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          fetch-depth: 0 # Needed for coverage comparison
 
-      - name: Set up Python
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
+          cache-dependency-path: |
+            **/__manifest__.py
+            **/pyproject.toml
 
       - name: Install Hatch
         uses: pypa/hatch@install
@@ -34,59 +43,75 @@ jobs:
       - name: Install dependencies
         run: hatch env create
 
-      - name: Run Check
-        run: hatch run lint:check
+      - name: Run linters
+        run: |
+          echo "Running style checks..."
+          hatch run lint:style
+          echo "Running pylint & flake8..."
+          hatch run lint:ci
 
-      - name: Run Pylint & Flake8
-        run: hatch run lint:ci
+      - name: Run tests
+        run: |
+          echo "Running tests with coverage..."
+          hatch run test:ci
 
-      - name: Run Tests with Coverage
-        run: hatch run test:ci
-
-      - name: Upload coverage reports to Codecov
+      - name: Upload coverage
         uses: codecov/codecov-action@v3
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          fail_ci_if_error: true
 
-  build-and-push-image:
+  docker-build:
     runs-on: ubuntu-latest
-    name: Build image and push if on master
-    needs: QualitChecks
+    needs: lint-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     permissions:
       contents: read
       packages: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # Shallow clone sufficient for build
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to the Container registry
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Login to Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-      - name: Build and push image if on master
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: "./docker/Dockerfile"
           platforms: "linux/amd64"
-          cache-from: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
-          push: ${{ github.ref == 'refs/heads/master' && 'true' ||  'false'  }}
-          build-args: |
-            SOURCE_CLONE_ARCHIVE=True
-          target: prod
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
