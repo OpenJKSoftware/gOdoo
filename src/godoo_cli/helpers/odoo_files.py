@@ -1,4 +1,5 @@
 """Functions that operate on Odoos Source Code."""
+
 import logging
 import re
 from dataclasses import dataclass

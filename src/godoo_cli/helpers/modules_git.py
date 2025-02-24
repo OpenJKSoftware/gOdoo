@@ -1,4 +1,5 @@
 """Functions, related to Module handling in a git Repository context."""
+
 from logging import getLogger
 from pathlib import Path
 from typing import List

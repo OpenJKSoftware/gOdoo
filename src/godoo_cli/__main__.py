@@ -1,4 +1,5 @@
 """Main CLI"""
+
 from .cli import launch_cli
 
 if __name__ == "__main__":

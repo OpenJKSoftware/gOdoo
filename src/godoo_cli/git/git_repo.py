@@ -1,4 +1,4 @@
-""" Module to provide GIT interaction."""
+"""Module to provide GIT interaction."""
 
 import logging
 import shutil

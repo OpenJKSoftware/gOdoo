@@ -1,6 +1,7 @@
 """
 Set odoo.conf variables
 """
+
 import logging
 from configparser import ConfigParser
 from pathlib import Path
