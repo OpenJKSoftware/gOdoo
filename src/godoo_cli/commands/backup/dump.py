@@ -78,8 +78,8 @@ SQL Dump and Filestore of gOdoo Instance.
 
 
 - Odoo Version: {odoo_version.raw}
-- Filestore: [{ datetime.fromtimestamp(filestore_target.stat().st_mtime)}]({filestore_target.relative_to(dump_path)})
-- SQL Dump: [{ datetime.fromtimestamp(db_dump_target.stat().st_mtime)}]({db_dump_target.relative_to(dump_path)})
+- Filestore: [{datetime.fromtimestamp(filestore_target.stat().st_mtime)}]({filestore_target.relative_to(dump_path)})
+- SQL Dump: [{datetime.fromtimestamp(db_dump_target.stat().st_mtime)}]({db_dump_target.relative_to(dump_path)})
 
 """
     readme_path.write_text(readme_content)

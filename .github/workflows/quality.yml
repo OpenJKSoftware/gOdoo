@@ -34,9 +34,6 @@ jobs:
       - name: Install dependencies
         run: hatch env create
 
-      - name: Ensure Junit Dir
-        run: mkdir -p junit
-
       - name: Run Pylint & Flake8
         run: hatch run lint:ci
 
@@ -45,13 +42,6 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
-
-      - name: Upload junit results
-        uses: actions/upload-artifact@v4
-        with:
-          name: Lint-results-python
-          path: junit/*.xml
-        if: ${{ always() }}
 
   build-and-push-image:
     runs-on: ubuntu-latest

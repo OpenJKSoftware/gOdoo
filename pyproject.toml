@@ -42,6 +42,7 @@ devcontainer = [
     "mock>=4.0.3",
     "pydevd-odoo>=1.2.1"
 ]
+# Dependencies for development and code quality; removed flake8-formatter-junit-xml as it is not required for GitHub Actions
 codequality = [
     "pylint-odoo>=8.0.16",
     "black>=22.10.0",
@@ -49,7 +50,7 @@ codequality = [
     "flake8>=5.0.4",
     "pytest>=7.2.1",
     "pytest-cov>=4.0.0",
-    "pre-commit>=3.4.0"
+    "pre-commit>=3.4.0",
 ]
 
 [tool.pyright]
@@ -138,10 +139,11 @@ enable=[
 
 
 [tool.pylint.reports]
-msg-template="{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}"
-output-format="colorized"
+msg-template="::error file=%(path)s,line=%(line)d,col=%(column)d::%(msg_id)s(%(symbol)s): %(msg)s"
+output-format="text"
 reports="no"
 
+# ==== Linting Configuration (GitHub Actions Compatible) ====
 [tool.hatch.envs.lint]
 dependencies = [
   "pylint-odoo>=8.0.16",
@@ -149,6 +151,7 @@ dependencies = [
   "black>=22.10.0",
   "isort>=5.10.1",
 ]
+
 [tool.hatch.envs.lint.scripts]
 style = [
   "black {args:src addons}",
@@ -164,9 +167,10 @@ format = [
   "black {args:src addons}",
   "isort {args:src addons}",
 ]
+# === GitHub Actions CI Lint Output Format ===
 ci = [
-  "flake8 --format junit-xml {args:src addons} > junit/flake8-python.xml",
-  "python -m pylint {args:src addons}",
+  "flake8 {args:src addons} --format='::error file=%(path)s,line=%(row)d,col=%(col)d::%(code)s: %(text)s'",
+  "python -m pylint {args:src addons} --msg-template='::error file=%(path)s,line=%(line)d,col=%(column)d::%(msg_id)s(%(symbol)s): %(msg)s'",
 ]
 
 [tool.hatch.envs.test]

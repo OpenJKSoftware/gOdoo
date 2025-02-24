@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Literal
+from typing import Literal, Match, Optional
 
 
 class GitRemoteType(Enum):
@@ -15,29 +15,41 @@ class GitUrl:
     """
 
     url: str
-    url_type: Literal["http", "ssh"]
+    url_type: Literal["http", "https", "ssh"]
     domain: str
     path: str
     user: str
-    port: int
+    port: Optional[int]
     name: str
 
     def __init__(self, url: str) -> None:
         self.url = url
         if "http" in url:
             http_regex = r"(?P<schema>https?):\/\/(?P<domain>[^\/]+)(?P<path>.*)"
-            http_match = re.search(http_regex, url)
-            self.url_type = http_match.group("schema")
+            http_match: Optional[Match[str]] = re.search(http_regex, url)
+            if not http_match:
+                raise ValueError(f"Invalid HTTP URL format: {url}")
+
+            schema = http_match.group("schema")
+            if schema not in ("http", "https"):
+                raise ValueError(f"Invalid schema: {schema}")
+            self.url_type = schema  # Now we can use the actual schema
             self.domain = http_match.group("domain")
             self.path = http_match.group("path")
+            self.user = ""  # Not applicable for HTTP
+            self.port = None  # Not applicable for HTTP
         else:
             ssh_regex = r"(?P<user>\w+)@(?P<domain>[^:]+):(?:(?P<port>\d+)]?:)?(?P<path>.*)"
-            ssh_match = re.search(ssh_regex, url)
+            ssh_match: Optional[Match[str]] = re.search(ssh_regex, url)
+            if not ssh_match:
+                raise ValueError(f"Invalid SSH URL format: {url}")
+
             self.url_type = "ssh"
             self.domain = ssh_match.group("domain")
             self.path = ssh_match.group("path")
             self.user = ssh_match.group("user")
-            self.port = ssh_match.group("port")
+            port_str = ssh_match.group("port")
+            self.port = int(port_str) if port_str else None
 
         if self.path.endswith(".git"):  # Todo Python 3.9 Use Removesuffix and RemovePrefix
             self.path = self.path[:-4]
@@ -94,10 +106,11 @@ class GitUrl:
         """
         remote_type = self._git_type()
         if from_compare == to_compare:
-            return  # Nothing to Compare here
+            return ""  # Nothing to Compare here
         http_url = self._clean_http_url()
         if remote_type in [GitRemoteType.github, GitRemoteType.gitlab]:
             return f"{http_url}/compare/{from_compare}...{to_compare}"
+        return ""
 
     def get_archive_url(self, ref: str) -> str:
         """Get Download Url for Zip file.
@@ -124,9 +137,10 @@ class GitUrl:
         http_url = self._clean_http_url()
         remote_type = self._git_type()
         if remote_type == GitRemoteType.github:
-            return f"{http_url}/archive/{ref }.zip"
+            return f"{http_url}/archive/{ref}.zip"
         if remote_type == GitRemoteType.gitlab:
             return f"{http_url}/-/archive/{ref}/{self.name}.zip"
+        return ""
 
     def get_file_raw_url(self, ref: str, file_path: str) -> str:
         """Gets the URL Pointing to the Raw file contents on the Remote.
@@ -147,6 +161,7 @@ class GitUrl:
         http_url = self._clean_http_url()
         remote_type = self._git_type()
         if remote_type == GitRemoteType.github:
-            return f"{http_url.replace(self.domain,'raw.githubusercontent.com')}/{ref}/{file_path}"
+            return f"{http_url.replace(self.domain, 'raw.githubusercontent.com')}/{ref}/{file_path}"
         if remote_type == GitRemoteType.gitlab:
             return f"{http_url}/-/raw/{ref}/{file_path}"
+        return ""
