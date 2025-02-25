@@ -1,89 +1,85 @@
-# 🚀 GitHub Workflows Documentation
+# 🔄 GitHub Workflows
 
-This directory contains the GitHub Actions workflows for the gOdoo-cli project. Below are the flowcharts explaining the different processes.
+This directory contains the GitHub Actions workflows for the gOdoo project.
 
-## 📈 Version Management Process
+## 📊 Workflow Overview
+
+```mermaid
+flowchart LR
+    A[PR/Push] -->|Triggers| B[quality.yml]
+    C[Manual Trigger] -->|Triggers| D[version-bump.yml]
+    D -->|Creates| E[Release PR]
+    E -->|Triggers| B
+    E -->|When Merged| F[version-publish.yml]
+    F -->|Creates| G[Tag & Release]
+    F -->|Publishes| H[PyPI Package]
+```
+
+## 📋 Workflow Details
+
+### ✅ quality.yml
+- **Triggers**: PR events, push to main, manual dispatch
+- **Actions**:
+  - Runs on Python 3.9, 3.11, and 3.12 matrix
+  - Executes formatter and linters with Hatch
+  - Runs tests with coverage reporting to Codecov
+  - Builds Docker image on main branch pushes
+  - Uses BuildX caching for efficient Docker builds
+
+### 🔢 version-bump.yml
+- **Trigger**: Manual workflow dispatch
+- **Inputs**: patch, minor, major, alpha, beta, rc
+- **Actions**:
+  - Gets current version using Hatch
+  - Bumps version according to input type
+  - Creates release branch
+  - Generates commit history as release notes
+  - Opens PR with release notes and proper labels
+
+### 📦 version-publish.yml
+- **Trigger**: Merged PR with 'release' label
+- **Actions**:
+  - Verifies proper merge state
+  - Creates Git tag with version from Hatch
+  - Creates GitHub release (prerelease for alpha/beta/rc)
+  - Builds package with Hatch
+  - Publishes to PyPI using token authentication
+
+## 🔧 Implementation Details
+
+### Python Environment
+- Uses `actions/setup-python@v5` with Hatch for dependency management
+- Handles version bumping through Hatch's versioning tools
+- Runs quality checks in consistent environments
+
+### Docker Building
+- Uses Docker BuildX with layer caching
+- Publishes to GitHub Container Registry
+- Optimized cache handling to speed up builds
+
+### CI Optimizations
+- Concurrency controls to cancel redundant workflow runs
+- Shallow clones when appropriate
+- Strategic caching of dependencies and build artifacts
+
+## 📝 Automated Processes
 
 ```mermaid
 flowchart TD
     A[Manual Trigger] -->|version-bump.yml| B[Create Release Branch]
-    B --> C[Bump Version in __about__.py]
-    C --> D[Create PR]
-    D --> E[PR Triggers quality.yml]
-    E --> F{Lint and Test}
-    F -->|Pass| G{Docker Build}
-    F -->|Fail| Z[Fix Issues]
-    G -->|Pass| H[PR Review]
-    G -->|Fail| Z[Fix Issues]
-    H -->|Merged| I[version-publish.yml]
-    I --> J[Create Git Tag]
-    J --> K[Create GitHub Release]
-    K --> L[Publish to PyPI]
+    B --> C[Bump Version in Package]
+    C --> D[Extract Changes from Git Log]
+    D --> E[Create PR with Release Notes]
+    E --> F[Quality Checks Run]
+    F --> G[PR Review and Merge]
+    G -->|version-publish.yml| H[Create Git Tag]
+    H --> I[Create GitHub Release]
+    I --> J[Publish to PyPI]
 ```
 
-## 🔍 Quality Check Process
-
-```mermaid
-flowchart TD
-    A[PR Created/Updated] --> B[quality.yml]
-    B --> C[Install Dependencies]
-    C --> D{Lint}
-    C --> E{Test with Coverage}
-    D -->|Pass| F{Docker Build}
-    D -->|Fail| G[Fail PR]
-    E -->|Pass| F
-    E -->|Fail| G
-    F -->|Pass| H[PR Ready]
-    F -->|Fail| G
-```
-
-## 🔄 Workflow Overview
-
-```mermaid
-flowchart LR
-    A[PR Created] -->|Triggers| B[quality.yml]
-    B -->|Blocks/Allows| C[PR Merge]
-    C -->|Triggers| D[version-publish.yml]
-    D -->|Creates Tag & Release| E[Publish to PyPI]
-```
-
-## 💾 Caching Strategy
-
-To optimize the workflow execution time, we leverage caching for the following:
-
-- 📦 **Python dependencies**: The `actions/setup-python` action is used with the `cache: "pip"` option to cache Python packages. The cache key is based on the `pyproject.toml` file.
-- 🔧 **Pre-commit hooks**: The `.pre-commit-config.yaml` file is used as the cache key for pre-commit hooks.
-
-This multi-level caching strategy ensures that workflows run efficiently while still maintaining cache freshness and relevance.
-
-## 📋 Workflow Details
-
-### 🔼 version-bump.yml
-- **Trigger**: Manual workflow dispatch
-- **Options**: patch, minor, major, alpha, beta, rc
-- **Actions**:
-  1. Creates release branch
-  2. Updates version using Hatch
-  3. Creates PR with version bump
-
-### ✅ quality.yml
-- **Trigger**: Pull request events, push to main, manual dispatch
-- **Actions**:
-  1. Runs linting suite
-  2. Runs tests with coverage
-  3. Builds Docker image
-- **Status**: Required check for PR merge
-
-### 📦 version-publish.yml
-- **Trigger**: PR merged with 'release' label
-- **Actions**:
-  1. Creates Git tag
-  2. Creates GitHub release
-  3. Builds Python package
-  4. Publishes to PyPI
-
-## 📝 Notes
-- ⚙️ Quality checks run automatically on PR creation/update
-- 🔢 Version bumps are initiated manually
-- 🚀 Release process is automated after PR merge
-- 🔒 All steps have appropriate permissions and concurrency limits
+## 🔑 Key Points
+- ✅ Quality checks run automatically on every PR and push to main
+- 🔖 Version bumping requires manual trigger by maintainers
+- 🚀 Release publishing is automated after PR merge
+- 🔒 Secure token handling for PyPI publishing
+- 🐳 Docker images use multi-stage builds for optimization

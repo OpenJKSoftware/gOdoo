@@ -142,6 +142,40 @@ The container ships with a Vscode Debug profile, that sets `--workers 0` to allo
 
 Use `godoo shell` to enter an interactive shell on the Database.
 
+# 🚀 CI/CD Pipeline
+
+gOdoo uses GitHub Actions workflows for quality assurance and release management. The complete workflow documentation is available in the [.github/workflows/README.md](./.github/workflows/README.md) file.
+
+## ✅ Quality Checks
+
+Every pull request and push to main triggers automated quality checks:
+
+- Linting and formatting with the latest Python tools
+- Test execution with full coverage reports
+- Docker image builds for verification
+
+## 🔖 Version Management
+
+The project uses a structured version management process:
+
+```mermaid
+flowchart TD
+    A[Manual Trigger] -->|version-bump.yml| B[Create Release Branch]
+    B --> C[Bump Version in __about__.py]
+    C --> D[Create PR]
+    D --> E[Quality Checks]
+    E --> F[PR Review]
+    F -->|Merged| G[Release Creation]
+    G --> H[PyPI Publication]
+```
+
+## 📦 Release Process
+
+1. A maintainer triggers a version bump (patch/minor/major/pre-release)
+2. A pull request is automatically created with version changes
+3. After CI passes and approval, the PR is merged
+4. An automated process creates the GitHub release and publishes to PyPI
+
 # Odoo Modules
 
 ## Third Party Modules (manifest.yml)
