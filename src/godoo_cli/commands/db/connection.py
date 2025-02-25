@@ -1,3 +1,9 @@
+"""Database Connection and Management.
+
+This module provides functionality for managing database connections and
+executing database queries using the psycopg2 library.
+"""
+
 import logging
 import subprocess
 from contextlib import contextmanager
@@ -55,6 +61,7 @@ class DBConnection:
     """
 
     def get_connection(self):
+        """Get a database connection."""
         LOGGER.debug(
             "Connecting to DB: '%s:%s' U='%s' P='%s' D='%s'",
             self.hostname,
@@ -117,7 +124,10 @@ class DBConnection:
             connection.close()
 
     def run_psql_shell_command(self, command: str, **kwargs):
-        """Run a psql command using the provided credentials. {} in the command will get templated with the connection string"""
+        """Run a psql command using the provided credentials.
+
+        {} in the command will get templated with the connection string.
+        """
         LOGGER.debug("Running PSQL Command: %s", command)
         arg_list = []
         if h := self.hostname:

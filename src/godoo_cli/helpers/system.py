@@ -101,6 +101,7 @@ def path_has_content(path: Path):
 
 def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
     """Checks if the provided Paths do already exist.
+
     Ignores 0 size files and empty folders.
     Prints table of Paths with size and Changedate.
     Prompts user to continue or abort typer.
@@ -110,7 +111,6 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
     False, when we shall not overwrite files.
     True, when there are no files to override or we should override
     """
-
     if isinstance(paths, Path):
         paths = [paths]
 

@@ -43,7 +43,6 @@ def set_passwords(
     db_password=CLI.database.db_password,
 ):
     """Set Login Password for all Users."""
-
     check_dangerous_command()
 
     connection = DBConnection(

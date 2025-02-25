@@ -36,9 +36,7 @@ CLI = CommonCLI()
 
 @CLI.arg_annotator
 def print_versions(odoo_main_path=CLI.odoo_paths.bin_path):
-    """
-    Print gOdoo and Odoo Version info.
-    """
+    """Print gOdoo and Odoo Version info."""
     rich_print(f"gOdoo Version: [bold green]{__about__.__version__}[/bold green]")
     odoo_version = odoo_bin_get_version(odoo_main_path)
     rich_print(f"Odoo Version: [bold green]{odoo_version.raw}[/bold green]")

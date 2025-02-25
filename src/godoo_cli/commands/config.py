@@ -24,9 +24,7 @@ def set_odoo_config(
     options: List[str] = typer.Argument(..., help="odoo.conf options by key=value"),
     odoo_conf_path=CLI.odoo_paths.conf_path,
 ):
-    """
-    Set odoo.conf values.
-    """
+    """Set odoo.conf values."""
     conf_path = Path(odoo_conf_path)
     odoo_conf = ConfigParser()
     odoo_conf.read(conf_path)

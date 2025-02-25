@@ -39,9 +39,9 @@ def query_database(
     db_password=CLI.database.db_password,
 ):
     """Run a Query against the database.
+
     Queries, with return values will be printed to stdout between "START QUERY_OUTPUT" and "END QUERY_OUTPUT".
     """
-
     # read stdin if query is not provided
     if query == "-":
         stdin = typer.get_text_stream("stdin")
@@ -80,7 +80,7 @@ def query_database(
 
 
 def _is_bootstrapped(db_connection: DBConnection) -> DB_BOOTSTRAP_STATUS:
-    """check if postgres contains database db_name and if this database has any tables present"""
+    """Check if postgres contains database db_name and if this database has any tables present."""
     try:
         with db_connection.connect() as cursor:
             cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public');")
@@ -124,7 +124,7 @@ def is_bootstrapped(
 
 
 def _get_installed_modules(db_connection: DBConnection, to_install=False):
-    """Get list of installed modules in database (to_install includes the modules marked for installation)"""
+    """Get list of installed modules in database (to_install includes the modules marked for installation)."""
     if (boot := _is_bootstrapped(db_connection=db_connection)) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
         return boot.value
     lookup_states = ["installed", "to upgrade"]

@@ -200,6 +200,7 @@ class CommonCLI:
     """
 
     def __init__(self) -> None:
+        """Initialize CommonCLI with default arguments."""
         self.odoo_paths = OdooPathCLIArgs
         self.odoo_launch = OdooLaunchArgs
         self.database = DatabaseCLIArgs
@@ -210,7 +211,7 @@ class CommonCLI:
 
     @property
     def arg_annotator(self):
-        """Add type annotations for
+        """Add type annotations for CommonCLI Props.
 
         Returns
         -------
