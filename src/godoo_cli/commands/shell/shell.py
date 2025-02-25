@@ -1,5 +1,12 @@
+"""Odoo shell interaction module.
+
+This module provides functionality for interacting with the Odoo shell,
+including running Python scripts and executing shell commands in the
+Odoo environment. It supports both interactive and script-based operations.
+"""
+
 import logging
-import sys
+import os
 from pathlib import Path
 from typing import List
 
@@ -20,8 +27,13 @@ def uninstall_modules(
     odoo_main_path=CLI.odoo_paths.bin_path,
     odoo_conf_path=CLI.odoo_paths.conf_path,
 ):
-    """
-    Uninstall given Modules from Odoo via shell.
+    """Uninstall specified modules from Odoo via shell.
+
+    This function uses the Odoo shell to uninstall modules that are currently
+    installed or in a state that allows uninstallation.
+
+    Returns:
+        int: 0 for success, non-zero for failure.
     """
     module_list_str = str(list(module_list))
     uninstall_cmd = f"env['ir.module.module'].search([('name','in',{module_list_str})]).filtered(lambda m: m.state not in ['uninstallable','uninstalled']).button_immediate_uninstall()"
@@ -43,10 +55,14 @@ def odoo_shell(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
 ):
-    """
-    Start Odoo session in an Interactive shell.
+    """Start an interactive Odoo shell session.
 
-    Odoo Conf is Preferred, but if not found, Database Options are used.
+    This function launches an Odoo shell session, either using configuration from
+    odoo.conf or direct database connection parameters. It supports both interactive
+    mode and command piping.
+
+    Returns:
+        int: 0 for success, non-zero for failure.
     """
     shell_cmd = f"{str(odoo_main_path.absolute())}/odoo-bin shell --no-http"
     if odoo_conf_path.exists():
@@ -63,11 +79,16 @@ def odoo_shell(
         shell_cmd = f'echo "{pipe_in_command}" |' + shell_cmd
         ret = run_cmd(shell_cmd)
     else:
-        ret = run_cmd(shell_cmd, stdin=sys.stdin)
+        ret = run_cmd(shell_cmd, stdin=os.stdin)
     return CLI.returner(ret.returncode)
 
 
 def complete_script_name():
+    """Get a list of available script names for autocompletion.
+
+    Returns:
+        List[str]: List of script names without their .py extension.
+    """
     script_folder = Path(__file__).parent / "scripts"
     return [p.stem for p in script_folder.glob("*.py")]
 
@@ -84,8 +105,13 @@ def odoo_shell_run_script(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
 ):
-    """
-    Run Predefined Script using Odoo-Shell (Script selection in Tab-Complete).
+    """Run a predefined script using the Odoo shell.
+
+    This function executes a Python script in the Odoo shell environment,
+    supporting both configuration file and direct database connection parameters.
+
+    Returns:
+        int: 0 for success, non-zero for failure.
     """
     script_folder = Path(__file__).parent / "scripts"
     script_path = script_folder / f"{script_name}.py"
@@ -108,18 +134,13 @@ def odoo_shell_run_script(
 
 
 def odoo_pregenerate_assets(odoo_main_path: Path):
-    """Uses Odoo shell to Pregenerate Asset bundles in Odoo.
-    Ensures the Asset bundles are present in Filestore
+    """Use Odoo shell to pregenerate asset bundles.
 
-    Parameters
-    ----------
-    odoo_main_path : Path
-        Path to odoo-bin Folder
+    This function ensures that asset bundles are present in the filestore
+    by pregenerating them through the Odoo shell.
 
-    Raises
-    ------
-    NotImplementedError
-        On Unsupported Odoo Version
+    Raises:
+        NotImplementedError: If the Odoo version is not supported.
     """
     odoo_version = odoo_bin_get_version(odoo_main_repo_path=odoo_main_path)
     if odoo_version.major == 16:

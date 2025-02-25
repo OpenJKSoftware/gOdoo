@@ -1,7 +1,8 @@
-"""
-Import read_path into Odoo.
-Will wait until Odoo is Online.
-Places Systemparam to Track if import was already done.
+"""Data import functionality for Odoo via RPC.
+
+This module provides tools for importing data into a running Odoo instance
+using Remote Procedure Call (RPC) methods. It supports importing data from
+various file formats and sources.
 """
 
 import logging
@@ -45,9 +46,11 @@ def import_to_odoo(
     ),
     skip_existing_ids: bool = typer.Option(False, help="Will skip import of already existing External IDs."),
 ):
-    """
-    Import [bold green]csv, xlsx, json, .py [/bold green] files into Odoo.
-    Adds an ir.config_parameter containing timestamp of each imported file.
+    """Import data into a running Odoo instance.
+
+    This function allows importing data from various file paths into an Odoo
+    database using RPC. It supports specifying a target model and additional
+    import context.
     """
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,

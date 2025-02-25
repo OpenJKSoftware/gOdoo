@@ -1,3 +1,11 @@
+"""Odoo manifest file management module.
+
+This module provides functionality for managing Odoo manifest files (odoo.yml),
+including parsing, updating, and manipulating repository information. It supports
+operations like adding comparison URLs, pinning commits, and cleaning up unused
+addon folders.
+"""
+
 import logging
 import shutil
 from pathlib import Path
@@ -12,7 +20,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_folders: List[Path]):
-    """Remove folders that are not included in git_repos anymore
+    """Remove folders that are not included in git_repos anymore.
 
     Parameters
     ----------
@@ -20,6 +28,8 @@ def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_fo
         Folder to check for deletions
     thirdparty_repos : Dict
         Dict of Prefix:[dict[url],..]
+    keep_folders : List[Path]
+        List of folders to keep regardless of their presence in thirdparty_repos
     """
     allowed_folders = []
     keep_folders_absolute = [p.absolute() for p in keep_folders]
@@ -71,14 +81,14 @@ def update_yml(
 
 
 def yaml_add_compare_commit(repo_dict, compare_target: str):
-    """Add comment with Compare URL to Repo:
+    """Add comment with compare URL to repo.
 
     Parameters
     ----------
-    repo_dict : _type_
-        Yaml Dict of url and commit
+    repo_dict : dict
+        YAML dict containing repository URL and commit information
     compare_target : str
-        git ref to compare to
+        Git reference to compare against
     """
     git_url = GitUrl(repo_dict["url"])
     try:
@@ -90,12 +100,12 @@ def yaml_add_compare_commit(repo_dict, compare_target: str):
 
 
 def yaml_remove_compare_commit(repo_dict):
-    """Remove Comments that have /compare/ in them.
+    """Remove comments that have /compare/ in them.
 
     Parameters
     ----------
-    repo_dict : RuamelYaml Dict
-        yaml dict
+    repo_dict : dict
+        YAML dict containing repository information and comments
     """
     del_list = []
     for target, comments in repo_dict.ca.items.items():

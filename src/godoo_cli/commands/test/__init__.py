@@ -1,4 +1,5 @@
-"""
+"""Test command modules for Odoo.
+
 Things that interact with Odoo RPC.
 Must Provide username and Password
 """

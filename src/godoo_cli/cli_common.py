@@ -1,3 +1,16 @@
+"""Common CLI functionality and configuration classes.
+
+This module provides shared functionality for the gOdoo CLI, including:
+- Path configuration for Odoo and addon directories
+- Database connection settings
+- RPC configuration
+- Launch parameters and options
+- Source code management settings
+
+The classes in this module serve as configuration containers and are used
+throughout the CLI to maintain consistent settings and defaults.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -8,6 +21,8 @@ from typer_common_functions import get_type_from_default, typer_retuner, typer_u
 
 @dataclass
 class OdooLaunchArgs:
+    """Common Args for Odoo Launch Process."""
+
     extra_cmd_args: List[str] = Option(
         None, help="extra agruments to pass to odoo-bin", envvar="ODOO_BIN_ARGS", rich_help_panel="Odoo"
     )
@@ -56,6 +71,8 @@ class OdooLaunchArgs:
 
 @dataclass
 class OdooPathCLIArgs:
+    """Common Args for Odoo Paths."""
+
     bin_path: Path = Option(
         ...,
         envvar="ODOO_MAIN_FOLDER",
@@ -86,6 +103,8 @@ class OdooPathCLIArgs:
 
 @dataclass
 class RpcCLIArgs:
+    """Common Args for Odoo RPC."""
+
     rpc_host: str = Option(
         ...,
         envvar="ODOO_RPC_HOST",
@@ -116,6 +135,8 @@ class RpcCLIArgs:
 
 @dataclass
 class DatabaseCLIArgs:
+    """Common Args for Odoo Database."""
+
     db_filter: str = Option(
         ...,
         envvar="ODOO_DB_FILTER",
@@ -156,6 +177,8 @@ class DatabaseCLIArgs:
 
 @dataclass
 class SourceGetArgs:
+    """Common Args for Source Code Management."""
+
     mainfest_path: Path = Option(
         "",
         envvar="ODOO_MANIFEST",
@@ -171,6 +194,11 @@ class SourceGetArgs:
 
 
 class CommonCLI:
+    """Common CLI Class.
+
+    Helps provide Default arguments for Typer
+    """
+
     def __init__(self) -> None:
         self.odoo_paths = OdooPathCLIArgs
         self.odoo_launch = OdooLaunchArgs

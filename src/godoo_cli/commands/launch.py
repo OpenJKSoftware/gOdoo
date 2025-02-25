@@ -1,8 +1,15 @@
+"""Odoo instance launch and management module.
+
+This module provides functionality for launching and managing Odoo instances,
+including bootstrapping new databases, handling configuration, and managing
+the launch process with various options like development mode and worker counts.
+"""
+
 import logging
 import re
 import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import typer
 
@@ -27,26 +34,26 @@ def _launch_command(
     extra_cmd_args: List[str],
     workspace_addon_path: Path,
     upgrade_workspace_modules: bool = True,
-):
-    """Build Odoo Launch command
+) -> str:
+    """Build the Odoo launch command with all necessary arguments.
 
-    Parameters
-    ----------
-    odoo_path : Path
-        Path to odoo-bin folder
-    odoo_conf_path : Path
-        Path to odoo.conf
-    extra_cmd_args : List[str]
-        extra args to pass to odoo-bin
-    workspace_addon_path : Path
-        Path to dev workspace addons folder
-    upgrade_workspace_modules : bool, optional
-        upgrade workspace addons, by default True
+    This function constructs the command line string used to launch Odoo,
+    including handling module upgrades and configuration paths.
+
+    Args:
+        odoo_path: Path to the Odoo installation directory containing odoo-bin.
+        odoo_conf_path: Path to the Odoo configuration file.
+        extra_cmd_args: Additional command line arguments to pass to odoo-bin.
+        workspace_addon_path: Path to the workspace addons directory.
+        upgrade_workspace_modules: If True, automatically upgrade all modules in workspace.
+
+    Returns:
+        str: The complete command string to launch Odoo.
     """
     upgrade_addons = (
         [f.name for f in godooModules(workspace_addon_path).get_modules()] if upgrade_workspace_modules else []
     )
-    if any(["-u" in i or "--update" in i for i in extra_cmd_args]):
+    if any(arg in ("-u", "--update") for arg in extra_cmd_args):
         upgrade_addons = []
     update_addon_string = "--update " + ",".join(upgrade_addons) if upgrade_addons else ""
 
@@ -75,47 +82,36 @@ def bootstrap_and_prep_launch_cmd(
     install_workspace_addons: bool = True,
     launch_or_bootstrap: bool = False,
     languages: str = "de_DE,en_US",
-):
-    """Start Bootstrap if database is not bootstrapped. Install Py Depends And return Launch CMD.
+) -> Union[int, str]:
+    """Bootstrap an Odoo instance if needed and prepare the launch command.
 
-    Parameters
-    ----------
-    odoo_main_path : Path
-        Path to Odoo-bin folder
-    workspace_addon_path : Path
-        Path to workspace addons
-    thirdparty_addon_path : Path
-        path to thirdparty addons folder
-    odoo_conf_path : Path
-        path to odoo conf
-    db_filter : str
-        odoo.conf db_filter
-    db_connection : DBConnection
-        DBConnection object
-    odoo_demo : bool
-        if false, add --without-demo to bootstrap
-    dev_mode : bool
-        add --dev... to cmd
-        install web, and base
-    install_workspace_addons : bool
-        install all modules in workspace folder
-    extra_args : List[str]
-        extra launch CMD args
-    extra_bootstrap_args : List[str]
-        extra bootstrap cmd args
-    log_file_path : Path
-        path to odoo.log (stdout log if empty)
-    multithread_worker_count : int
-        count of multithread workser
-    launch_or_bootstrap: bool, optional
-        Only return launch cmd if bootstrap did not run
-    languages : str, optional
-        languages to load, by default "de_DE,en_US"
+    This function handles the complete process of preparing an Odoo instance for launch:
+    1. Checks if the database exists and is bootstrapped
+    2. Bootstraps the database if needed
+    3. Installs Python dependencies
+    4. Updates odoo.conf with current addon paths
+    5. Prepares the launch command with appropriate options
 
-    Returns
-    -------
-    Union[int,str]
-        Int return code of bootstrap if not 0 else launch cmd as string
+    Args:
+        odoo_main_path: Path to the Odoo installation directory.
+        workspace_addon_path: Path to workspace addons directory.
+        thirdparty_addon_path: Path to thirdparty addons directory.
+        odoo_conf_path: Path to odoo.conf file.
+        db_filter: Database filter pattern for odoo.conf.
+        db_connection: Database connection details.
+        odoo_demo: If True, load demo data during bootstrap.
+        dev_mode: If True, enable development mode features.
+        multithread_worker_count: Number of worker processes (0 for single process).
+        extra_launch_args: Additional arguments for the launch command.
+        extra_bootstrap_args: Additional arguments for the bootstrap process.
+        log_file_path: Path to the log file (None for stdout).
+        install_workspace_addons: If True, install all modules found in workspace.
+        launch_or_bootstrap: If True, only return launch command if bootstrap didn't run.
+        languages: Comma-separated list of languages to install.
+
+    Returns:
+        Union[int, str]: Either a non-zero error code if bootstrap failed,
+            or the launch command string if successful.
     """
     LOGGER.info("Starting godoo Init Script")
 
@@ -217,8 +213,19 @@ def launch_odoo(
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
     languages=CLI.odoo_launch.languages,
 ):
-    """
-    Launch Odoo, Bootstrap if db is empty.
+    """Launch an Odoo instance, bootstrapping if necessary.
+
+    This command handles the complete process of launching an Odoo instance:
+    1. Creates a new database if it doesn't exist
+    2. Bootstraps the database with initial data if needed
+    3. Configures the instance with specified options
+    4. Launches Odoo with the appropriate configuration
+
+    The function uses CLI class defaults for most parameters, which can be
+    overridden through command line arguments or environment variables.
+
+    Returns:
+        int: 0 for success, non-zero for failure.
     """
     db_connection = DBConnection(
         hostname=db_host,
@@ -279,7 +286,37 @@ def launch_import(
     log_file_path=CLI.odoo_launch.log_file_path,
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):
-    """Bootstrap and Start odoo. Launches RPC import in second thread."""
+    """Launch Odoo and import data from specified paths.
+
+    This command launches an Odoo instance and starts a separate thread to import
+    data through RPC. The import process runs asynchronously while Odoo is running.
+
+    Args:
+        load_data_path: List of paths containing data to import.
+        odoo_main_path: Path to the Odoo installation directory.
+        workspace_addon_path: Path to workspace addons directory.
+        thirdparty_addon_path: Path to thirdparty addons directory.
+        odoo_conf_path: Path to odoo.conf file.
+        db_filter: Database filter pattern for odoo.conf.
+        db_host: Database host address.
+        db_port: Database port number.
+        db_name: Name of the database to use.
+        db_user: Database user name.
+        db_password: Database password.
+        rpc_host: Host address for RPC connections.
+        rpc_user: Username for RPC authentication.
+        rpc_password: Password for RPC authentication.
+        odoo_demo: If True, load demo data during bootstrap.
+        dev_mode: If True, enable development mode features.
+        install_workspace_modules: If True, install all modules in workspace.
+        extra_launch_args: Additional command line arguments for odoo-bin.
+        extra_bootstrap_args: Additional arguments for bootstrap process.
+        log_file_path: Path to the log file (None for stdout).
+        multithread_worker_count: Number of worker processes.
+
+    Returns:
+        int: 0 for success, non-zero for failure.
+    """
     db_connection = DBConnection(
         hostname=db_host,
         port=db_port,

@@ -1,3 +1,10 @@
+"""RPC CLI interface module.
+
+This module provides the command-line interface for RPC operations,
+including configuration parameter management, module operations,
+and translation management.
+"""
+
 import typer
 
 from .config_parameters import set_config_parameter
@@ -7,6 +14,14 @@ from .translations import dump_translations
 
 
 def modules_cli_app():
+    """Create and configure the modules CLI application.
+
+    This function sets up the command-line interface for module operations,
+    including installation, uninstallation, and translation management.
+
+    Returns:
+        typer.Typer: The configured CLI application instance.
+    """
     app = typer.Typer(
         no_args_is_help=True,
         help="Wrapper around Odoo modules. (Install/upgrade, etc)",
@@ -19,6 +34,14 @@ def modules_cli_app():
 
 
 def rpc_cli_app():
+    """Create and configure the RPC CLI application.
+
+    This function sets up the command-line interface for RPC operations,
+    including commands for module management, configuration, and translations.
+
+    Returns:
+        typer.Typer: The configured CLI application instance.
+    """
     app = typer.Typer(
         no_args_is_help=True,
         help="Functions that act on a running Odoo instance via RPC.",

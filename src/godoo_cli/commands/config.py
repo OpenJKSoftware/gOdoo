@@ -1,5 +1,8 @@
-"""
-Set odoo.conf variables
+"""Configuration management module for Odoo.
+
+This module provides functionality to manage Odoo configuration files,
+particularly odoo.conf. It allows setting configuration options through
+command-line arguments.
 """
 
 import logging
@@ -32,7 +35,7 @@ def set_odoo_config(
     for op in options:
         if "=" not in op:
             LOGGER.error("Cannot parse Option: '%s' --> missing = sign", op)
-            raise ValueError("")
+            raise ValueError("Configuration option must be in format key=value")
         op_split = op.split("=")
         custom_opts[op_split[0]] = op_split[1]
     LOGGER.debug("Writing Conf Options: %s", custom_opts)

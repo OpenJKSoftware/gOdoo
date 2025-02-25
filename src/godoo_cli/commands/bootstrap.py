@@ -1,3 +1,10 @@
+"""Module for bootstrapping Odoo instances.
+
+This module provides functionality to bootstrap Odoo instances by installing
+required Python dependencies, setting up database connections, and initializing
+the Odoo environment with necessary modules and configurations.
+"""
+
 import logging
 import os
 import re
@@ -20,7 +27,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _add_default_argument(cmd_list: List[str], arg: str, arg_val: Any):
-    if not any([arg in s for s in cmd_list]):
+    """Add a default argument to the command list if not already present.
+
+    Args:
+        cmd_list: List of command arguments.
+        arg: Argument name to add.
+        arg_val: Value for the argument.
+    """
+    if not any(arg in s for s in cmd_list):
         cmd_list.append(f'{arg}="{arg_val}"')
 
 
@@ -36,36 +50,25 @@ def _boostrap_command(
     multithread_worker_count: int = -1,
     languages: str = "de_DE,en_US",
 ) -> str:
-    """
-    Generate Bootstrap Command.
+    """Generate bootstrap command for Odoo initialization.
 
-    Parameters
-    ----------
-    odoo_main_path : Path
-        folder with odoo-bin
-    odoo_conf_path : Path
-        path to odoo.conf
-    addon_paths : List[Path]
-        odoo bin --addons-path
-    workspace_addon_path : Path
-        path to addons in dev repo
-    db_filter : str
-        db filter for odoo.conf
-    db_connection : DBConnection
-        DB Connection
-    extra_cmd_args : List[str], optional
-        extra args to pass to odoo-bin, by default None
-    install_workspace_modules : bool, optional
-        install all modules found in workspace_path, by default True
-    multithread_worker_count : int, optional
-        cound of threads. if >0 cli also sets proxy mode flag, by default 9
-    languages : str, optional
-        languages to load, by default "de_DE,en_US"
+    This function constructs the Odoo bootstrap command with all necessary parameters
+    including database configuration, addon paths, and worker settings.
 
-    Returns
-    -------
-    str
-        odoo-bin command
+    Args:
+        odoo_main_path: Folder containing odoo-bin.
+        odoo_conf_path: Path to odoo.conf.
+        addon_paths: List of paths for odoo-bin --addons-path.
+        workspace_addon_path: Path to addons in dev repo.
+        db_filter: Database filter for odoo.conf.
+        db_connection: Database connection details.
+        extra_cmd_args: Extra args to pass to odoo-bin.
+        install_workspace_modules: Whether to install all modules found in workspace_path.
+        multithread_worker_count: Number of worker threads. If >0, also sets proxy mode flag.
+        languages: Languages to load, comma-separated.
+
+    Returns:
+        The complete odoo-bin command string.
     """
     LOGGER.info("Generating Bootstrap Command")
 
@@ -150,8 +153,7 @@ def bootstrap_odoo(
     banner_text=CLI.odoo_launch.banner_text,
     banner_bg_color=CLI.odoo_launch.banner_bg_color,
 ):
-    """Bootstrap Odoo."""
-
+    """Bootstrap an Odoo instance with specified configuration."""
     addon_paths = get_addon_paths(
         odoo_main_repo=odoo_main_path,
         workspace_addon_path=workspace_addon_path,

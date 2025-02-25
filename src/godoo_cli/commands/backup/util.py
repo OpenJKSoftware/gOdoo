@@ -1,14 +1,29 @@
+"""Utility functions for backup operations.
+
+This module provides common utility functions used across backup operations,
+including file transfer and system command execution.
+"""
+
+import logging
 import subprocess
-from logging import getLogger
 from pathlib import Path
 
 from ..db.connection import DBConnection
 
-LOGGER = getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def call_rsync(source_folder: Path, target_folder: Path, rsync_delete: bool = True):
-    """Copy Folder to anohter using Rsync"""
+    """Copy folder to another using Rsync.
+
+    Args:
+        source_folder: Source path to copy from.
+        target_folder: Target path to copy to.
+        rsync_delete: If True, delete files in target that don't exist in source.
+
+    Raises:
+        FileNotFoundError: If source folder doesn't exist or is empty.
+    """
     if not source_folder.exists() and not source_folder.glob("*"):
         raise FileNotFoundError("Cannot find filestore Backup @ %s" % source_folder)
     args = ["rsync", "-a", "--no-perms", "--no-owner", "--no-group", "--info=progress2"]
@@ -21,7 +36,7 @@ def call_rsync(source_folder: Path, target_folder: Path, rsync_delete: bool = Tr
 
 
 def drop_db(connection: DBConnection, db_name: str):
-    """Drop a DB in postgres"""
+    """Drop a DB in postgres."""
     with connection.connect() as cur:
         cur.connection.autocommit = True
         LOGGER.info("Dropping DB: %s", db_name)
@@ -29,7 +44,7 @@ def drop_db(connection: DBConnection, db_name: str):
 
 
 def create_db(connection: DBConnection, db_name: str):
-    """Create DB In Postgres"""
+    """Create DB In Postgres."""
     with connection.connect() as cur:
         cur.connection.autocommit = True
         LOGGER.info("Creating DB: %s", db_name)

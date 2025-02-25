@@ -1,5 +1,11 @@
+"""Database query functionality module.
+
+This module provides functionality for querying Odoo databases,
+including checking bootstrap status and retrieving installed modules.
+"""
+
+import enum
 import logging
-from enum import Enum
 
 import typer
 from psycopg2 import OperationalError, ProgrammingError
@@ -9,10 +15,14 @@ from ...helpers.cli import check_dangerous_command
 from .connection import DBConnection
 
 
-class DB_BOOTSTRAP_STATUS(Enum):
-    BOOTSTRAPPED = "bootstrapped"
-    NO_DB = "db missing"
-    EMPTY_DB = "db empty"
+class DB_BOOTSTRAP_STATUS(enum.Enum):
+    """Database bootstrap status enumeration.
+
+    This enum represents the possible states of database bootstrapping:
+    - NOT_BOOTSTRAPPED: Database exists but is not bootstrapped
+    - BOOTSTRAPPED: Database is fully bootstrapped
+    - NOT_FOUND: Database does not exist
+    """
 
 
 LOGGER = logging.getLogger(__name__)
@@ -92,7 +102,10 @@ def is_bootstrapped(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
 ):
-    """Check if the database is empty. Return code  = 1 if database does not exist, 2 if database is empty, 0 if database is not empty."""
+    """Check if the database is empty.
+
+    Return code = 1 if database does not exist, 2 if database is empty, 0 if database is not empty.
+    """
     connection = DBConnection(
         hostname=db_host,
         port=db_port,
@@ -136,7 +149,7 @@ def get_installed_modules(
         help="Include modules marked for installation",
     ),
 ):
-    """Returns Modules Marked as installed by Odoo in the database"""
+    """Returns modules marked as installed by Odoo in the database."""
     db_connection = DBConnection(
         hostname=db_host,
         port=db_port,

@@ -69,7 +69,11 @@
         "python.defaultInterpreterPath": "/odoo/venv/bin/python",
         "python.languageServer": "None", // Disable because of Odoo IDE Extension
         "[python]": {
-          "editor.defaultFormatter": "ms-python.black-formatter"
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit",
+            "source.sortImports": "explicit"
+          }
           // XML Settings:
         },
         "xml.format.preserveAttributeLineBreaks": false,

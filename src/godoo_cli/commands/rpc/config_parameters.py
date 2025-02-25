@@ -1,3 +1,9 @@
+"""Configuration parameter management for Odoo RPC.
+
+This module provides functionality to set and manage configuration parameters
+in a running Odoo instance via RPC.
+"""
+
 import logging
 
 import typer
@@ -18,8 +24,11 @@ def set_config_parameter(
     rpc_user=CLI.rpc.rpc_user,
     rpc_password=CLI.rpc.rpc_password,
 ):
-    """Create/Set/Delete ir.config_parameter in Odoo"""
+    """Set a configuration parameter in the Odoo instance.
 
+    This function allows setting a specific configuration parameter via RPC,
+    providing a way to modify Odoo system settings dynamically.
+    """
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,
         odoo_db=rpc_database,

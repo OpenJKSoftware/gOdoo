@@ -16,7 +16,7 @@ def example_repo() -> str:
 
 
 def test_clone_repo(example_repo: str):
-    """Test Git Cloning and switching to diefferent commit"""
+    """Test Git cloning and switching to different commit."""
     with tempfile.TemporaryDirectory() as td:
         git_ensure_repo(td, example_repo, branch="main")
         git_repo = Repo(td)

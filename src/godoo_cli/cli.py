@@ -1,4 +1,9 @@
-"""Main CLI."""
+"""Main CLI module for gOdoo.
+
+This module serves as the main entry point for the gOdoo CLI application.
+It sets up the command structure, configures logging, and provides the core CLI functionality
+for interacting with Odoo instances.
+"""
 
 from typing import Optional
 
@@ -48,10 +53,24 @@ def main_callback(
         help="Verbose Logging with Error stacktraces",
     ),
 ):
+    """Configure the CLI's logging level.
+
+    Args:
+        verbose: If True, enables verbose logging with error stacktraces.
+            Can be set via --verbose flag or GODOO_VERBOSE environment variable.
+    """
     set_logging(verbose=bool(verbose) if verbose is not None else False)
 
 
 def main_cli():
+    """Initialize and configure the main CLI application.
+
+    This function sets up the CLI structure with all available commands and subcommands.
+    It loads environment variables from .env file and configures the help text and callbacks.
+
+    Returns:
+        typer.Typer: The configured CLI application instance.
+    """
     load_dotenv(".env", override=True)
 
     help_text = "gOdoo CLI for Interacting with Odoo"
@@ -92,5 +111,10 @@ def main_cli():
 
 
 def launch_cli():
+    """Launch the gOdoo CLI application.
+
+    This is the main entry point for the CLI application.
+    It creates and runs the CLI app with all configured commands.
+    """
     app = main_cli()
     app()

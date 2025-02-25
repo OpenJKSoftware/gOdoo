@@ -12,7 +12,7 @@ LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class OdooVersion:
-    """Structure to hold Odoo version"""
+    """Structure to hold Odoo version."""
 
     text: str
     major: int
@@ -20,11 +20,12 @@ class OdooVersion:
 
     @property
     def raw(self):
+        """Return the version number in major.minor format."""
         return f"{self.major}.{self.minor}"
 
 
 def odoo_bin_get_version(odoo_main_repo_path: Path) -> OdooVersion:
-    """Get Odoo Version by calling 'odoo-bin --version'
+    """Get Odoo Version by calling 'odoo-bin --version'.
 
     Parameters
     ----------

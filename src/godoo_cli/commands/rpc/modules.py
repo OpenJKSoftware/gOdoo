@@ -1,3 +1,10 @@
+"""Module management functionality for Odoo via RPC.
+
+This module provides tools for managing Odoo modules through Remote Procedure
+Call (RPC) methods, including installation, uninstallation, and querying
+module status.
+"""
+
 import logging
 from typing import Any, List
 
@@ -7,26 +14,23 @@ from godoo_rpc.login import wait_for_odoo
 
 from ...cli_common import CommonCLI
 
-CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
+CLI = CommonCLI()
 
 
-def rpc_get_modules(odoo_api: OdooApiWrapper, module_query: str, valid_module_names: List[str] = None):
+def rpc_get_modules(odoo_api: OdooApiWrapper, module_query: str, valid_module_names: List[str] = None) -> List[Any]:
     """Get ir.module.module records by a query search string.
 
-    Parameters
-    ----------
-    odoo_api : OdooApiWrapper
-        Odoo Wrapper
-    module_query : str
-        Custom query. Module name. Comma sep list of modules or % wildcards are supported
-    valid_module_names : List[str], optional
-        only allow certain model names to be returned, by default None
+    This function searches for Odoo modules based on a query string and
+    optional list of valid module names.
 
-    Returns
-    -------
-    _type_
-        _description_
+    Args:
+        odoo_api: The Odoo API wrapper for RPC communication.
+        module_query: A search string to query modules.
+        valid_module_names: Optional list of valid module names to filter results.
+
+    Returns:
+        A list of module records matching the query.
     """
     mod_env = odoo_api.session.env["ir.module.module"]
     mod_env.update_list()
@@ -93,8 +97,12 @@ def install_modules(
     rpc_password=CLI.rpc.rpc_password,
     upgrade: bool = typer.Option(True, help="Upgrae Module if already installed"),
 ):
-    """Install or upgrade Odoo modules via RPC. Can act on multiple modules with % wildcard"""
+    """Install specified Odoo modules via RPC.
 
+    This function allows installing one or more Odoo modules in a running
+    Odoo instance. Optionally, it can update modules that are already
+    installed.
+    """
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,
         odoo_db=rpc_database,
@@ -122,8 +130,11 @@ def uninstall_modules(
     rpc_user=CLI.rpc.rpc_user,
     rpc_password=CLI.rpc.rpc_password,
 ):
-    """Uninstall odoo Modules via RPC. Can act on multiple modules with % wildcard"""
+    """Uninstall specified Odoo modules via RPC.
 
+    This function allows uninstalling one or more Odoo modules from a
+    running Odoo instance.
+    """
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,
         odoo_db=rpc_database,

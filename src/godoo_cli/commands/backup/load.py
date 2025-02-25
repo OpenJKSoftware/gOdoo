@@ -1,3 +1,9 @@
+"""Database restore functionality for Odoo instances.
+
+This module provides functionality for loading database dumps into Odoo instances,
+supporting various dump formats and handling database creation and restoration.
+"""
+
 import logging
 from pathlib import Path
 

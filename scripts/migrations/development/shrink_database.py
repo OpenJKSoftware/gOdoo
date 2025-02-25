@@ -1,4 +1,5 @@
 """Script to shrink the database by removing attachments and product images."""
+
 from logging import getLogger
 
 LOGGER = getLogger("migrations.shrink_database")

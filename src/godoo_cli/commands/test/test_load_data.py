@@ -41,12 +41,11 @@ def odoo_load_test_data(
     odoo_log_level: str = typer.Option("test", help="Log level"),
     multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
 ):
-    """Loads Test Data from test/data.py of given modules into Odoo DB.
+    """Loads test data from test/data.py of given modules into Odoo DB.
 
-    Makes sure Odoo is Bootstrapped with the given modules and then
-    Calls `tests.data.generate_test_data(env)` for each module.
+    Makes sure Odoo is bootstrapped with the given modules and then
+    calls `tests.data.generate_test_data(env)` for each module.
     """
-
     addon_paths = get_addon_paths(
         odoo_main_repo=odoo_main_path,
         workspace_addon_path=workspace_addon_path,

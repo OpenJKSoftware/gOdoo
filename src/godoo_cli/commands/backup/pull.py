@@ -1,3 +1,9 @@
+"""Remote backup retrieval functionality for Odoo instances.
+
+This module provides functionality for pulling database backups from remote sources,
+supporting various transfer methods and backup formats.
+"""
+
 import logging
 import subprocess
 from pathlib import Path
@@ -9,23 +15,57 @@ from typing_extensions import Annotated
 from ...cli_common import CommonCLI
 from ...helpers.system import typer_ask_overwrite_path
 
-LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
+LOGGER = logging.getLogger(__name__)
 
 
 class InstancePuller:
+    """Class for pulling complete Odoo instance data.
+
+    This class handles pulling both database dumps and filestore data from
+    remote Odoo instances, supporting various deployment configurations including
+    Docker containers and SSH connections.
+
+    Attributes:
+        ssh_hostname: Remote host for SSH connection.
+        ssh_user: Username for SSH connection.
+        pg_container: Name of the PostgreSQL container.
+        pg_user: PostgreSQL user for authentication.
+    """
+
     ssh_hostname: str
     ssh_user: str
     pg_container: str  # Does Postgres Live in a container?
     pg_user: str
 
-    def set_exec_target(self, command):
-        """Prepend ssh execution, if ssh args are provided"""
+    def set_exec_target(self, command: str) -> str:
+        """Prepare a command for remote execution if needed.
+
+        This method prepends SSH execution details to the command if SSH
+        arguments are provided.
+
+        Args:
+            command: The command to be executed.
+
+        Returns:
+            str: The command modified for remote execution if needed.
+        """
         if self.ssh_hostname:
             return f"ssh {self.ssh_user}@{self.ssh_hostname} '{command}'"
         return command
 
-    def get_docker_volume_path(self, volume_name: str):
+    def get_docker_volume_path(self, volume_name: str) -> str:
+        """Get the mount path of a Docker volume.
+
+        This method retrieves the actual filesystem path where a Docker volume
+        is mounted.
+
+        Args:
+            volume_name: Name of the Docker volume.
+
+        Returns:
+            str: The filesystem path where the volume is mounted.
+        """
         command = f"docker volume inspect {volume_name} | jq -r .[0].Mountpoint"
         command = self.set_exec_target(command)
         LOGGER.debug("Running: '%s'", command)
@@ -38,7 +78,19 @@ class InstancePuller:
         LOGGER.debug("Docker Volume Path: %s", path)
         return path
 
-    def rsync_filestore(self, filestore_folder, target_folder: Path):
+    def rsync_filestore(self, filestore_folder: str, target_folder: Path) -> int:
+        """Synchronize the Odoo filestore using rsync.
+
+        This method copies the filestore data from a remote or local source
+        to the target location.
+
+        Args:
+            filestore_folder: Source path of the filestore.
+            target_folder: Destination path for the filestore.
+
+        Returns:
+            int: Return code from rsync (0 for success).
+        """
         src_path = filestore_folder
         if self.ssh_hostname:
             src_path = f"{self.ssh_user}@{self.ssh_hostname}:{src_path}/"
@@ -48,7 +100,19 @@ class InstancePuller:
         LOGGER.debug("Running: %s", command)
         return subprocess.run(command, shell=True).returncode
 
-    def download_db_dump(self, db_name, target_sql_path: Path):
+    def download_db_dump(self, db_name: str, target_sql_path: Path) -> None:
+        """Download a database dump from PostgreSQL.
+
+        This method creates a database dump using pg_dump, supporting both
+        local and containerized PostgreSQL instances.
+
+        Args:
+            db_name: Name of the database to dump.
+            target_sql_path: Path where to save the dump file.
+
+        Raises:
+            typer.Exit: If the database dump fails.
+        """
         command = f"pg_dump --no-owner -Fc {db_name}"
         if n := self.pg_container:
             command = f"docker exec {n} {command}"
@@ -100,7 +164,7 @@ class InstancePuller:
         filestore_volume: Annotated[
             str,
             typer.Option(
-                help="Alternative to valib-folder. A Docker volume name, that gets used to derive filestore-folder",
+                help="Alternative to valib-folder. A Docker volume name, that gets used to derive filestore-folder.",
                 rich_help_panel="Filestore Options",
             ),
         ] = None,
@@ -114,7 +178,25 @@ class InstancePuller:
         pg_db_user=CLI.database.db_user,
         pg_db_name=CLI.database.db_name,
     ):
-        """Pull filestore folder and Database Dump and save to TARGET_FOLDER"""
+        """Pull filestore folder and database dump from a remote instance.
+
+        This method retrieves both the filestore and a database dump from a remote
+        Odoo instance, supporting various deployment configurations including
+        Docker containers and SSH connections.
+
+        Args:
+            target_folder: Local directory to store the pulled data.
+            ssh_user: Username for SSH connection.
+            ssh_hostname: Remote host for SSH connection.
+            filestore_folder: Direct path to the Odoo filestore.
+            filestore_volume: Docker volume name containing the filestore.
+            pg_container: Name of the PostgreSQL container.
+            pg_db_user: PostgreSQL user for authentication.
+            pg_db_name: Name of the database to dump.
+
+        Raises:
+            typer.Exit: If the pull operation fails.
+        """
         self.ssh_hostname = ssh_hostname
         self.ssh_user = ssh_user
         filestore_target = target_folder / "odoo_filestore"

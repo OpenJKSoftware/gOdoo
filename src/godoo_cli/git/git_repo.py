@@ -13,7 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs):
-    """Clears targetfolder and does a clean clone_from
+    """Clears targetfolder and does a clean clone_from.
 
     Parameters
     ----------
@@ -41,9 +41,9 @@ def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs):
 def git_pull_checkout_reset(
     repo: Repo, branch: str = "master", commit: str = "", pull: str = "", reset_hard: bool = True
 ):
-    """
-    Ensure git Repo is on specific branch and commit.
-    Will unshallow if neccessary
+    """Ensure git repo is on specific branch and commit.
+
+    Will unshallow if necessary.
 
     Parameters
     ----------
@@ -58,7 +58,6 @@ def git_pull_checkout_reset(
     reset_hard : bool, optional
         will call reset --hard before checkout to ensure clean git repo, by default True
     """
-
     if reset_hard:
         repo.git.reset("--hard", "HEAD")
 
@@ -92,9 +91,7 @@ def git_ensure_ref(
     pull: str = "",
     **kwargs,
 ):
-    """
-    Clone a git Repo and ensure its HEAD is set to Branch and commit.
-
+    """Clone a git repo and ensure its HEAD is set to branch and commit.
 
     Parameters
     ----------
@@ -175,11 +172,11 @@ def git_ensure_repo(
     pull : str, optional
         ref to pull, by default ""
     zip_mode : bool, optional
-        wether to download a zip (fast but  no commit history) or clone and fetch (fully working git clone), by default False
+        whether to download a zip (fast but no commit history) or clone and fetch
+        (fully working git clone), by default False
     **kwargs
-        get passed to git clone
+        Additional arguments passed to git clone
     """
-
     if isinstance(target_folder, str):
         target_folder = Path(target_folder)
 

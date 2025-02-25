@@ -1,3 +1,10 @@
+"""Git repository archive download module.
+
+This module provides functionality for downloading Git repositories as ZIP archives,
+offering a faster alternative to full Git cloning when history is not needed.
+It supports various Git hosting services and handles extraction and cleanup.
+"""
+
 import logging
 import shutil
 import tempfile

@@ -43,7 +43,7 @@ def odoo_get_changed_modules(
     diff_ref: str = typer.Argument(..., help="Git Ref/Branch to compare against"),
     workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
 ):
-    """Get Modules that have changed compared to diff_ref"""
+    """Get modules that have changed compared to diff_ref."""
     changed_modules = get_changed_modules_and_depends(diff_ref=diff_ref, addon_path=workspace_addon_path)
     if not changed_modules:
         return
@@ -82,11 +82,10 @@ def odoo_run_tests(
     odoo_log_level: str = typer.Option("test", help="Log level"),
     pregenerate_assets: Annotated[bool, typer.Option(help="Pregenerate assets before running tests")] = True,
 ):
-    """Bootstrap or Launch odoo in Testing Mode. Exits after Run, so no webserver is started.
+    """Bootstrap or launch Odoo in testing mode.
 
-    Will set test specific odoo.conf if it needs to bootstrap
+    Will set test specific odoo.conf if it needs to bootstrap. Exits after run, so no webserver is started.
     """
-
     test_module_names = _test_modules_special_cases(test_module_names, workspace_addon_path)
     addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)
     module_reg = godooModules(addon_paths)

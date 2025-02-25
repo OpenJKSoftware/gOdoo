@@ -1,3 +1,11 @@
+"""Python dependency management for Odoo modules.
+
+This module provides functionality for managing Python dependencies required by
+Odoo modules, including detecting dependencies from module manifests and
+installing them using pip. It ensures that all required Python packages are
+available for Odoo modules to function properly.
+"""
+
 import logging
 import re
 from pathlib import Path
@@ -11,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _install_py_reqs_for_modules(modules: List[godooModule], module_reg: godooModules):
-    """Install Python Requirements mentioned in odoo module manifests of given modules
+    """Install Python Requirements mentioned in odoo module manifests of given modules.
 
     Parameters
     ----------

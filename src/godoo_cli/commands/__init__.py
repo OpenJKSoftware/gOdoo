@@ -1,3 +1,15 @@
+"""Command modules for the gOdoo CLI.
+
+This package contains all the command modules that provide the core functionality
+of the gOdoo CLI, including:
+- Backup and restore operations
+- Database management
+- RPC operations
+- Shell commands
+- Source code management
+- Test execution
+"""
+
 from .backup import backup_cli_app
 from .bootstrap import bootstrap_odoo
 from .config import set_odoo_config

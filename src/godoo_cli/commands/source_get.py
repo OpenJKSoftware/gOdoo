@@ -1,4 +1,4 @@
-"""Commands to clone Odoo and addon source code"""
+"""Commands to clone Odoo and addon source code."""
 
 import configparser
 import logging
@@ -25,6 +25,15 @@ CLI = CommonCLI()
 
 
 class UpdateMode(str, Enum):
+    """Update mode enumeration for source code management.
+
+    This enum defines the available update modes for source code:
+    - all: Update all sources (Odoo, third-party, and zip archives)
+    - zip: Update only zip archives
+    - odoo: Update only the Odoo source code
+    - thirdparty: Update only third-party addons
+    """
+
     all = "all"
     zip = "zip"
     odoo = "odoo"
@@ -79,7 +88,7 @@ def unpack_addon_archives(
 
 
 def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
-    """Update Odoo.Conf with Addon Paths
+    """Update Odoo.Conf with Addon Paths.
 
     Parameters
     ----------
@@ -112,8 +121,10 @@ def py_depends_by_db(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
 ):
-    """Insall Python Dependencies for all installed modules in DB.
-    (Will not raise error if Module not found in Source for Upgrade Purposes)"""
+    """Install Python dependencies for all installed modules in DB.
+
+    Will not raise error if module not found in source for upgrade purposes.
+    """
     connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
     module_list = _get_installed_modules(connection, to_install=True)
     if isinstance(module_list, int):
@@ -194,7 +205,6 @@ def get_source_file(
     save_path: Path = typer.Option(..., file_okay=True, dir_okay=False, help="Where to write the file"),
 ):
     """Get Raw file from manifest git remotes or specific git remote."""
-
     if not repo_url and not manifest_path:
         raise ValueError("Need to provide either manifest_yml or repo_url")
     if manifest_path and not repo_url:
@@ -238,7 +248,7 @@ def get_source(
         help="Forces origin fetch, regardless of current branch or commit sha (may be slow)",
     ),
 ):
-    """Download/Unzip Odoo Source and thirdparty addons."""
+    """Download/unzip Odoo source and thirdparty addons."""
     LOGGER.info("Updating Source Repos")
     zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
 
@@ -297,6 +307,15 @@ def update_odoo_conf(
 
 
 def source_cli_app():
+    """Create and configure the source CLI application.
+
+    This function sets up the command-line interface for source code management,
+    including commands for getting and updating source code, managing addon paths,
+    and handling dependencies.
+
+    Returns:
+        typer.Typer: The configured CLI application instance.
+    """
     app = typer.Typer(
         no_args_is_help=True,
         help="Functions concerning with Odoo Source code",

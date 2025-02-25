@@ -1,3 +1,10 @@
+"""Translation management functionality for Odoo via RPC.
+
+This module provides tools for managing translations in a running Odoo
+instance through Remote Procedure Call (RPC) methods, including loading,
+exporting, and updating translations.
+"""
+
 import logging
 from base64 import b64decode
 from pathlib import Path
@@ -14,7 +21,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _dump_translation_for_module(module, target_path: Path):
-    """Dump Translation of a module into POT file.
+    """Dump translation of a module into POT file.
 
     Parameters
     ----------
@@ -48,9 +55,8 @@ def _dump_translations(
     godoo_modules : list[godooModule]
         godoo_module instances of modules
     upgrade_modules : bool, optional
-        Wether to upgrade modules before dumping, by default True
+        Whether to upgrade modules before dumping, by default True
     """
-
     if upgrade_modules:
         LOGGER.info("Upgrading Modules: '%s'", ", ".join(modules.mapped("name")))
         modules.button_immediate_upgrade()
@@ -65,7 +71,7 @@ def _dump_translations(
 
 
 def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
-    """Autocomplete handler that searches modules in Workspace_addon_path
+    """Autocomplete handler that searches modules in Workspace_addon_path.
 
     Parameters
     ----------
@@ -104,7 +110,7 @@ def dump_translations(
     rpc_password=CLI.rpc.rpc_password,
     upgrade_modules: bool = typer.Option(True, help="Upgrade modules before exporting"),
 ):
-    """Dump Translations of module to <module_folder>/i18n/<module_name>.pot"""
+    """Dump translations of module to <module_folder>/i18n/<module_name>.pot."""
     godoo_modules = list(godooModules(workspace_addon_path).get_modules(modules))
     module_names = [m.name for m in godoo_modules]
     LOGGER.debug("Found modules: %s", module_names)

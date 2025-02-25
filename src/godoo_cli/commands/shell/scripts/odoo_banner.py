@@ -54,6 +54,11 @@ def set_banner(banner_text: Optional[str] = "Development", banner_background_col
 
 
 def disable_record(ref):
+    """Disable a record in the Odoo database by its XML ID.
+
+    Args:
+        ref: XML ID of the record to disable.
+    """
     if rec := env.ref(ref, raise_if_not_found=False):
         if rec.active:
             LOGGER.info("Disabling Record: %s", rec.display_name)
@@ -61,6 +66,11 @@ def disable_record(ref):
 
 
 def remove_upgrade_test_ribbon():
+    """Remove upgrade test ribbons and banners from the Odoo interface.
+
+    This function disables various ribbon and banner records that are
+    typically used during upgrade testing.
+    """
     disable_record("__upgrade__.upg_test_banner")
     disable_record("__upgrade__.upg_test_ribbon")
     disable_record("web.neutralize_banner")

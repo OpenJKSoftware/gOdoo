@@ -1,3 +1,9 @@
+"""Database dump functionality for Odoo instances.
+
+This module provides functionality for creating database dumps from Odoo instances,
+including support for various dump formats and compression options.
+"""
+
 import logging
 from configparser import ConfigParser
 from datetime import datetime
@@ -33,7 +39,7 @@ def dump_instance(
     odoo_main_path=CLI.odoo_paths.bin_path,
     conf_path=CLI.odoo_paths.conf_path,
 ):
-    """Dump DB and Filestore into Folder"""
+    """Dump DB and Filestore into Folder."""
     db_connection = DBConnection(
         db_name=db_name,
         hostname=db_host,

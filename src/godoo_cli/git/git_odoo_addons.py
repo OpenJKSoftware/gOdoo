@@ -1,3 +1,11 @@
+"""Odoo addon Git repository management module.
+
+This module provides functionality for managing Odoo addon Git repositories,
+including cloning, updating, and configuring repositories based on YAML
+configuration files. It supports both direct Git operations and archive-based
+downloads for addon repositories.
+"""
+
 import concurrent.futures
 import logging
 from pathlib import Path
@@ -19,8 +27,7 @@ def git_ensure_addon_repos(
     download_archive: bool = False,
     pin_commits: bool = False,
 ):
-    """
-    Clone repos specified in Yml.
+    """Clone repos specified in Yml.
 
     Parameters
     ----------
@@ -52,8 +59,8 @@ def _git_clone_addon_repos(
     git_repos: Dict[str, Dict[str, str]],
     download_archive: bool = False,
 ) -> Dict[str, Repo]:
-    """
-    Clones Git repos specified in dict into Root folder.
+    """Clones Git repos specified in dict into Root folder.
+
     Ensures repo names are prefixed and uses 8 threads to clone.
 
     Parameters

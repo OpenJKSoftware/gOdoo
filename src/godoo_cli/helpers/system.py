@@ -1,4 +1,4 @@
-"""Helper functions around the host system"""
+"""Helper functions around the host system."""
 
 import datetime
 import json
@@ -23,19 +23,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def run_cmd(command: str, **kwargs) -> subprocess.CompletedProcess:
-    """Runs command via subprocess.run
-
-    Parameters
-    ----------
-    command : str
-        Command string
-    **kwargs
-        get passed down to Run
-
-    Returns
-    -------
-    CompletedProcess
-    """
+    """Runs command via subprocess.run."""
     LOGGER.debug("Running shell:\n%s", command)
     if not kwargs.get("shell"):
         kwargs["shell"] = True
@@ -45,25 +33,7 @@ def run_cmd(command: str, **kwargs) -> subprocess.CompletedProcess:
 
 
 def ensure_dotenv(varname: str) -> str:
-    """
-    Load Env Var.
-    Raise Error if not Set.
-
-    Parameters
-    ----------
-    varname : str
-        env var name
-
-    Returns
-    -------
-    str
-        env value
-
-    Raises
-    ------
-    ReferenceError
-        if env var is none
-    """
+    """Load environment variable and raise error if not set."""
     var = os.getenv(varname)
     if var is None:
         raise ReferenceError(f"Env Variable: {varname} is not set")
@@ -71,14 +41,7 @@ def ensure_dotenv(varname: str) -> str:
 
 
 def set_logging(verbose: bool = False) -> None:
-    """
-    Set the Logging Config according to passed arguments.
-
-    Parameters
-    ----------
-    verbose : bool
-        Wether to Log debug Messages
-    """
+    """Set the logging configuration according to passed arguments."""
     if verbose:
         install_rich_traceback(suppress=[click, godoo_cli_helpers])
         logging.basicConfig(
@@ -107,17 +70,7 @@ def set_logging(verbose: bool = False) -> None:
 
 
 def download_file(url: str, save_path: Path, chunk_size: int = 128) -> None:
-    """Download file from URL.
-
-    Parameters
-    ----------
-    url : _type_
-        url to get file from
-    save_path : _type_
-        Where to save the file
-    chunk_size : int, optional
-        Chunk size to iterate over request, by default 128
-    """
+    """Download file from URL to specified path."""
     LOGGER.debug("Downloading File: '%s' to '%s'", url, save_path)
     r = requests.get(url, stream=True)
     with open(save_path, "wb") as fd:
@@ -126,10 +79,10 @@ def download_file(url: str, save_path: Path, chunk_size: int = 128) -> None:
 
 
 def file_or_folder_size_mb(path: Path) -> float:
-    """Get size of file or all files in folder summed in MB"""
+    """Get size of file or all files in folder summed in MB."""
 
     def file_size_mb(file: Path) -> float:
-        """Get size of file in MB"""
+        """Get size of file in MB."""
         return file.stat().st_size / (1024 * 1024)
 
     if path.is_file():
@@ -139,7 +92,7 @@ def file_or_folder_size_mb(path: Path) -> float:
 
 
 def path_has_content(path: Path):
-    """If Path exists and is no empty dir"""
+    """Check if path exists and is not an empty directory."""
     if path.is_dir():
         return bool(path.glob("*"))
     else:
@@ -183,8 +136,7 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
 
 
 def pip_install(package_names: List[str]):
-    """Ensure Pip Package is installed. But only when not already installed."""
-
+    """Ensure pip packages are installed if not already present."""
     # Some packages have different names on pypi and in odoo Manifests. Key is Odoo manigest, Value is pypi
     odoo_wrong_pkg_names = {
         "ldap": "python-ldap",

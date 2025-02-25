@@ -1,4 +1,4 @@
-"""Helps Finding Modules folders and analyzing their dependencies"""
+"""Helps Finding Modules folders and analyzing their dependencies."""
 
 from ast import literal_eval
 from logging import getLogger
@@ -9,52 +9,60 @@ LOGGER = getLogger(__name__)
 
 
 class NotAValidModuleError(ValueError):
-    """Raised when a path is not a valid odoo module folder"""
+    """Raised when a path is not a valid odoo module folder."""
 
 
 class godooModule:
-    """Encapsulates a odoo module folder"""
+    """Encapsulates a odoo module folder."""
 
     def __init__(self, path: Path) -> None:
-        """Create a new godooModule instance from a path"""
+        """Create a new godooModule instance from a path."""
         self.path = path
         self.validate_is_module()
 
     def validate_is_module(self):
-        """Throws NotAModuleError if path is not a valid odoo module folder"""
+        """Throws NotAModuleError if path is not a valid odoo module folder."""
         if not self.path.is_dir() or not self.manifest_file.exists():
             raise NotAValidModuleError(f"{self.path} is not a valid odoo module")
 
     def __repr__(self) -> str:
+        """Return a string representation of the godooModule instance."""
         return f"godooModule({str(self.path.name)})"
 
     def __eq__(self, __value: object) -> bool:
+        """Compare two godooModule instances for equality based on their absolute paths."""
         if isinstance(__value, godooModule):
             return self.path.absolute() == __value.path.absolute()
         return False
 
     def __hash__(self) -> int:
+        """Return a hash value based on the module's absolute path."""
         return hash(self.path.absolute())
 
     @property
     def manifest_file(self) -> Path:
+        """Path to the module's manifest file (__manifest__.py)."""
         return self.path / "__manifest__.py"
 
     @property
     def manifest(self) -> Dict[str, Any]:
+        """Dictionary containing the parsed contents of the module's manifest file."""
         return literal_eval(self.manifest_file.read_text())
 
     @property
     def name(self) -> str:
+        """The name of the module, derived from the directory name."""
         return self.path.stem
 
     @property
     def py_depends(self) -> List[str]:
+        """List of Python package dependencies required by this module."""
         module_depends = self.manifest.get("external_dependencies", {}).get("python", [])
         return module_depends
 
     @property
     def odoo_depends(self) -> List[str]:
+        """List of Odoo module dependencies required by this module."""
         return self.manifest.get("depends", [])
 
 
@@ -62,6 +70,11 @@ class godooModules:
     """Abstract interface to Addon-Paths. Finds modules and their dependencies."""
 
     def __init__(self, addon_paths: Union[List[Path], Path]) -> None:
+        """Initialize a godooModules instance with one or more addon paths.
+
+        Args:
+            addon_paths: Single path or list of paths to search for Odoo modules.
+        """
         if not isinstance(addon_paths, list):
             addon_paths = [addon_paths]
         self.addon_paths = addon_paths
@@ -70,7 +83,7 @@ class godooModules:
     def get_modules(
         self, module_names: Optional[List[str]] = None, raise_missing_names=True
     ) -> Generator[godooModule, None, None]:
-        """Get all Modules in Addon Paths or only the ones specified in module_names"""
+        """Get all Modules in Addon Paths or only the ones specified in module_names."""
         if module_names:
             for name in module_names:
                 try:
@@ -102,7 +115,7 @@ class godooModules:
                     continue
 
     def get_module(self, name: str) -> Optional[godooModule]:
-        """Get one Specific Module by Name. Returns None if"""
+        """Get one Specific Module by Name. Returns None if not found."""
         if mod := self.godoo_modules.get(name):
             return mod
         for mod in self._get_modules():
@@ -136,7 +149,17 @@ class godooModules:
 
 
 def get_zip_addon_path(thirdparty_path: Path) -> Path:
-    """Get Zip Addon Path. Basically a constant"""
+    """Get the path where zip-based addons are stored.
+
+    This function returns the standard location for addons that are installed from zip files
+    within the thirdparty addons directory.
+
+    Args:
+        thirdparty_path: Base path for thirdparty addons.
+
+    Returns:
+        Path: The 'custom' subdirectory within the thirdparty path where zip-based addons are stored.
+    """
     return thirdparty_path / "custom"
 
 
@@ -145,21 +168,24 @@ def get_addon_paths(
     workspace_addon_path: Path,
     thirdparty_addon_path: Path,
 ) -> List[Path]:
-    """Get Odoo Addon Paths for odoo.conf.
+    """Get all valid Odoo addon paths for the odoo.conf addons_path setting.
 
-    Parameters
-    ----------
-    odoo_main_repo : Path
-        Path to main odoo repo
-    workspace_addon_path : Path
-        Path to workspace addons
-    thirdparty_addon_path : Path
-        path to git cloned addon repos
+    This function collects all valid addon paths from:
+    - Core Odoo addons (from odoo_main_repo)
+    - Workspace addons (if any valid modules exist)
+    - Thirdparty addons (both zip-based and git-based)
 
-    Returns
-    -------
-    List[Path]
-        List of valid addon Paths
+    The function validates each path to ensure it contains valid Odoo modules
+    before including it in the result.
+
+    Args:
+        odoo_main_repo: Path to the main Odoo repository.
+        workspace_addon_path: Path to the workspace addons directory.
+        thirdparty_addon_path: Path to the thirdparty addons directory.
+
+    Returns:
+        List[Path]: List of unique, valid addon paths that should be included
+            in the Odoo addons_path configuration.
     """
     odoo_addon_paths = [odoo_main_repo / "addons", odoo_main_repo / "odoo" / "addons"]
     if godooModules(workspace_addon_path).get_modules():

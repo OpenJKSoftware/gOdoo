@@ -2,6 +2,7 @@ import logging
 import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Dict, Optional
 
 import psycopg2
 
@@ -20,7 +21,18 @@ def login_db(
     db_user=CLI.database.db_user,
     db_password=CLI.database.db_password,
 ):
-    """Login Interactive psql CLI using provided credentials"""
+    """Launch an interactive psql CLI session with the provided credentials.
+
+    This function starts an interactive PostgreSQL command-line session using
+    the provided database connection parameters.
+
+    Args:
+        db_host: Database host address.
+        db_port: Database port number.
+        db_name: Name of the database to connect to.
+        db_user: Database username.
+        db_password: Database password.
+    """
     command = ["psql", f"-h{db_host}", f"-U{db_user}", f"-d{db_name}"]
     if db_port != 0:
         command.append(f"-p{db_port}")
@@ -29,12 +41,18 @@ def login_db(
 
 @dataclass
 class DBConnection:
-    db_name: str
-    hostname: str
-    username: str
-    password: str
-    port: int = 0
-    conn_timeout: int = 5
+    """Database connection configuration and management class.
+
+    This class handles database connection details and provides methods
+    for executing database commands and managing connections.
+
+    Attributes:
+        hostname: Database server hostname.
+        port: Database server port.
+        username: Database username.
+        password: Database password.
+        db_name: Name of the database.
+    """
 
     def get_connection(self):
         LOGGER.debug(
@@ -55,8 +73,12 @@ class DBConnection:
         )
 
     @property
-    def cli_dict(self):
-        """Return a dict that when expanded Matches the Default DB connection Args used throuout gOdoo"""
+    def cli_dict(self) -> Dict[str, Optional[str]]:
+        """Get connection parameters as a dictionary.
+
+        Returns:
+            Dict[str, Optional[str]]: Dictionary of connection parameters.
+        """
         return {
             "db_host": self.hostname,
             "db_port": self.port,
@@ -67,6 +89,18 @@ class DBConnection:
 
     @contextmanager
     def connect(self):
+        """Create a database connection and cursor.
+
+        This context manager creates a database connection and cursor,
+        handling transaction management and resource cleanup.
+
+        Yields:
+            psycopg2.cursor: A database cursor for executing queries.
+
+        Raises:
+            Exception: Any database-related exception that occurs during
+                connection or query execution.
+        """
         connection = self.get_connection()
         cr = connection.cursor()
         try:

@@ -1,17 +1,40 @@
+"""Git URL handling and manipulation module.
+
+This module provides functionality for parsing and manipulating Git URLs,
+supporting various Git hosting services and URL formats. It handles
+operations like generating raw file URLs and archive download links.
+"""
+
 import re
 from enum import Enum
 from typing import Literal, Match, Optional
 
 
 class GitRemoteType(Enum):
+    """Enumeration of supported Git remote hosting services.
+
+    This enum defines the Git hosting services that are supported for
+    URL parsing and manipulation operations.
+    """
+
     gitlab = "gitlab"
     github = "github"
 
 
 class GitUrl:
     """Class to Structurize Git URLs.
+
     Works with SSH and HTTP(s) URLs
     Can generate Compare Urls
+
+    Attributes:
+        url: The original Git repository URL.
+        url_type: The URL scheme (http, https, or ssh).
+        domain: The domain name of the Git service.
+        path: The repository path.
+        user: The username for SSH URLs.
+        port: The port number for SSH URLs.
+        name: The repository name.
     """
 
     url: str
@@ -23,6 +46,14 @@ class GitUrl:
     name: str
 
     def __init__(self, url: str) -> None:
+        """Initialize a GitUrl instance with the provided Git repository URL.
+
+        Args:
+            url: A Git repository URL (http, https, or ssh format).
+
+        Raises:
+            ValueError: If the URL format is invalid or unsupported.
+        """
         self.url = url
         if "http" in url:
             http_regex = r"(?P<schema>https?):\/\/(?P<domain>[^\/]+)(?P<path>.*)"
@@ -117,10 +148,8 @@ class GitUrl:
 
         Parameters
         ----------
-        branch : str, optional
-            Repo Branch, by default ""
-        commit : str, optional
-            Repo download ref, by default ""
+        ref : str
+            Repository reference (branch, commit, or tag) to download
 
         Returns
         -------
@@ -157,7 +186,6 @@ class GitUrl:
         str
             URL Pointing to the Raw file contents on the Remote
         """
-
         http_url = self._clean_http_url()
         remote_type = self._git_type()
         if remote_type == GitRemoteType.github:

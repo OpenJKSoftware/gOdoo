@@ -1,3 +1,10 @@
+"""Odoo Git repository management module.
+
+This module provides functionality for managing the main Odoo Git repository,
+including cloning, updating, and configuring the repository. It supports both
+direct Git operations and archive-based downloads.
+"""
+
 import logging
 from pathlib import Path
 
@@ -15,6 +22,19 @@ def git_ensure_odoo_repo(
     download_archive: bool,
     pin_commit: bool = False,
 ):
+    """Ensure the Odoo Git repository is properly set up.
+
+    This function manages the Odoo Git repository, handling cloning, updating,
+    and configuration based on the provided manifest file.
+
+    Args:
+        target_folder: Path where the Odoo repository should be located.
+        manifest_file: Path to the manifest file containing repository details.
+        force_fetch: Whether to force a fetch from the remote repository.
+        add_compare_comment: Whether to add Git comparison comments.
+        download_archive: Whether to download as archive instead of Git clone.
+        pin_commit: Whether to update the manifest with the current commit.
+    """
     yaml = yaml_roundtrip_loader()
     git_repos = yaml.load(manifest_file.resolve())
     if not git_repos:
