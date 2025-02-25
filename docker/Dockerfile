@@ -32,20 +32,16 @@ ENV VIRTUAL_ENV=${VIRTUAL_ENV} \
     UV_PROJECT_ENVIRONMENT=${VIRTUAL_ENV}
 ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
     PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$VIRTUAL_ENV/bin:$PATH"
-RUN --mount=type=cache,target=$UV_CACHE_DIR set -ex; sudo chown $USERNAME:$USERNAME $UV_CACHE_DIR && uv venv ${VIRTUAL_ENV}
+RUN --mount=type=cache,target=$UV_CACHE_DIR set -ex; \
+    sudo chown -R $USERNAME:$USERNAME $UV_CACHE_DIR \
+    && uv venv ${VIRTUAL_ENV}
 
 ARG SOURCE_CLONE_ARCHIVE
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
-# Install Dependencies
-RUN set -ex; \
-    sudo apt-get update \
-    && sudo apt-get -y install --no-install-recommends  \
-    libldap2-dev \
-    libpq-dev \
-    libsasl2-dev \
-    libcupsimage2-dev \
-    cups-client
+# Install Dependencies using depends_build.sh
+RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.sh \
+    set -ex; sudo bash /tmp/depends_build.sh
 
 # ------------------------------------------------------------------------------------------------------
 # Install godoo from this workspace. (see pip install below)
@@ -57,7 +53,7 @@ RUN --mount=type=cache,target=/var/cache/uv \
     set -x; uv sync --frozen --no-install-project
 COPY --chown=$USERNAME:$USERNAME ./src ./src
 RUN --mount=type=cache,target=/var/cache/uv \
-    set -x; uv sync --frozen && uv pip install ".[codequality,devcontainer]"
+    set -x; uv sync --frozen && uv pip install -e ".[dev]"
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ------------------------------------------------------------------------------------------------------
 # Godoo Pypi Install via pip
@@ -110,25 +106,9 @@ ENV VIRTUAL_ENV=$VIRTUAL_ENV
 ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
     PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$VIRTUAL_ENV/bin:$PATH"
 
-
-RUN set -ex ;\
-    apt-get update \
-    && apt-get install \
-    lsb-release \
-    git \
-    libpq-dev \
-    libldap2-dev \
-    libsasl2-2 \
-    nginx \
-    supervisor \
-    libcupsimage2-dev \
-    cups-client \
-    rsync \
-    curl \
-    postgresql-client \
-    -y --no-install-recommends
-COPY docker/install_wkhtmltopdf.sh /tmp/install_wkhtmltopdf.sh
-RUN bash /tmp/install_wkhtmltopdf.sh
+# Install runtime dependencies using depends_runtime.sh
+RUN --mount=type=bind,source=docker/depends_runtime.sh,target=/tmp/depends_runtime.sh \
+    set -ex; bash /tmp/depends_runtime.sh
 
 COPY --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
 COPY --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
@@ -154,14 +134,9 @@ ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.co
 
 # Copy Addons and Odoo Source into image with requirements.
 FROM dev_base AS dev_odoo
-# Intall WKHTMLtoPDF
-COPY docker/install_wkhtmltopdf.sh /tmp/install_wkhtmltopdf.sh
-RUN set -ex; sudo bash /tmp/install_wkhtmltopdf.sh
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/cache/uv \
-    set -ex; \
-    sudo apt-get install imagemagick poppler-utils -y --no-install-recommends \
-    && uv pip install diff-pdf-visually
+# Install runtime dependencies and WKHTMLtoPDF
+RUN --mount=type=bind,source=docker/depends_runtime.sh,target=/tmp/depends_runtime.sh \
+    set -ex; sudo bash /tmp/depends_runtime.sh
 
 ARG USERNAME
 COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
@@ -183,7 +158,7 @@ ENTRYPOINT [ "godoo", "test" ,"all" ]
 FROM dev_odoo AS devcontainer
 
 # Instal godoo autocomplete. Env var to disable shellingham, as docker doesnt run in a shell
-RUN set -ex; _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh &&
+RUN set -ex; _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
 
 ARG USERNAME
 ARG NVM_VERSION
@@ -191,7 +166,7 @@ ARG NODE_VERSION
 ENV NVM_DIR=/usr/local/nvm \
     NODE_VERSION=${NODE_VERSION}
 RUN set -ex; sudo install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
-USER ${USERNAME}
+
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
 # install node and npm
 RUN set -ex; \
@@ -205,33 +180,28 @@ ENV NODE_PATH=$NVM_DIR/v$NODE_VERSION/lib/node_modules \
     PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH\
     NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
-USER root
-RUN set -ex; \
-    echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
-    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
-    && apt-get update \
-    && apt-get -y install --no-install-recommends postgresql-client-16 netcat-openbsd \
-    && bash -c 'mkdir -p /home/${USERNAME}/{.vscode-server/extensions,.cache/pre-commit}' \
-    && bash -c 'chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/{.vscode-server,.cache}' \
-    && mkdir -p /etc/cups \
-    && echo "ServerName cups:631" > /etc/cups/client.conf \
-    && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf
+# Install PostgreSQL client and other development tools
+RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.sh \
+    set -ex; \
+    sudo bash /tmp/depends_build.sh \
+    && sudo bash -c 'mkdir -p /home/$USERNAME/{.vscode-server/extensions,.cache/pre-commit}' \
+    && sudo bash -c 'chown -R $USERNAME:$USERNAME /home/$USERNAME/{.vscode-server,.cache}' \
+    && sudo mkdir -p /etc/cups \
+    && sudo echo "ServerName cups:631" > /etc/cups/client.conf \
+    && sudo printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf
 
 ARG WORKSPACE
 ENV ODOO_PRINT_PDF_LOCATION=$WORKSPACE
 
 RUN set -ex; \
-    rm -rf /tmp/* \
-    && apt-get install nginx -y --no-install-recommends \
-    && usermod -a -G www-data ${USERNAME} \
-    && bash -c 'chown -R ${USERNAME} {/var/lib/nginx,/var/log/nginx}'
+    sudo rm -rf /tmp/* \
+    && sudo usermod -a -G www-data ${USERNAME} \
+    && bash -c 'sudo chown -R ${USERNAME} {/var/lib/nginx,/var/log/nginx}'
 
-USER ${USERNAME}
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/cache/uv \
     set -ex; \
     npm install -g prettier eslint \
-    && uv pip install pydevd-odoo pre-commit jingtrang \
     && git config --global --add safe.directory ${WORKSPACE}
 ENV EDITOR=code
 ENTRYPOINT  [ "/bin/sh", "-c", "sudo nginx -c /odoo/config/nginx.conf; sleep infinity"]

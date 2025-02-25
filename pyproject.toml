@@ -1,15 +1,9 @@
+# --------------------------------
+# Project Metadata
+# --------------------------------
 [build-system]
 requires = ["hatchling>=1.21.0"]
 build-backend = "hatchling.build"
-
-[tool.hatch]
-installer = "uv"
-
-[tool.hatch.version]
-path = "src/godoo_cli/__about__.py"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/godoo_cli"]
 
 [project]
 name = "gOdoo-cli"
@@ -18,9 +12,9 @@ description = "Wrapper around Odoo-Bin with some convinience RPC functions."
 authors = [{name="Joshua Kreuder", email="Joshua_Kreuder@outlook.com"}]
 license = {text = "LGPL-3.0-only"}
 readme = "README.md"
-keywords = ["odoo", "godoo","devcontainer"]
+keywords = ["odoo", "godoo", "devcontainer"]
 requires-python = ">=3.9"
-urls=  {repository = "https://github.com/OpenJKSoftware/gOdoo"}
+urls = {repository = "https://github.com/OpenJKSoftware/gOdoo"}
 scripts = {godoo = "godoo_cli:launch_cli"}
 dependencies = [
     "python-dotenv>=0.20.0",
@@ -29,160 +23,188 @@ dependencies = [
     "godoo-rpc>=0.1.4",
     "openupgradelib>=3.3.4",
     "psycopg2-binary>=2.9.10",
-    "passlib>=1.7.3", # Mirror Odoo Reqs
-    "typer-common-functions>=0.0.12",
+    "passlib>=1.7.3",
+    "typer-common-functions>=0.1.0",
     "typer>=0.9.0",
 ]
 
 [project.optional-dependencies]
-devcontainer = [
+dev = [
+    # Development Tools
     "ipdb>=0.13.9",
     "debugpy>=1.6.0",
     "watchdog>=2.1.7",
     "rope>=0.23.0",
     "py-spy>=0.3.11",
     "inotify>=0.2.10",
-    "mock>=4.0.3",
-    "pydevd-odoo>=1.2.1"
-]
-# Dependencies for development and code quality; removed flake8-formatter-junit-xml as it is not required for GitHub Actions
-codequality = [
-    "pylint-odoo>=8.0.16",
-    "black>=22.10.0",
-    "isort>=5.10.1",
-    "flake8>=5.0.4",
+    "pydevd-odoo>=1.2.1",
+    "pre-commit>=4.0.0",
+    # Testing
     "pytest>=7.2.1",
     "pytest-cov>=4.0.0",
-    "pre-commit>=3.4.0",
+    "mock>=4.0.3",
+    # Linting
+    "pylint-odoo>=8.0.16",
+    "flake8>=5.0.4",
+    "flake8-pyproject>=1.2.3",
+    "flake8-docstrings>=1.7.0",
+    "flake8-bugbear>=23.3.12",
+    "flake8-comprehensions>=3.14.0",
+    "black>=22.10.0",
+    "isort>=5.10.1",
 ]
 
-[tool.pyright]
+# --------------------------------
+# Build & Version Management
+# --------------------------------
+[tool.hatch]
+version.path = "src/godoo_cli/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/godoo_cli"]
+
+# --------------------------------
+# Development Environments
+# --------------------------------
+[tool.hatch.envs.dev]
+features = ["dev"]
+
+[tool.hatch.envs.dev.scripts]
+# Formatting commands
+format = [
+  "black src",
+  "isort src",
+]
+
+# Linting commands
+lint = [
+  "black --check src",
+  "isort --check src",
+  "flake8 src",
+  "pylint src",
+]
+
+# Testing commands
+test = "pytest"
+
+# CI commands
+ci = [
+  "lint",
+  "pytest --verbose --exitfirst --failed-first --junitxml=junit/pytest-results.xml --cov=src --cov-report=xml"
+]
+
+# --------------------------------
+# Tool Configurations
+# --------------------------------
+[tool.flake8]
+max-line-length = 120
+extend-ignore = [
+    "E203",  # Conflicts with black
+    "E266",  # Too many leading '#' for block comment
+    "E501",  # Line too long (handled by black)
+    "W503",  # Line break before binary operator (conflicts with black)
+]
 exclude = [
-    "**/remote_instance_data",
-    "./thirdparty"
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".eggs",
+    "*.egg",
+    ".venv",
+    "venv",
 ]
-
+max-complexity = 10
+per-file-ignores = [
+    "__init__.py:F401,F403",  # Ignore unused and * imports in __init__.py files
+    "tests/*:S101,D100,D101,D102,D103,D104,D105,D107",  # Ignore assert usage and docstrings in tests
+    "test_*.py:S101,D100,D101,D102,D103,D104,D105,D107",  # Same for test files in any directory
+    "*_test.py:S101,D100,D101,D102,D103,D104,D105,D107",  # Same for test files in any directory
+]
+count = true
+statistics = true
+docstring-convention = "google"
+max-doc-length = 120
 
 [tool.black]
 line-length = 120
 
 [tool.isort]
-profile="black"
-multi_line_output=3
-include_trailing_comma=true
-force_grid_wrap=0
-combine_as_imports=true
-use_parentheses=true
-line_length=120
-known_odoo="odoo"
-known_odoo_addons="odoo.addons"
-sections="FUTURE,STDLIB,THIRDPARTY,ODOO,ODOO_ADDONS,FIRSTPARTY,LOCALFOLDER"
-default_section="THIRDPARTY"
-ensure_newline_before_comments=true
-
-[tool.pylint.format]
-max-line-length=120
+profile = "black"
+line_length = 120
+known_odoo = "odoo"
+known_odoo_addons = "odoo.addons"
+sections = "FUTURE,STDLIB,THIRDPARTY,ODOO,ODOO_ADDONS,FIRSTPARTY,LOCALFOLDER"
 
 [tool.pylint.master]
-init-hook='import sys; sys.path.append("/odoo/odoo")'
-load-plugins="pylint_odoo"
-score="n"
+load-plugins = "pylint_odoo,pylint.extensions.no_self_use"
+ignore = ["CVS", ".git", ".hg", ".tox", ".eggs", "*.egg", "build", "dist"]
+persistent = true
+jobs = 0
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "fp", "id", "db", "fn"]
+no-docstring-rgx = "^_|^test_"
+
+[tool.pylint.format]
+max-line-length = 120
 
 [tool.pylint.odoolint]
-readme-template-url="https://github.com/OCA/maintainer-tools/blob/master/template/module/README.rst"
-manifest-required-authors="Joshua Kreuder"
-manifest-required-keys="license"
-manifest-deprecated-keys="active"
-license-allowed="AGPL-3,GPL-2,GPL-2 or any later version,GPL-3,GPL-3 or any later version,LGPL-3,Other proprietary"
-valid-odoo-versions="16.0"
+manifest-required-authors = "Joshua Kreuder"
+manifest-required-keys = "license"
+valid-odoo-versions = "16.0"
 
 [tool.pylint.'MESSAGES CONTROL']
-disable="all"
-
-enable=[
-    "anomalous-backslash-in-string",
-    "assignment-from-none",
-    "attribute-deprecated",
-    "dangerous-default-value",
-    "development-status-allowed",
-    "duplicate-key",
+disable = [
+    "all",
+    "missing-docstring",
+    "unused-argument",
+    "broad-except",
+    "invalid-name",  # Handled by flake8
+    "line-too-long",  # Handled by black/flake8
+    "too-many-lines",  # Handled by flake8
+    "wrong-import-order",  # Handled by isort
+]
+enable = [
     "eval-used",
     "license-allowed",
-    "manifest-author-string",
-    "manifest-deprecated-key",
     "manifest-required-author",
     "manifest-required-key",
-    "manifest-version-format",
-    "method-compute",
-    "method-inverse",
-    "method-required-super",
-    "method-search",
-    "pointless-statement",
-    "pointless-string-statement",
-    "print-used",
-    "redundant-keyword-arg",
-    "reimported",
-    "return-in-init",
     "sql-injection",
-    "too-few-format-args",
-    "translation-field",
     "translation-required",
-    "unreachable",
-    "use-vim-comment",
-    "consider-merging-classes-inherited",
-    "deprecated-module",
-    "invalid-commit",
-    "odoo-addons-relative-import",
-    "redefined-builtin",
-    "unidiomatic-typecheck",
+    "anomalous-backslash-in-string",
+    "dangerous-default-value",
+    "duplicate-key",
+    "missing-final-newline",
     "missing-return",
-    "no-else-raise",
-    "useless-return"
+    "syntax-error",
+    "undefined-variable",
 ]
 
+[tool.pylint.similarities]
+min-similarity-lines = 8
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true
 
-[tool.pylint.reports]
-msg-template="::error file=%(path)s,line=%(line)d,col=%(column)d::%(msg_id)s(%(symbol)s): %(msg)s"
-output-format="text"
-reports="no"
+[tool.pylint.design]
+max-args = 8
+max-attributes = 10
+min-public-methods = 0
+max-public-methods = 20
 
-# ==== Linting Configuration (GitHub Actions Compatible) ====
-[tool.hatch.envs.lint]
-dependencies = [
-  "pylint-odoo>=8.0.16",
-  "flake8>=5.0.4",
-  "black>=22.10.0",
-  "isort>=5.10.1",
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests", "src"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = [
+    "--cov=src",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+    "--no-cov-on-fail",
+    "--verbose"
 ]
-
-[tool.hatch.envs.lint.scripts]
-style = [
-  "black {args:src addons}",
-  "isort {args:src addons}",
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
 ]
-check = [
-  "black --check {args:src addons}",
-  "isort --check {args:src addons}",
-  "flake8 {args:src addons}",
-  "python -m pylint {args:src addons}",
-]
-format = [
-  "black {args:src addons}",
-  "isort {args:src addons}",
-]
-# === GitHub Actions CI Lint Output Format ===
-ci = [
-  "flake8 {args:src addons} --format='::error file=%(path)s,line=%(row)d,col=%(col)d::%(code)s: %(text)s'",
-  "python -m pylint {args:src addons} --msg-template='::error file=%(path)s,line=%(line)d,col=%(column)d::%(msg_id)s(%(symbol)s): %(msg)s'",
-]
-
-[tool.hatch.envs.test]
-dependencies = [
-  "pytest>=7.2.1",
-  "pytest-cov>=4.0.0",
-  "mock>=4.0.3",
-]
-[tool.hatch.envs.test.scripts]
-run = "pytest {args:src}"
-cov = "pytest --cov=src --cov-report=xml {args:src}"
-ci = "pytest --verbose --exitfirst --failed-first --junitxml=junit/pytest-results.xml --cov=src --cov-report=xml {args:src}"
