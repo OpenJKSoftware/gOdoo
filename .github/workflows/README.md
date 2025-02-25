@@ -1,8 +1,8 @@
-# GitHub Workflows Documentation
+# 🚀 GitHub Workflows Documentation
 
 This directory contains the GitHub Actions workflows for the gOdoo-cli project. Below are the flowcharts explaining the different processes.
 
-## Version Management Process
+## 📈 Version Management Process
 
 ```mermaid
 flowchart TD
@@ -15,14 +15,13 @@ flowchart TD
     F -->|Fail| Z[Fix Issues]
     G -->|Pass| H[PR Review]
     G -->|Fail| Z[Fix Issues]
-    H -->|Merged| I[version-tag.yml]
+    H -->|Merged| I[version-publish.yml]
     I --> J[Create Git Tag]
     J --> K[Create GitHub Release]
-    K --> L[version-publish.yml]
-    L --> M[Publish to PyPI]
+    K --> L[Publish to PyPI]
 ```
 
-## Quality Check Process
+## 🔍 Quality Check Process
 
 ```mermaid
 flowchart TD
@@ -38,66 +37,53 @@ flowchart TD
     F -->|Fail| G
 ```
 
-## Workflow Overview
+## 🔄 Workflow Overview
 
 ```mermaid
 flowchart LR
     A[PR Created] -->|Triggers| B[quality.yml]
     B -->|Blocks/Allows| C[PR Merge]
-    C -->|Triggers| D[version-tag.yml]
-    D -->|Triggers| E[version-publish.yml]
+    C -->|Triggers| D[version-publish.yml]
+    D -->|Creates Tag & Release| E[Publish to PyPI]
 ```
 
-## Caching Strategy
+## 💾 Caching Strategy
 
-The workflows employ caching at two levels:
+To optimize the workflow execution time, we leverage caching for the following:
 
-1. **Python Dependencies**:
-   - Caches are created based on  `pyproject.toml` and `__manifest__.py`
-   - This ensures that the cache is invalidated whenever dependencies change
-   - Speeds up the installation process significantly
-
-2. **Docker Layers**:
-   - The Docker build process uses BuildKit's caching mechanism
-   - Layers are cached and reused across builds
-   - The cache is tied to the commit SHA to ensure maximum relevance
-   - Unused caches are automatically pruned to save space
+- 📦 **Python dependencies**: The `actions/setup-python` action is used with the `cache: "pip"` option to cache Python packages. The cache key is based on the `pyproject.toml` file.
+- 🔧 **Pre-commit hooks**: The `.pre-commit-config.yaml` file is used as the cache key for pre-commit hooks.
 
 This multi-level caching strategy ensures that workflows run efficiently while still maintaining cache freshness and relevance.
 
-## Workflow Details
+## 📋 Workflow Details
 
-### version-bump.yml
+### 🔼 version-bump.yml
 - **Trigger**: Manual workflow dispatch
-- **Options**: patch, minor, major, prepatch
+- **Options**: patch, minor, major, alpha, beta, rc
 - **Actions**:
   1. Creates release branch
   2. Updates version using Hatch
   3. Creates PR with version bump
 
-### quality.yml
-- **Trigger**: Pull request events
+### ✅ quality.yml
+- **Trigger**: Pull request events, push to main, manual dispatch
 - **Actions**:
   1. Runs linting suite
   2. Runs tests with coverage
   3. Builds Docker image
 - **Status**: Required check for PR merge
 
-### version-tag.yml
+### 📦 version-publish.yml
 - **Trigger**: PR merged with 'release' label
 - **Actions**:
   1. Creates Git tag
   2. Creates GitHub release
-  3. Triggers publish workflow
+  3. Builds Python package
+  4. Publishes to PyPI
 
-### version-publish.yml
-- **Trigger**: Release created
-- **Actions**:
-  1. Builds Python package
-  2. Publishes to PyPI
-
-## Notes
-- Quality checks run automatically on PR creation/update
-- Version bumps are initiated manually
-- Release process is automated after PR merge
-- All steps have appropriate permissions and concurrency limits
+## 📝 Notes
+- ⚙️ Quality checks run automatically on PR creation/update
+- 🔢 Version bumps are initiated manually
+- 🚀 Release process is automated after PR merge
+- 🔒 All steps have appropriate permissions and concurrency limits

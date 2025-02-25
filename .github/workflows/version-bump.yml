@@ -1,120 +1,138 @@
-name: Version bump
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+name: Version Bump
 
 on:
   workflow_dispatch:
     inputs:
-      versionPart:
-        description: "Version bump part"
+      bump_type:
+        description: "Version bump type"
         required: true
-        default: patch
         type: choice
         options:
-          - prepatch
           - patch
           - minor
           - major
+          - rc
+          - beta
+          - alpha
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  version-bump:
-    name: Version bump and PR creation
+  create-bump-pr:
+    name: Create Version Bump PR
     runs-on: ubuntu-latest
+    env:
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      PYTHON_VERSION: "3.12"
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
-          cache: "pip"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install Hatch
         uses: pypa/hatch@install
 
-      - name: Setup git config
+      - name: Initialize Version Info
+        id: version_info
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b release
-
-      - name: Get Current Version and Bump
-        id: version
-        run: |
+          # Get current version
           CURRENT_VERSION=$(hatch version)
           echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          hatch version ${{ github.event.inputs.versionPart }}
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump Version and Push
+        id: bump_version
+        run: |
+          # Get new version number first
+          hatch version ${{ inputs.bump_type }}
           NEW_VERSION=$(hatch version)
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Create Branch and Commit
+          # Create release branch with new version
+          RELEASE_BRANCH="release/${NEW_VERSION}"
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> $GITHUB_ENV
+          git checkout -b "$RELEASE_BRANCH"
+
+          # Commit and push the changes
+          git add -A
+          git commit -m "🔖 Bump version ${{ steps.version_info.outputs.CURRENT_VERSION }} → $NEW_VERSION"
+          git push --force origin "$RELEASE_BRANCH"
+
+      - name: Generate Release Notes
+        id: changelog
+        env:
+          NEW_VERSION: ${{ steps.bump_version.outputs.NEW_VERSION }}
+          CURRENT_VERSION: ${{ steps.version_info.outputs.CURRENT_VERSION }}
         run: |
-          git add src/godoo_cli/__about__.py
-          git commit -m "🔖 Bump version ${{ steps.version.outputs.CURRENT_VERSION }} → ${{ steps.version.outputs.NEW_VERSION }}"
-          git push origin release --force
+          # Function to get commit history
+          get_commit_history() {
+            local range="$1"
+            git log --pretty=format:"- [%s]($REPO_URL/commit/%H)" --no-merges "$range" --invert-grep --grep="Bump version" || echo "No commits found"
+          }
+
+          # Get the last version tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          # Start generating release notes
+          {
+            echo "CONTENT<<EOF"
+            echo "# 🔖 New Release: $NEW_VERSION"
+
+            if [ -z "$LAST_TAG" ]; then
+              echo "Previous version: None (First Release)"
+              COMMITS=$(get_commit_history "HEAD^..HEAD")
+            else
+              echo "Previous version: [$LAST_TAG]($REPO_URL/releases/tag/$LAST_TAG)"
+              COMMITS=$(get_commit_history "$LAST_TAG..HEAD")
+            fi
+
+            echo
+            echo "## 📝 Summary"
+            echo
+            echo "<if this is here i was lazy>"
+            echo
+            echo "## 📝 What's new?"
+            echo
+            echo "$COMMITS"
+            echo
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
         uses: actions/github-script@v7
-        id: create-pr
         with:
           script: |
             const { repo, owner } = context.repo;
-
-            // Get commit history since last release
-            const { data: tags } = await github.rest.repos.listTags({
-              owner,
-              repo,
-              per_page: 1
-            });
-
-            const lastTag = tags[0]?.commit.sha || 'HEAD~100';
-            const { data: commits } = await github.rest.repos.compareCommits({
-              owner,
-              repo,
-              base: lastTag,
-              head: 'HEAD'
-            });
-
-            // Format commit history for release notes
-            const changes = commits.commits
-              .filter(commit => !commit.commit.message.startsWith('🔖'))
-              .map(commit => {
-                const firstLine = commit.commit.message.split('\n')[0];
-                return `- ${firstLine} ([${commit.sha.substring(0, 7)}](${commit.html_url}))`;
-              })
-              .join('\n');
-
-            const releaseNotes = [
-              `# 🔖 Release v${{ steps.version.outputs.NEW_VERSION }}`,
-              '',
-              '## What\'s Changed',
-              '',
-              changes || '_No changes since last release_',
-              '',
-              '## Version',
-              `${{ steps.version.outputs.CURRENT_VERSION }} → ${{ steps.version.outputs.NEW_VERSION }}`
-            ].join('\n');
-
             const result = await github.rest.pulls.create({
-              title: '🔖 Release v${{ steps.version.outputs.NEW_VERSION }}',
               owner,
               repo,
-              head: 'release',
+              head: process.env.RELEASE_BRANCH,
               base: 'main',
-              body: releaseNotes
+              title: `🔖 Release ${process.env.NEW_VERSION}`,
+              body: process.env.CONTENT,
+              maintainer_can_modify: true
             });
 
+            // Add labels to the PR
             await github.rest.issues.addLabels({
               owner,
               repo,
               issue_number: result.data.number,
-              labels: ['release', 'automated pr', 'auto-release']
+              labels: ['release', 'automated pr']
             });
+        env:
+          NEW_VERSION: ${{ steps.bump_version.outputs.NEW_VERSION }}
+          CONTENT: ${{ steps.changelog.outputs.CONTENT }}

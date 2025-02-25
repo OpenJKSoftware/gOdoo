@@ -1,42 +1,75 @@
-name: Publish
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+name: Release and Publish
 
 on:
-  release:
-    types: [created]
-  workflow_call:
-    secrets:
-      PYPI_TOKEN:
-        required: true
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  deploy:
+  release:
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
     runs-on: ubuntu-latest
-    name: Publish to Pypi
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
+
+      - name: Verify Merge State
+        run: |
+          # Ensure we're on the latest main
+          git fetch origin main
+          git reset --hard origin/main
+          # Print current commit for verification
+          echo "Current commit:"
+          git log -1 --oneline
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
-          cache: "pip"
+          python-version: "3.12"
 
       - name: Install Hatch
         uses: pypa/hatch@install
 
-      - name: Build and publish
+      - name: Get Version
+        id: version
+        run: |
+          VERSION=$(hatch version)
+          echo "Current version from Hatch: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          # Verify this is the new version
+          if [[ "$VERSION" == "${{ github.event.pull_request.title }}" ]]; then
+            echo "Error: Version mismatch. Got $VERSION but expected ${{ github.event.pull_request.title }}"
+            exit 1
+          fi
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.version.outputs.VERSION }}" -m "Release v${{ steps.version.outputs.VERSION }}"
+          git push origin "v${{ steps.version.outputs.VERSION }}"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.version.outputs.VERSION }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          body: ${{ github.event.pull_request.body }}
+          draft: false
+          prerelease:
+            ${{ contains(steps.version.outputs.VERSION, 'rc') || contains(steps.version.outputs.VERSION, 'beta') ||
+            contains(steps.version.outputs.VERSION, 'alpha') }}
+
+      - name: Build and Publish to PyPI
         env:
+          HATCH_INDEX_USER: __token__
           HATCH_INDEX_AUTH: ${{ secrets.PYPI_TOKEN }}
         run: |
-          git fetch --tags
-          VERSION=$(git describe --tags --abbrev=0)
-          echo "Publishing version $VERSION"
-          hatch version $VERSION
           hatch build
           hatch publish

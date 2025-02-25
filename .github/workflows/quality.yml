@@ -1,18 +1,17 @@
-name: Quality Checks
+name: Quality
 
 concurrency:
   # Cancel any running workflow for the same PR/branch
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, auto_merge_enabled]
-  pull_request_target:
-    types: [opened, synchronize, auto_merge_enabled]
+    types: [opened, synchronize, ready_for_review, auto_merge_enabled]
 
 env:
   PYTHON_VERSION: "3.9"
@@ -20,50 +19,41 @@ env:
   IMAGE_NAME: "${{ github.repository }}"
 
 jobs:
-  lint-and-test:
+  QualityChecks:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
-          fetch-depth: 0 # Needed for coverage comparison
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-          cache-dependency-path: |
-            **/__manifest__.py
-            **/pyproject.toml
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Hatch
         uses: pypa/hatch@install
 
-      - name: Install dependencies
-        run: hatch env create
+      - name: Run Formatter
+        run: hatch run lint:format
 
-      - name: Run linters
-        run: |
-          echo "Running style checks..."
-          hatch run lint:style
-          echo "Running pylint & flake8..."
-          hatch run lint:ci
+      - name: Run Quality Checks
+        run: hatch run lint:ci
 
-      - name: Run tests
-        run: |
-          echo "Running tests with coverage..."
-          hatch run test:ci
+      - name: Run Tests with Coverage
+        run: hatch run test:ci
 
-      - name: Upload coverage
+      - name: Upload Coverage
         uses: codecov/codecov-action@v3
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         with:
+          files: ./coverage.xml
           fail_ci_if_error: true
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: lint-and-test
+    needs: QualityChecks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     permissions:
