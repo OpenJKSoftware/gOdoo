@@ -38,10 +38,9 @@ def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Pat
     return in_modules
 
 
-@CLI.arg_annotator
 def odoo_get_changed_modules(
-    diff_ref: str = typer.Argument(..., help="Git Ref/Branch to compare against"),
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    diff_ref: Annotated[str, typer.Argument(help="Git Ref/Branch to compare against")],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
 ):
     """Get modules that have changed compared to diff_ref."""
     changed_modules = get_changed_modules_and_depends(diff_ref=diff_ref, addon_path=workspace_addon_path)
@@ -50,37 +49,41 @@ def odoo_get_changed_modules(
     print("\n".join(sorted([p.name for p in changed_modules])))  # pylint: disable=print-used
 
 
-@CLI.arg_annotator
-def odoo_run_tests(
-    test_module_names: List[str] = typer.Argument(
-        ...,
-        help="""
+def odoo_run_tests(  # noqa: C901
+    test_module_names: Annotated[
+        List[str],
+        typer.Argument(
+            help="""
         Space separated list of Modules to Test or special commands:
 
          'all' for all modules in `workspace_addon_path`
 
          'changes:<ref>' detect modules by changed files compared to <ref> (git diff)
         """,
-    ),
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    extra_launch_args=CLI.odoo_launch.extra_cmd_args,
-    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args,
-    languages=CLI.odoo_launch.languages,
-    db_filter=CLI.database.db_filter,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+        ),
+    ],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_filter: Annotated[str, CLI.database.db_filter],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    odoo_log_level: Annotated[str, typer.Option(help="Log level")] = "test",
+    extra_launch_args: Annotated[List[str], CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[List[str], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
+    pregenerate_assets: Annotated[bool, typer.Option(help="Pregenerate assets before running tests")] = True,
     skip_test_modules: Annotated[
         Optional[List[str]],
-        typer.Option(envvar="ODOO_TEST_SKIP_MODULES", help="Modules not to Test even if specified in test_modules"),
+        typer.Option(
+            envvar="ODOO_TEST_SKIP_MODULES",
+            help="Modules not to Test even if specified in test_modules",
+        ),
     ] = None,
-    odoo_log_level: str = typer.Option("test", help="Log level"),
-    pregenerate_assets: Annotated[bool, typer.Option(help="Pregenerate assets before running tests")] = True,
 ):
     """Bootstrap or launch Odoo in testing mode.
 

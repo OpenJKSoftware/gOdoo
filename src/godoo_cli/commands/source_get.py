@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from enum import Enum
 from pathlib import Path
-from typing import List
+from typing import Annotated, List
 
 import typer
 from ruamel.yaml import YAML
@@ -109,17 +109,15 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
     config.write(odoo_conf.open("w"))
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def py_depends_by_db(
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Install Python dependencies for all installed modules in DB.
 
@@ -136,22 +134,21 @@ def py_depends_by_db(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    module_list = [m for m in module_list]
+    module_list = list(module_list)
     module_reg = godooModules(odoo_addon_paths)
     modules = list(module_reg.get_modules(module_list, raise_missing_names=False))
     _install_py_reqs_for_modules(modules, module_reg)
 
 
-@CLI.arg_annotator
 def get_installed_module_paths(
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Get Paths of all installed modules in DB."""
     connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
@@ -164,22 +161,20 @@ def get_installed_module_paths(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    module_list = [m for m in module_list]
+    module_list = list(module_list)
     modules = godooModules(odoo_addon_paths).get_modules(module_list)
     for m in modules:
         print(m.path.absolute())  # pylint: disable=print-used
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def py_depends_by_modules(
-    module_list: List[str] = typer.Argument(
-        ...,
-        help="Modules to check for dependencies (can use all for all available addons)",
-    ),
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
+    module_list: Annotated[
+        List[str],
+        typer.Argument(help="Modules to check for dependencies (can use all for all available addons)"),
+    ],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
 ):
     """Install dependencies from __manifest__.py in specified modules."""
     odoo_addon_paths = get_addon_paths(
@@ -195,14 +190,12 @@ def py_depends_by_modules(
     _install_py_reqs_for_modules(modules, module_reg)
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def get_source_file(
-    manifest_path=CLI.source.mainfest_path,
-    repo_url: str = typer.Option("", help="git repo url, for specific repo (skip manifest_yml)"),
-    file_ref: str = typer.Option("", help="When not using manifest. File Branch, Commit, Tag..."),
-    file_path: str = typer.Option(..., help="Relative Filepath in Repository"),
-    save_path: Path = typer.Option(..., file_okay=True, dir_okay=False, help="Where to write the file"),
+    save_path: Annotated[Path, typer.Option(file_okay=True, dir_okay=False, help="Where to write the file")],
+    manifest_path: Annotated[Path, CLI.source.mainfest_path] = None,
+    file_path: Annotated[str, typer.Option(help="Relative Filepath in Repository")] = "",
+    repo_url: Annotated[str, typer.Option(help="git repo url, for specific repo (skip manifest_yml)")] = "",
+    file_ref: Annotated[str, typer.Option(help="When not using manifest. File Branch, Commit, Tag...")] = "",
 ):
     """Get Raw file from manifest git remotes or specific git remote."""
     if not repo_url and not manifest_path:
@@ -222,31 +215,35 @@ def get_source_file(
     return download_file(url=file_url, save_path=save_path)
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def get_source(
-    update_mode: UpdateMode = typer.Argument(UpdateMode.all, help="What to Update"),
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    manifest_path=CLI.source.mainfest_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    download_zipmode=CLI.source.source_download_archive,
-    thirdparty_zip_source: Path = typer.Option(
-        ..., envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Source folder, where to look for Addon zips"
-    ),
-    add_compare_comments: bool = typer.Option(
-        False, "--add-compare-comments", help="Wether to add github.com three dot compare links as comments."
-    ),
-    pin_commits: bool = typer.Option(False, "--pin-commits", help="Pin commits in manifest to current commit in repo"),
-    remove_unspecified_addons: bool = typer.Option(
-        False, "--remove-unspecified-addons", help="Remove Addon folders that are not in YML or thirdparty.zip"
-    ),
-    force_fetch: bool = typer.Option(
-        False,
-        "--force-fetch",
-        help="Forces origin fetch, regardless of current branch or commit sha (may be slow)",
-    ),
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    thirdparty_zip_source: Annotated[
+        Path, typer.Option(envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Source folder, where to look for Addon zips")
+    ],
+    update_mode: Annotated[UpdateMode, typer.Argument(help="What to Update")] = UpdateMode.all,
+    manifest_path: Annotated[Path, CLI.source.mainfest_path] = None,
+    download_zipmode: Annotated[bool, CLI.source.source_download_archive] = False,
+    add_compare_comments: Annotated[
+        bool,
+        typer.Option("--add-compare-comments", help="Wether to add github.com three dot compare links as comments."),
+    ] = False,
+    pin_commits: Annotated[
+        bool, typer.Option("--pin-commits", help="Pin commits in manifest to current commit in repo")
+    ] = False,
+    remove_unspecified_addons: Annotated[
+        bool,
+        typer.Option("--remove-unspecified-addons", help="Remove Addon folders that are not in YML or thirdparty.zip"),
+    ] = False,
+    force_fetch: Annotated[
+        bool,
+        typer.Option(
+            "--force-fetch",
+            help="Forces origin fetch, regardless of current branch or commit sha (may be slow)",
+        ),
+    ] = False,
 ):
     """Download/unzip Odoo source and thirdparty addons."""
     LOGGER.info("Updating Source Repos")
@@ -289,8 +286,6 @@ def get_source(
         update_odoo_conf_addon_paths(odoo_conf=conf_path, addon_paths=odoo_addon_paths)
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def update_odoo_conf(
     odoo_conf=CLI.odoo_paths.conf_path,
     odoo_main_path=CLI.odoo_paths.bin_path,

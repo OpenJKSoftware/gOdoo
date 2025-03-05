@@ -5,6 +5,7 @@ in a running Odoo instance via RPC.
 """
 
 import logging
+from typing import Annotated
 
 import typer
 from godoo_rpc.login import wait_for_odoo
@@ -15,14 +16,15 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-@CLI.arg_annotator
 def set_config_parameter(
-    param_name: str = typer.Argument(..., help=r"name of ir.config.parameter"),
-    param_value: str = typer.Argument(..., help="Value to set config parameter to (:unlink to delete the parameter)"),
-    rpc_host=CLI.rpc.rpc_host,
-    rpc_database=CLI.rpc.rpc_db_name,
-    rpc_user=CLI.rpc.rpc_user,
-    rpc_password=CLI.rpc.rpc_password,
+    param_name: Annotated[str, typer.Argument(help=r"name of ir.config.parameter")],
+    param_value: Annotated[
+        str, typer.Argument(help="Value to set config parameter to (:unlink to delete the parameter)")
+    ],
+    rpc_host: Annotated[str, CLI.rpc.rpc_host],
+    rpc_database: Annotated[str, CLI.rpc.rpc_db_name],
+    rpc_user: Annotated[str, CLI.rpc.rpc_user],
+    rpc_password: Annotated[str, CLI.rpc.rpc_password],
 ):
     """Set a configuration parameter in the Odoo instance.
 

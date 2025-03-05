@@ -13,7 +13,7 @@ from types import GeneratorType
 from typing import List
 
 from .modules import godooModule, godooModules
-from .system import pip_install
+from .pip import pip_install
 
 LOGGER = logging.getLogger(__name__)
 

@@ -1,5 +1,6 @@
 import logging
-from typing import List
+from pathlib import Path
+from typing import Annotated, List
 
 import typer
 
@@ -14,32 +15,33 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-@CLI.arg_annotator
 def odoo_load_test_data(
-    test_modules: List[str] = typer.Argument(
-        ...,
-        help="""
+    test_modules: Annotated[
+        List[str],
+        typer.Argument(
+            help="""
         Space separated list of Modules to Test or special commands:
 
          'all' for all modules in `workspace_addon_path`
 
          'changes:<ref>' detect modules by changed files compared to <ref> (git diff)
         """,
-    ),
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    extra_launch_args=CLI.odoo_launch.extra_cmd_args,
-    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
-    db_filter=CLI.database.db_filter,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
-    odoo_log_level: str = typer.Option("test", help="Log level"),
-    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
+        ),
+    ],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_filter: Annotated[str, CLI.database.db_filter],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    extra_launch_args: Annotated[str, CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[str, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    odoo_log_level: Annotated[str, typer.Option(help="Log level")] = "test",
+    multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
 ):
     """Loads test data from test/data.py of given modules into Odoo DB.
 

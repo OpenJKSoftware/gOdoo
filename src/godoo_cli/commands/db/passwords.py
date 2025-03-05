@@ -5,6 +5,7 @@ including setting and retrieving admin passwords.
 """
 
 import logging
+from typing import Annotated
 
 import typer
 from passlib.context import CryptContext
@@ -33,14 +34,13 @@ def _hash_odoo_password(password: str) -> str:
     return CryptContext(schemes=["pbkdf2_sha512", "md5_crypt"]).encrypt(password)
 
 
-@CLI.arg_annotator
 def set_passwords(
-    new_password: str = typer.Argument(..., help="Password to set for all users"),
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    new_password: Annotated[str, typer.Argument(help="Password to set for all users")],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Set Login Password for all Users."""
     check_dangerous_command()

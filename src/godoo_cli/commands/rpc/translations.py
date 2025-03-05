@@ -8,6 +8,7 @@ exporting, and updating translations.
 import logging
 from base64 import b64decode
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from godoo_rpc.login import wait_for_odoo
@@ -96,19 +97,20 @@ def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
             yield addon.name
 
 
-@CLI.arg_annotator
 def dump_translations(
-    modules: list[str] = typer.Argument(
-        ...,
-        help="Module Name(s) space Seperated. Only works in workspace addon path",
-        autocompletion=complete_workspace_addon_names,
-    ),
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    rpc_host=CLI.rpc.rpc_host,
-    rpc_database=CLI.rpc.rpc_db_name,
-    rpc_user=CLI.rpc.rpc_user,
-    rpc_password=CLI.rpc.rpc_password,
-    upgrade_modules: bool = typer.Option(True, help="Upgrade modules before exporting"),
+    modules: Annotated[
+        list[str],
+        typer.Argument(
+            help="Module Name(s) space Seperated. Only works in workspace addon path",
+            autocompletion=complete_workspace_addon_names,
+        ),
+    ],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    rpc_host: Annotated[str, CLI.rpc.rpc_host],
+    rpc_database: Annotated[str, CLI.rpc.rpc_db_name],
+    rpc_user: Annotated[str, CLI.rpc.rpc_user],
+    rpc_password: Annotated[str, CLI.rpc.rpc_password],
+    upgrade_modules: Annotated[bool, typer.Option(help="Upgrade modules before exporting")] = True,
 ):
     """Dump translations of module to <module_folder>/i18n/<module_name>.pot."""
     godoo_modules = list(godooModules(workspace_addon_path).get_modules(modules))

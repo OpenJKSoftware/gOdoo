@@ -126,23 +126,21 @@ def _boostrap_command(
     return cmd_str
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def bootstrap_odoo(
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    db_filter=CLI.database.db_filter,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
-    extra_cmd_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
-    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
-    languages=CLI.odoo_launch.languages,
-    install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_filter: Annotated[str, CLI.database.db_filter],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host],
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    extra_cmd_args: Annotated[List[str], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
+    languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
+    install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
     install_base_modules: Annotated[
         bool,
         typer.Option(
@@ -150,8 +148,8 @@ def bootstrap_odoo(
             rich_help_panel="Odoo",
         ),
     ] = True,
-    banner_text=CLI.odoo_launch.banner_text,
-    banner_bg_color=CLI.odoo_launch.banner_bg_color,
+    banner_text: Annotated[str, CLI.odoo_launch.banner_text] = "",
+    banner_bg_color: Annotated[str, CLI.odoo_launch.banner_bg_color] = "green",
 ):
     """Bootstrap an Odoo instance with specified configuration."""
     addon_paths = get_addon_paths(
@@ -194,5 +192,14 @@ def bootstrap_odoo(
     if banner_text:
         os.environ["ODOO_BANNER_TEXT"] = banner_text
         os.environ["ODOO_BANNER_BG_COLOR"] = banner_bg_color
-        odoo_shell_run_script(script_name="odoo_banner", odoo_main_path=odoo_main_path, odoo_conf_path=odoo_conf_path)
+        odoo_shell_run_script(
+            script_name="odoo_banner",
+            odoo_main_path=odoo_main_path,
+            odoo_conf_path=odoo_conf_path,
+            db_name=db_name,
+            db_user=db_user,
+            db_host=db_host,
+            db_port=db_port,
+            db_password=db_password,
+        )
     return CLI.returner(ret)

@@ -8,7 +8,7 @@ Odoo environment. It supports both interactive and script-based operations.
 import logging
 import os
 from pathlib import Path
-from typing import List
+from typing import Annotated, List
 
 import typer
 
@@ -20,12 +20,10 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def uninstall_modules(
-    module_list: List[str] = typer.Argument(..., help="List of Modules to uninstall"),
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
+    module_list: Annotated[List[str], typer.Argument(help="List of Modules to uninstall")],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
 ):
     """Uninstall specified modules from Odoo via shell.
 
@@ -43,17 +41,18 @@ def uninstall_modules(
     return CLI.returner(ret)
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def odoo_shell(
-    pipe_in_command: str = typer.Argument("", help="Python command, that will be piped into odoo-bin shell"),
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    pipe_in_command: Annotated[
+        str,
+        typer.Argument(help="Python command, that will be piped into odoo-bin shell"),
+    ] = "",
 ):
     """Start an interactive Odoo shell session.
 
@@ -93,17 +92,18 @@ def complete_script_name():
     return [p.stem for p in script_folder.glob("*.py")]
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def odoo_shell_run_script(
-    script_name: str = typer.Argument(..., help="Internal Script to run", autocompletion=complete_script_name),
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    script_name: Annotated[
+        str,
+        typer.Argument(help="Internal Script to run", autocompletion=complete_script_name),
+    ],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Run a predefined script using the Odoo shell.
 

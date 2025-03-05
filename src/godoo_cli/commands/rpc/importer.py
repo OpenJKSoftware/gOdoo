@@ -7,7 +7,7 @@ various file formats and sources.
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import Annotated, List
 
 import typer
 from godoo_rpc import import_data
@@ -19,32 +19,39 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def import_to_odoo(
-    read_paths: List[Path] = typer.Argument(
-        ...,
-        readable=True,
-        exists=True,
-        help="Folder in which to search for import",
-    ),
-    rpc_host=CLI.rpc.rpc_host,
-    rpc_database=CLI.rpc.rpc_db_name,
-    rpc_user=CLI.rpc.rpc_user,
-    rpc_password=CLI.rpc.rpc_password,
-    file_regex: str = typer.Option(
-        r"(?P<module>.*)\.(csv|py|xlsx|json)$",
-        help="Regex for filesearch. Add group 'module' to set a Module for RPC import",
-    ),
-    product_image_regex: str = typer.Option(
-        r"(?P<default_code>\d{6})\.(jpeg|png|jpg)$",
-        help="Regex to search for Product images. Add Fields as regex group for Matching.",
-    ),
-    check_data_timestamp: bool = typer.Option(
-        True,
-        help="If true, Odoo remembers the Name of an uploaded File in a Serverparameter. Subsequent Imports will ignore the file if it hasnt changed.",
-    ),
-    skip_existing_ids: bool = typer.Option(False, help="Will skip import of already existing External IDs."),
+    read_paths: Annotated[
+        List[Path],
+        typer.Argument(readable=True, exists=True, help="Folder in which to search for import"),
+    ],
+    rpc_host: Annotated[str, CLI.rpc.rpc_host],
+    rpc_database: Annotated[str, CLI.rpc.rpc_db_name],
+    rpc_user: Annotated[str, CLI.rpc.rpc_user],
+    rpc_password: Annotated[str, CLI.rpc.rpc_password],
+    file_regex: Annotated[
+        str,
+        typer.Option(
+            help="Regex for filesearch. Add group 'module' to set a Module for RPC import",
+        ),
+    ] = r"(?P<module>.*)\.(csv|py|xlsx|json)$",
+    product_image_regex: Annotated[
+        str,
+        typer.Option(
+            help="Regex to search for Product images. Add Fields as regex group for Matching.",
+        ),
+    ] = r"(?P<default_code>\d{6})\.(jpeg|png|jpg)$",
+    check_data_timestamp: Annotated[
+        bool,
+        typer.Option(
+            help="If true, Odoo remembers the Name of an uploaded File in a Serverparameter. Subsequent Imports will ignore the file if it hasnt changed.",
+        ),
+    ] = True,
+    skip_existing_ids: Annotated[
+        bool,
+        typer.Option(
+            help="Will skip import of already existing External IDs.",
+        ),
+    ] = False,
 ):
     """Import data into a running Odoo instance.
 

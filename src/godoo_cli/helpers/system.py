@@ -1,11 +1,9 @@
 """Helper functions around the host system."""
 
 import datetime
-import json
 import logging
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import List, Union
 
@@ -133,30 +131,3 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
         return True
     LOGGER.info("Aborting")
     return False
-
-
-def pip_install(package_names: List[str]):
-    """Ensure pip packages are installed if not already present."""
-    # Some packages have different names on pypi and in odoo Manifests. Key is Odoo manigest, Value is pypi
-    odoo_wrong_pkg_names = {
-        "ldap": "python-ldap",
-    }
-    package_names = [odoo_wrong_pkg_names.get(p, p) for p in package_names]
-
-    LOGGER.debug("Ensuring Pip Packages are installed:\n%s", package_names)
-    installed_packages = run_cmd(
-        f"{sys.executable} -m pip list --format json --disable-pip-version-check",
-        check=True,
-        shell=True,
-        stdout=subprocess.PIPE,
-    ).stdout.decode("utf-8")
-    installed_packages = json.loads(installed_packages)
-    installed_packages = [p.get("name") for p in installed_packages]
-    if missing_packages := [p for p in package_names if p not in installed_packages]:
-        LOGGER.info("Installing Python requirements: %s", missing_packages)
-        res = run_cmd(
-            f"{sys.executable} -m pip install {' '.join(missing_packages)} --disable-pip-version-check", shell=True
-        )
-        if res.returncode != 0:
-            raise FileNotFoundError("Pip installation error at: %s" % missing_packages)
-        return res

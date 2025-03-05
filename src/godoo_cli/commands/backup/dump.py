@@ -8,6 +8,7 @@ import logging
 from configparser import ConfigParser
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -20,24 +21,25 @@ LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
 
-@CLI.arg_annotator
 def dump_instance(
-    dump_path: Path = typer.Argument(
-        ...,
-        help="Path to dump to",
-        file_okay=False,
-        dir_okay=True,
-        writable=True,
-        resolve_path=True,
-        envvar="GODOO_DUMP_PATH",
-    ),
-    db_name=CLI.database.db_name,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    conf_path=CLI.odoo_paths.conf_path,
+    dump_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to dump to",
+            file_okay=False,
+            dir_okay=True,
+            writable=True,
+            resolve_path=True,
+            envvar="GODOO_DUMP_PATH",
+        ),
+    ],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_user: Annotated[str, CLI.database.db_user] = "",
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Dump DB and Filestore into Folder."""
     db_connection = DBConnection(

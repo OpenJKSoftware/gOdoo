@@ -9,7 +9,7 @@ import logging
 import re
 import threading
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Annotated, List, Optional, Union
 
 import typer
 
@@ -66,7 +66,7 @@ def _launch_command(
     return " ".join(odoo_cmd)
 
 
-def bootstrap_and_prep_launch_cmd(
+def bootstrap_and_prep_launch_cmd(  # noqa: C901
     odoo_main_path: Path,
     workspace_addon_path: Path,
     thirdparty_addon_path: Path,
@@ -191,27 +191,25 @@ def bootstrap_and_prep_launch_cmd(
     )
 
 
-@CLI.unpacker
-@CLI.arg_annotator
 def launch_odoo(
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    db_filter=CLI.database.db_filter,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
-    odoo_demo=CLI.odoo_launch.odoo_demo,
-    dev_mode=CLI.odoo_launch.dev_mode,
-    install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
-    extra_args=CLI.odoo_launch.extra_cmd_args,
-    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
-    log_file_path=CLI.odoo_launch.log_file_path,
-    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
-    languages=CLI.odoo_launch.languages,
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_filter: Annotated[str, CLI.database.db_filter],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    extra_args: Annotated[str, CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[str, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    log_file_path: Annotated[Path, CLI.odoo_launch.log_file_path] = None,
+    install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
+    odoo_demo: Annotated[bool, CLI.odoo_launch.odoo_demo] = False,
+    dev_mode: Annotated[bool, CLI.odoo_launch.dev_mode] = False,
+    multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
+    languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
 ):
     """Launch an Odoo instance, bootstrapping if necessary.
 
@@ -259,32 +257,31 @@ def launch_odoo(
     return CLI.returner(run_cmd(launch_cmd).returncode)
 
 
-@CLI.arg_annotator
 def launch_import(
-    load_data_path: List[Path] = typer.Argument(
-        ...,
-        help="Starts Async Importer Job with provided path(s).",
-    ),
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
-    odoo_conf_path=CLI.odoo_paths.conf_path,
-    db_filter=CLI.database.db_filter,
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
-    rpc_host=CLI.rpc.rpc_host,
-    rpc_user=CLI.rpc.rpc_user,
-    rpc_password=CLI.rpc.rpc_password,
-    odoo_demo=CLI.odoo_launch.odoo_demo,
-    dev_mode=CLI.odoo_launch.dev_mode,
-    install_workspace_modules=CLI.odoo_launch.install_workspace_modules,
-    extra_launch_args=CLI.odoo_launch.extra_cmd_args,
-    extra_bootstrap_args=CLI.odoo_launch.extra_cmd_args_bootstrap,
-    log_file_path=CLI.odoo_launch.log_file_path,
-    multithread_worker_count=CLI.odoo_launch.multithread_worker_count,
+    load_data_path: Annotated[
+        List[Path],
+        typer.Argument(help="Starts Async Importer Job with provided path(s)."),
+    ],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    db_filter: Annotated[str, CLI.database.db_filter],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    rpc_host: Annotated[str, CLI.rpc.rpc_host],
+    rpc_user: Annotated[str, CLI.rpc.rpc_user],
+    rpc_password: Annotated[str, CLI.rpc.rpc_password],
+    odoo_demo: Annotated[bool, CLI.odoo_launch.odoo_demo],
+    dev_mode: Annotated[bool, CLI.odoo_launch.dev_mode],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    extra_launch_args: Annotated[str, CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[str, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    log_file_path: Annotated[Path, CLI.odoo_launch.log_file_path] = None,
+    install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
+    multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
 ):
     """Launch Odoo and import data from specified paths.
 

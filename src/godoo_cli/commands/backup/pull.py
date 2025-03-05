@@ -139,16 +139,17 @@ class InstancePuller:
             LOGGER.error("Failed to download DB Dump")
             raise typer.Exit(1)
 
-    @CLI.arg_annotator
     def pull_instance_data(
         self,
         target_folder: Annotated[
-            Path, typer.Argument(..., help="Target Folder to pull data to.", file_okay=False, dir_okay=True)
+            Path, typer.Argument(help="Target Folder to pull data to.", file_okay=False, dir_okay=True)
         ],
+        pg_db_user: Annotated[str, CLI.database.db_user],
+        pg_db_name: Annotated[str, CLI.database.db_name],
         ssh_user: Annotated[
             str,
             typer.Option(
-                ..., help="SSH User of remote instance.", rich_help_panel="Remote Options", envvar="ODOO_PULL_SSH_USER"
+                help="SSH User of remote instance.", rich_help_panel="Remote Options", envvar="ODOO_PULL_SSH_USER"
             ),
         ] = None,
         ssh_hostname: Annotated[
@@ -175,8 +176,6 @@ class InstancePuller:
                 rich_help_panel="Database Options",
             ),
         ] = None,
-        pg_db_user=CLI.database.db_user,
-        pg_db_name=CLI.database.db_name,
     ):
         """Pull filestore folder and database dump from a remote instance.
 

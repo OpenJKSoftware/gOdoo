@@ -67,12 +67,10 @@ def load_pg_dump(
     return load_return.returncode
 
 
-@CLI.arg_annotator
 def load_instance_data(
     source_folder: Annotated[
         Path,
         typer.Argument(
-            ...,
             help="Source Folder to load data from.",
             file_okay=False,
             dir_okay=True,
@@ -83,17 +81,16 @@ def load_instance_data(
     filestore_target_folder: Annotated[
         Path,
         typer.Argument(
-            ...,
             help="Target Folder to load filestore to.",
             file_okay=False,
             dir_okay=True,
         ),
     ],
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
     dump_file_name: Annotated[
         str,
         typer.Option(help="Optional Changeable filename of Odoo SQL Dump within source_folder"),

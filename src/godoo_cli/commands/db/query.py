@@ -6,6 +6,7 @@ including checking bootstrap status and retrieving installed modules.
 
 import enum
 import logging
+from typing import Annotated
 
 import typer
 from psycopg2 import OperationalError, ProgrammingError
@@ -19,24 +20,27 @@ class DB_BOOTSTRAP_STATUS(enum.Enum):
     """Database bootstrap status enumeration.
 
     This enum represents the possible states of database bootstrapping:
-    - NOT_BOOTSTRAPPED: Database exists but is not bootstrapped
     - BOOTSTRAPPED: Database is fully bootstrapped
-    - NOT_FOUND: Database does not exist
+    - NO_DB: Database does not exist
+    - EMPTY_DB: Database exists but is empty
     """
+
+    BOOTSTRAPPED = "bootstrapped"
+    NO_DB = "db missing"
+    EMPTY_DB = "db empty"
 
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
 
-@CLI.arg_annotator
 def query_database(
-    query: str = typer.Argument(..., help="SQL Query. Use '-' to read from stdin."),
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    query: Annotated[str, typer.Argument(help="SQL Query. Use '-' to read from stdin.")],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Run a Query against the database.
 
@@ -94,13 +98,12 @@ def _is_bootstrapped(db_connection: DBConnection) -> DB_BOOTSTRAP_STATUS:
         return DB_BOOTSTRAP_STATUS.NO_DB
 
 
-@CLI.arg_annotator
 def is_bootstrapped(
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Check if the database is empty.
 
@@ -136,18 +139,19 @@ def _get_installed_modules(db_connection: DBConnection, to_install=False):
         return [r[0] for r in sql_res]
 
 
-@CLI.arg_annotator
 def get_installed_modules(
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
-    to_install: bool = typer.Option(
-        False,
-        "--to-install",
-        help="Include modules marked for installation",
-    ),
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    to_install: Annotated[
+        bool,
+        typer.Option(
+            "--to-install",
+            help="Include modules marked for installation",
+        ),
+    ] = False,
 ):
     """Returns modules marked as installed by Odoo in the database."""
     db_connection = DBConnection(

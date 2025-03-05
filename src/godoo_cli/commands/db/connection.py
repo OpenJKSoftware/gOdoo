@@ -8,7 +8,7 @@ import logging
 import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Annotated, Dict, Optional
 
 import psycopg2
 
@@ -19,13 +19,12 @@ LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
 
-@CLI.arg_annotator
 def login_db(
-    db_host=CLI.database.db_host,
-    db_port=CLI.database.db_port,
-    db_name=CLI.database.db_name,
-    db_user=CLI.database.db_user,
-    db_password=CLI.database.db_password,
+    db_name: Annotated[str, CLI.database.db_name],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Launch an interactive psql CLI session with the provided credentials.
 
@@ -59,6 +58,13 @@ class DBConnection:
         password: Database password.
         db_name: Name of the database.
     """
+
+    hostname: str
+    port: int
+    username: str
+    password: str
+    db_name: str
+    conn_timeout = 10
 
     def get_connection(self):
         """Get a database connection."""

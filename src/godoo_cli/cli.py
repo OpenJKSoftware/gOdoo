@@ -5,7 +5,7 @@ It sets up the command structure, configures logging, and provides the core CLI 
 for interacting with Odoo instances.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
 import typer
 from dotenv import load_dotenv
@@ -34,7 +34,6 @@ from .helpers.system import set_logging
 CLI = CommonCLI()
 
 
-@CLI.arg_annotator
 def print_versions(odoo_main_path=CLI.odoo_paths.bin_path):
     """Print gOdoo and Odoo Version info."""
     rich_print(f"gOdoo Version: [bold green]{__about__.__version__}[/bold green]")
@@ -43,13 +42,15 @@ def print_versions(odoo_main_path=CLI.odoo_paths.bin_path):
 
 
 def main_callback(
-    verbose: Optional[bool] = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        envvar="GODOO_VERBOSE",
-        help="Verbose Logging with Error stacktraces",
-    ),
+    verbose: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--verbose",
+            "-v",
+            envvar="GODOO_VERBOSE",
+            help="Verbose Logging with Error stacktraces",
+        ),
+    ] = False,
 ):
     """Configure the CLI's logging level.
 
