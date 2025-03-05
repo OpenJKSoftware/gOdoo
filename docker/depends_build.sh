@@ -28,5 +28,6 @@ apt-get install -y -q --no-install-recommends \
     libldap2-dev \
     libssl-dev \
     libsasl2-dev \
+    libcups2-dev \
     build-essential \
     pkg-config

@@ -184,11 +184,11 @@ ENV NODE_PATH=$NVM_DIR/v$NODE_VERSION/lib/node_modules \
 RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.sh \
     set -ex; \
     sudo bash /tmp/depends_build.sh \
-    && sudo bash -c 'mkdir -p /home/$USERNAME/{.vscode-server/extensions,.cache/pre-commit}' \
-    && sudo bash -c 'chown -R $USERNAME:$USERNAME /home/$USERNAME/{.vscode-server,.cache}' \
-    && sudo mkdir -p /etc/cups \
-    && sudo echo "ServerName cups:631" > /etc/cups/client.conf \
-    && sudo printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf
+    && sudo bash -c 'mkdir -p /home/$USERNAME/{.vscode-server/extensions,.cache/pre-commit} \
+        && chown -R $USERNAME:$USERNAME /home/$USERNAME/{.vscode-server,.cache} \
+        && mkdir -p /etc/cups \
+        && echo "ServerName cups:631" > /etc/cups/client.conf \
+        && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf'
 
 ARG WORKSPACE
 ENV ODOO_PRINT_PDF_LOCATION=$WORKSPACE
