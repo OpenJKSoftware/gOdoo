@@ -80,7 +80,7 @@ def query_database(
                 pass
         except Exception as e:
             LOGGER.exception(e)
-            raise typer.Exit(1)
+            raise typer.Exit(1)  # noqa: B904
 
 
 def _is_bootstrapped(db_connection: DBConnection) -> DB_BOOTSTRAP_STATUS:
@@ -134,7 +134,10 @@ def _get_installed_modules(db_connection: DBConnection, to_install=False):
     if to_install:
         lookup_states.append("to install")
     with db_connection.connect() as cursor:
-        cursor.execute("SELECT name FROM ir_module_module WHERE state IN %s;", [tuple(lookup_states)])
+        cursor.execute(
+            "SELECT name FROM ir_module_module WHERE state IN %s;",
+            [tuple(lookup_states)],
+        )
         sql_res = cursor.fetchall()
         return [r[0] for r in sql_res]
 

@@ -29,29 +29,26 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    # Development Tools
+# Dependencies for Odoo Development
+odoo-dev = [
     "ipdb>=0.13.9",
     "debugpy>=1.6.0",
-    "watchdog>=2.1.7",
     "rope>=0.23.0",
+    "watchdog>=2.1.7",
     "py-spy>=0.3.11",
     "inotify>=0.2.10",
     "pydevd-odoo>=1.2.1",
     "pre-commit>=4.0.0",
-    # Testing
-    "pytest>=7.2.1",
-    "pytest-cov>=4.0.0",
-    "mock>=4.0.3",
-    # Linting
-    "pylint-odoo>=8.0.16",
-    "flake8>=5.0.4",
-    "flake8-pyproject>=1.2.3",
-    "flake8-docstrings>=1.7.0",
-    "flake8-bugbear>=23.3.12",
-    "flake8-comprehensions>=3.14.0",
-    "black>=22.10.0",
-    "isort>=5.10.1",
+    "pylint-odoo>=9.3.2",
+    "py-spy>=0.3.11",
+]
+
+[dependency-groups]
+# Dependencies for Developing this project
+dev = [
+    # Development Tools
+    "hatch>=1.14.0",
+    "pre-commit>=4.0.0",
 ]
 
 # --------------------------------
@@ -63,25 +60,32 @@ version.path = "src/godoo_cli/__about__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/godoo_cli"]
 
+[tool.hatch.envs.default]
+installer = "uv"
+
 # --------------------------------
 # Development Environments
 # --------------------------------
 [tool.hatch.envs.dev]
-features = ["dev"]
+dependencies = [
+    # Testing
+    "pytest>=7.2.1",
+    "pytest-cov>=4.0.0",
+    "mock>=4.0.3",
+    # Linting
+    "ruff>=0.3.0",
+    "pylint_odoo>=9.3.2"
+]
+detached = true
+installer = "uv"
 
 [tool.hatch.envs.dev.scripts]
-# Formatting commands
-format = [
-  "black src",
-  "isort src",
-]
 
 # Linting commands
 lint = [
-  "black --check src",
-  "isort --check src",
-  "flake8 src",
-  "pylint src",
+  "ruff check src",
+  "ruff format --check src",
+  "pylint src",  # Keep pylint for Odoo-specific checks
 ]
 
 # Testing commands
@@ -96,45 +100,40 @@ ci = [
 # --------------------------------
 # Tool Configurations
 # --------------------------------
-[tool.flake8]
-max-line-length = 120
-extend-ignore = [
-    "E203",  # Conflicts with black
-    "E266",  # Too many leading '#' for block comment
-    "E501",  # Line too long (handled by black)
-    "W503",  # Line break before binary operator (conflicts with black)
-]
-exclude = [
-    ".git",
-    "__pycache__",
-    "build",
-    "dist",
-    ".eggs",
-    "*.egg",
-    ".venv",
-    "venv",
-]
-max-complexity = 10
-per-file-ignores = [
-    "__init__.py:F401,F403",  # Ignore unused and * imports in __init__.py files
-    "tests/*:S101,D100,D101,D102,D103,D104,D105,D107",  # Ignore assert usage and docstrings in tests
-    "test_*.py:S101,D100,D101,D102,D103,D104,D105,D107",  # Same for test files in any directory
-    "*_test.py:S101,D100,D101,D102,D103,D104,D105,D107",  # Same for test files in any directory
-]
-count = true
-statistics = true
-docstring-convention = "google"
-max-doc-length = 120
-
-[tool.black]
+[tool.ruff]
 line-length = 120
+target-version = "py39"
 
-[tool.isort]
-profile = "black"
-line_length = 120
-known_odoo = "odoo"
-known_odoo_addons = "odoo.addons"
-sections = "FUTURE,STDLIB,THIRDPARTY,ODOO,ODOO_ADDONS,FIRSTPARTY,LOCALFOLDER"
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "C",    # flake8-comprehensions
+    "B",    # flake8-bugbear
+    "D",    # pydocstyle
+]
+ignore = [
+    "E203",  # Whitespace before ':'
+    "E266",  # Too many leading '#' for block comment
+    "E501",  # Line too long (handled by formatter)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]  # Ignore unused and * imports in __init__.py files
+"tests/*" = ["S101", "D100", "D101", "D102", "D103", "D104", "D105", "D107"]  # Ignore assert usage and docstrings in tests
+"test_*.py" = ["S101", "D100", "D101", "D102", "D103", "D104", "D105", "D107"]  # Same for test files in any directory
+"*_test.py" = ["S101", "D100", "D101", "D102", "D103", "D104", "D105", "D107"]  # Same for test files in any directory
 
 [tool.pylint.master]
 load-plugins = "pylint_odoo,pylint.extensions.no_self_use"

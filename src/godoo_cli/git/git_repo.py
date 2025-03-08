@@ -24,7 +24,7 @@ def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs):
     branch : str
         branch to clone
 
-    Returns
+    Returns:
     -------
     _type_re
         _description_

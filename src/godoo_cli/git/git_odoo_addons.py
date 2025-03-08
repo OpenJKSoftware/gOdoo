@@ -73,7 +73,8 @@ def _git_clone_addon_repos(
         branch defaults to odoo branch from spec file
     download_archive : bool, optional
         wether to download as .zip (fast but no history), by default False
-    Returns
+
+    Returns:
     -------
     Dict[str:Commit]
         dict of {git_src_url:HeadCommit}

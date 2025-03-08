@@ -35,14 +35,8 @@ jobs:
       - name: Install Hatch
         uses: pypa/hatch@install
 
-      - name: Run Formatter
-        run: hatch run lint:format
-
       - name: Run Quality Checks
-        run: hatch run lint:ci
-
-      - name: Run Tests with Coverage
-        run: hatch run test:ci
+        run: hatch run dev:ci
 
       - name: Upload Coverage
         uses: codecov/codecov-action@v3

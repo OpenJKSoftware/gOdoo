@@ -104,7 +104,7 @@ def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
     Prints table of Paths with size and Changedate.
     Prompts user to continue or abort typer.
 
-    Returns
+    Returns:
     ---------
     False, when we shall not overwrite files.
     True, when there are no files to override or we should override

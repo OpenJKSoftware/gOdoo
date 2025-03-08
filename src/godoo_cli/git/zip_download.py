@@ -31,7 +31,7 @@ def git_download_zip(repo_url: str, target_folder: Path, branch: str, commit: st
     commit : str, optional
         Specific Commit to download, by default ""
 
-    Raises
+    Raises:
     ------
     FileNotFoundError
         If Download failed

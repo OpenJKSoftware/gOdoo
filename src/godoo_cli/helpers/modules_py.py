@@ -28,7 +28,7 @@ def _install_py_reqs_for_modules(modules: List[godooModule], module_reg: godooMo
     module_reg : godooModules
         Module Registry for Dependency Search
 
-    Returns
+    Returns:
     -------
     CompletedProcess
     """
@@ -53,7 +53,7 @@ def _install_py_reqs_by_odoo_cmd(addon_paths: List[Path], odoo_bin_cmd: str):
     odoo_bin_cmd : str
         odoo-bin commandline
 
-    Returns
+    Returns:
     -------
     CompletedProcess
     """

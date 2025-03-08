@@ -81,7 +81,7 @@ def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
     incomplete : str
         Incomplete current entry
 
-    Yields
+    Yields:
     ------
     str
         folder name

@@ -120,7 +120,7 @@ def yaml_remove_compare_commit(repo_dict):
 def yaml_roundtrip_loader() -> YAML:
     """Return Ruamel Roundtrip loader.
 
-    Returns
+    Returns:
     -------
     YAML
         Yaml Loader

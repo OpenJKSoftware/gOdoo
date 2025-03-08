@@ -24,7 +24,7 @@ def get_changed_modules(
     diff_ref : str
         Branch or diffable ref for git
 
-    Returns
+    Returns:
     -------
     List[godooModule]
         List of Modules where something has changed since git diff

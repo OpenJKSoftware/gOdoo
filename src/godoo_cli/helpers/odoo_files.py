@@ -32,7 +32,7 @@ def odoo_bin_get_version(odoo_main_repo_path: Path) -> OdooVersion:
     odoo_main_repo_path : Path
         Path to odoo-bin folder
 
-    Returns
+    Returns:
     -------
     OdooVersion
         odoo-bin --version output parsed into Dataclass

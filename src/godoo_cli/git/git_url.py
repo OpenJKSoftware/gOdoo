@@ -93,7 +93,7 @@ class GitUrl:
     def _clean_http_url(self) -> str:
         """Return HTTPs URL without .git suffix.
 
-        Returns
+        Returns:
         -------
         str
             Https:// url
@@ -103,12 +103,12 @@ class GitUrl:
     def _git_type(self) -> GitRemoteType:
         """Get git Remote type.
 
-        Returns
+        Returns:
         -------
         Literal
             "github", "gitlab"
 
-        Raises
+        Raises:
         ------
         ValueError
             If Type cannot be determined.
@@ -130,7 +130,7 @@ class GitUrl:
         to_compare : str
             to compare ref
 
-        Returns
+        Returns:
         -------
         str
             Compare Url Like: https://github.com/odoo/odoo/compare/<commitSHA>...<branchName>
@@ -151,12 +151,12 @@ class GitUrl:
         ref : str
             Repository reference (branch, commit, or tag) to download
 
-        Returns
+        Returns:
         -------
         str
             Url from which to download a zip file
 
-        Raises
+        Raises:
         ------
         ValueError
             if ref is not specified
@@ -181,7 +181,7 @@ class GitUrl:
         file_path : str
             Relative file path in Repository
 
-        Returns
+        Returns:
         -------
         str
             URL Pointing to the Raw file contents on the Remote

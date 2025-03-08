@@ -24,12 +24,12 @@ def _has_uv() -> bool:
 def _check_pip_command() -> str:
     """Check which pip command is available and return the appropriate command string.
 
-    Returns
+    Returns:
     -------
     str
         The command to use for pip operations ('python -m pip' or 'uv pip')
 
-    Raises
+    Raises:
     ------
     RuntimeError
         If no supported pip command is available
@@ -42,10 +42,15 @@ def _check_pip_command() -> str:
 
     # Try python -m pip as fallback
     try:
-        run_cmd(f"{sys.executable} -m pip --version", check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        run_cmd(
+            f"{sys.executable} -m pip --version",
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         return f"{sys.executable} -m pip"
-    except subprocess.CalledProcessError:
-        raise RuntimeError("No pip command available. Please ensure pip is installed or use a uv venv.")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("No pip command available. Please ensure pip is installed or use a uv venv.") from e
 
 
 def pip_install(package_names: List[str]):

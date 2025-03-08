@@ -26,7 +26,7 @@ def _hash_odoo_password(password: str) -> str:
     password : str
         Password to hash
 
-    Returns
+    Returns:
     -------
     str
         Hashed Password
@@ -57,5 +57,6 @@ def set_passwords(
         try:
             cur.execute(f"UPDATE res_users SET password='{hashed_pw}'")
         except Exception:
-            raise typer.Exit(1)
+            LOGGER.exception("Error setting password for all users")
+            raise typer.Exit(1)  # noqa: B904
     LOGGER.info("Password for all users set to: '%s'", new_password)
