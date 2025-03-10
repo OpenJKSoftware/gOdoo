@@ -49,10 +49,10 @@ RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.s
 # Remove whats between the ----- and replace with: RUN pip install godoo
 # Install only dependencies, so they only reinstall when lock or toml where changed
 COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=/var/cache/uv \
+RUN --mount=type=cache,target=$UV_CACHE_DIR \
     set -x; uv sync --frozen --no-install-project
 COPY --chown=$USERNAME:$USERNAME ./src ./src
-RUN --mount=type=cache,target=/var/cache/uv \
+RUN --mount=type=cache,target=$UV_CACHE_DIR \
     set -x; uv sync --frozen && uv pip install -e ".[dev]"
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ------------------------------------------------------------------------------------------------------
@@ -65,7 +65,7 @@ COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml ./
 # Install everything from Odoo requirements.txt, by downloading its raw contents
 FROM dev_base AS odoo_requirements
 ARG ODOO_CONF_PATH
-RUN --mount=type=cache,target=/var/cache/uv set -ex; \
+RUN --mount=type=cache,target=$UV_CACHE_DIR set -ex; \
     godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
     && uv pip install -r ./odoo_requirements.txt --upgrade \
     && uv pip install pycups
@@ -199,7 +199,7 @@ RUN set -ex; \
     && bash -c 'sudo chown -R ${USERNAME} {/var/lib/nginx,/var/log/nginx}'
 
 RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/cache/uv \
+    --mount=type=cache,target=$UV_CACHE_DIR \
     set -ex; \
     npm install -g prettier eslint \
     && git config --global --add safe.directory ${WORKSPACE}

@@ -76,7 +76,6 @@ dependencies = [
     "ruff>=0.3.0",
     "pylint_odoo>=9.3.2"
 ]
-detached = true
 installer = "uv"
 
 [tool.hatch.envs.dev.scripts]
@@ -94,7 +93,7 @@ test = "pytest"
 # CI commands
 ci = [
   "lint",
-  "pytest --verbose --exitfirst --failed-first --junitxml=junit/pytest-results.xml --cov=src --cov-report=xml"
+  "pytest --verbose --exitfirst --failed-first --junitxml=junit/pytest-results.xml --cov=src --cov-report=xml -o junit_family=legacy"
 ]
 
 # --------------------------------

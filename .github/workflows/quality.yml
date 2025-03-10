@@ -27,23 +27,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install UV
+        uses: astral-sh/setup-uv@v2
         with:
-          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
 
-      - name: Install Hatch
-        uses: pypa/hatch@install
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install Project Dependencies
+        run: uv sync --all-extras
 
       - name: Run Quality Checks
-        run: hatch run dev:ci
+        run: uv run hatch run dev:ci
 
       - name: Upload Coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         with:
           files: ./coverage.xml
           fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results to Codecov
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   docker-build:
     runs-on: ubuntu-latest
