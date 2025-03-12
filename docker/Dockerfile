@@ -1,3 +1,4 @@
+# syntax = docker/dockerfile:1.14
 # Odoo Docker Container
 # This file uses Multiple Build Stages
 
@@ -32,9 +33,7 @@ ENV VIRTUAL_ENV=${VIRTUAL_ENV} \
     UV_PROJECT_ENVIRONMENT=${VIRTUAL_ENV}
 ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
     PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$VIRTUAL_ENV/bin:$PATH"
-RUN --mount=type=cache,target=$UV_CACHE_DIR set -ex; \
-    sudo chown -R $USERNAME:$USERNAME $UV_CACHE_DIR \
-    && uv venv ${VIRTUAL_ENV}
+RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv venv ${VIRTUAL_ENV}
 
 ARG SOURCE_CLONE_ARCHIVE
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
@@ -49,12 +48,10 @@ RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.s
 # Remove whats between the ----- and replace with: RUN pip install godoo
 # Install only dependencies, so they only reinstall when lock or toml where changed
 COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=$UV_CACHE_DIR set -x; \
-    sudo chown -R $USERNAME:$USERNAME $UV_CACHE_DIR \
-    && uv sync --no-install-project --compile-bytecode
+RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --no-install-project --compile-bytecode
 
 COPY --chown=$USERNAME:$USERNAME ./src ./src
-RUN --mount=type=cache,target=$UV_CACHE_DIR uv sync --compile-bytecode
+RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --compile-bytecode
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ------------------------------------------------------------------------------------------------------
 # Godoo Pypi Install via pip
@@ -66,7 +63,7 @@ COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml ./
 # Install everything from Odoo requirements.txt, by downloading its raw contents
 FROM dev_base AS odoo_requirements
 ARG ODOO_CONF_PATH
-RUN --mount=type=cache,target=$UV_CACHE_DIR set -ex; \
+RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 set -ex; \
     godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
     && uv pip install -r ./odoo_requirements.txt --upgrade \
     && uv pip install pycups
@@ -200,7 +197,7 @@ RUN set -ex; \
     && bash -c 'sudo chown -R ${USERNAME} {/var/lib/nginx,/var/log/nginx}'
 
 RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=$UV_CACHE_DIR \
+    --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 \
     set -ex; \
     npm install -g prettier eslint \
     && git config --global --add safe.directory ${WORKSPACE}
