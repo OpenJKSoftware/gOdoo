@@ -6,7 +6,7 @@ Odoo environment. It supports both interactive and script-based operations.
 """
 
 import logging
-import os
+import sys
 from pathlib import Path
 from typing import Annotated, List
 
@@ -78,7 +78,7 @@ def odoo_shell(
         shell_cmd = f'echo "{pipe_in_command}" |' + shell_cmd
         ret = run_cmd(shell_cmd)
     else:
-        ret = run_cmd(shell_cmd, stdin=os.stdin)
+        ret = run_cmd(shell_cmd, stdin=sys.stdin)
     return CLI.returner(ret.returncode)
 
 
