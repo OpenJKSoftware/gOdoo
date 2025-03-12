@@ -50,10 +50,10 @@ RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.s
 # Install only dependencies, so they only reinstall when lock or toml where changed
 COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=$UV_CACHE_DIR \
-    set -x; uv sync --frozen --no-install-project
+    set -x; uv sync --no-install-project --compile-bytecode
 COPY --chown=$USERNAME:$USERNAME ./src ./src
 RUN --mount=type=cache,target=$UV_CACHE_DIR \
-    set -x; uv sync --frozen && uv pip install -e ".[dev]"
+    set -x; uv sync --compile-bytecode
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ------------------------------------------------------------------------------------------------------
 # Godoo Pypi Install via pip
@@ -185,10 +185,10 @@ RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.s
     set -ex; \
     sudo bash /tmp/depends_build.sh \
     && sudo bash -c 'mkdir -p /home/$USERNAME/{.vscode-server/extensions,.cache/pre-commit} \
-        && chown -R $USERNAME:$USERNAME /home/$USERNAME/{.vscode-server,.cache} \
-        && mkdir -p /etc/cups \
-        && echo "ServerName cups:631" > /etc/cups/client.conf \
-        && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf'
+    && chown -R $USERNAME:$USERNAME /home/$USERNAME/{.vscode-server,.cache} \
+    && mkdir -p /etc/cups \
+    && echo "ServerName cups:631" > /etc/cups/client.conf \
+    && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf'
 
 ARG WORKSPACE
 ENV ODOO_PRINT_PDF_LOCATION=$WORKSPACE
