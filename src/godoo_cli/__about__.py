@@ -2,7 +2,7 @@
 
 from typing import Tuple
 
-__version__ = "0.14.0"  # Initial version, will be managed by Hatch
+__version__ = "0.14.1"  # Initial version, will be managed by Hatch
 
 
 def get_version_tuple() -> Tuple[int, int, int]:
