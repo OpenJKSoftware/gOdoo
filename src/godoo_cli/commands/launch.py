@@ -133,8 +133,9 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
         ret = bootstrap_odoo(
             **db_connection.cli_dict,
             db_filter=db_filter,
-            thirdparty_addon_path=thirdparty_addon_path,
             odoo_main_path=odoo_main_path,
+            workspace_addon_path=workspace_addon_path,
+            thirdparty_addon_path=thirdparty_addon_path,
             odoo_conf_path=odoo_conf_path,
             extra_cmd_args=_extra_bootstrap_args,
             install_workspace_modules=install_workspace_addons,
