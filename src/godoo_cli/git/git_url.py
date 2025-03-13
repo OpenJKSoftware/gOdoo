@@ -7,7 +7,7 @@ operations like generating raw file URLs and archive download links.
 
 import re
 from enum import Enum
-from typing import Literal, Match, Optional
+from typing import Literal, Optional
 
 
 class GitRemoteType(Enum):
@@ -57,7 +57,7 @@ class GitUrl:
         self.url = url
         if "http" in url:
             http_regex = r"(?P<schema>https?):\/\/(?P<domain>[^\/]+)(?P<path>.*)"
-            http_match: Optional[Match[str]] = re.search(http_regex, url)
+            http_match: Optional[re.Match[str]] = re.search(http_regex, url)
             if not http_match:
                 raise ValueError(f"Invalid HTTP URL format: {url}")
 
@@ -71,7 +71,7 @@ class GitUrl:
             self.port = None  # Not applicable for HTTP
         else:
             ssh_regex = r"(?P<user>\w+)@(?P<domain>[^:]+):(?:(?P<port>\d+)]?:)?(?P<path>.*)"
-            ssh_match: Optional[Match[str]] = re.search(ssh_regex, url)
+            ssh_match: Optional[re.Match[str]] = re.search(ssh_regex, url)
             if not ssh_match:
                 raise ValueError(f"Invalid SSH URL format: {url}")
 
@@ -82,7 +82,7 @@ class GitUrl:
             port_str = ssh_match.group("port")
             self.port = int(port_str) if port_str else None
 
-        if self.path.endswith(".git"):  # Todo Python 3.9 Use Removesuffix and RemovePrefix
+        if self.path.endswith(".git"):  # TODO Python 3.9 Use Removesuffix and RemovePrefix
             self.path = self.path[:-4]
         if self.path.endswith("/"):
             self.path = self.path[:-1]
@@ -115,10 +115,9 @@ class GitUrl:
         """
         if "gitlab" in self.domain:
             return GitRemoteType.gitlab
-        elif "github" in self.domain:
+        if "github" in self.domain:
             return GitRemoteType.github
-        else:
-            raise ValueError(f"Cant get Git Service type from {self.domain}")
+        raise ValueError(f"Cant get Git Service type from {self.domain}")
 
     def get_compare_url(self, from_compare: str, to_compare: str) -> str:
         """Get Compare url between two Refs.

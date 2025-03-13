@@ -1,9 +1,10 @@
 """Helps Finding Modules folders and analyzing their dependencies."""
 
 from ast import literal_eval
+from collections.abc import Generator
 from logging import getLogger
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Union
+from typing import Any, Optional, Union
 
 LOGGER = getLogger(__name__)
 
@@ -45,7 +46,7 @@ class godooModule:
         return self.path / "__manifest__.py"
 
     @property
-    def manifest(self) -> Dict[str, Any]:
+    def manifest(self) -> dict[str, Any]:
         """Dictionary containing the parsed contents of the module's manifest file."""
         return literal_eval(self.manifest_file.read_text())
 
@@ -55,13 +56,13 @@ class godooModule:
         return self.path.stem
 
     @property
-    def py_depends(self) -> List[str]:
+    def py_depends(self) -> list[str]:
         """List of Python package dependencies required by this module."""
         module_depends = self.manifest.get("external_dependencies", {}).get("python", [])
         return module_depends
 
     @property
-    def odoo_depends(self) -> List[str]:
+    def odoo_depends(self) -> list[str]:
         """List of Odoo module dependencies required by this module."""
         return self.manifest.get("depends", [])
 
@@ -69,7 +70,7 @@ class godooModule:
 class godooModules:
     """Abstract interface to Addon-Paths. Finds modules and their dependencies."""
 
-    def __init__(self, addon_paths: Union[List[Path], Path]) -> None:
+    def __init__(self, addon_paths: Union[list[Path], Path]) -> None:
         """Initialize a godooModules instance with one or more addon paths.
 
         Args:
@@ -78,10 +79,10 @@ class godooModules:
         if not isinstance(addon_paths, list):
             addon_paths = [addon_paths]
         self.addon_paths = addon_paths
-        self.godoo_modules: Dict[str, godooModule] = {}
+        self.godoo_modules: dict[str, godooModule] = {}
 
     def get_modules(
-        self, module_names: Optional[List[str]] = None, raise_missing_names=True
+        self, module_names: Optional[list[str]] = None, raise_missing_names=True
     ) -> Generator[godooModule, None, None]:
         """Get all Modules in Addon Paths or only the ones specified in module_names."""
         if module_names:
@@ -126,8 +127,8 @@ class godooModules:
         )
 
     def get_module_dependencies(
-        self, module: Union[godooModule, List[godooModule]], dont_follow: Optional[List[str]] = None
-    ) -> List[godooModule]:
+        self, module: Union[godooModule, list[godooModule]], dont_follow: Optional[list[str]] = None
+    ) -> list[godooModule]:
         """Get dependant modules of module(s). Recursively follows dependencies."""
         if isinstance(module, godooModule):
             module = [module]
@@ -167,7 +168,7 @@ def get_addon_paths(
     odoo_main_repo: Path,
     workspace_addon_path: Path,
     thirdparty_addon_path: Path,
-) -> List[Path]:
+) -> list[Path]:
     """Get all valid Odoo addon paths for the odoo.conf addons_path setting.
 
     This function collects all valid addon paths from:

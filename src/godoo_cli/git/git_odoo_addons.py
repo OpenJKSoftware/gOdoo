@@ -9,7 +9,6 @@ downloads for addon repositories.
 import concurrent.futures
 import logging
 from pathlib import Path
-from typing import Dict, List
 
 from git import Repo
 
@@ -56,9 +55,9 @@ def git_ensure_addon_repos(
 
 def _git_clone_addon_repos(
     root_folder: Path,
-    git_repos: Dict[str, Dict[str, str]],
+    git_repos: dict[str, dict[str, str]],
     download_archive: bool = False,
-) -> Dict[str, Repo]:
+) -> dict[str, Repo]:
     """Clones Git repos specified in dict into Root folder.
 
     Ensures repo names are prefixed and uses 8 threads to clone.
@@ -83,7 +82,7 @@ def _git_clone_addon_repos(
     LOGGER.info("Cloning Thirdparty Addons source.")
     with concurrent.futures.ThreadPoolExecutor(8) as executor:
         futures = []
-        thirdparty_repos: Dict[str, List[Dict[str, str]]] = git_repos.get("thirdparty")  # type: ignore
+        thirdparty_repos: dict[str, list[dict[str, str]]] = git_repos.get("thirdparty")  # type: ignore
         if not thirdparty_repos:
             LOGGER.info("No Thirdparty Key in manifest. Skipping...")
             return {}
@@ -107,5 +106,5 @@ def _git_clone_addon_repos(
                         ),
                     )
                 )
-        clone_results: Dict[str, Repo] = {r: f.result() for r, f in futures if r}
+        clone_results: dict[str, Repo] = {r: f.result() for r, f in futures if r}
     return clone_results

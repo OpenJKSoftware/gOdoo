@@ -9,7 +9,7 @@ import logging
 import re
 import threading
 from pathlib import Path
-from typing import Annotated, List, Optional, Union
+from typing import Annotated, Optional, Union
 
 import typer
 
@@ -31,7 +31,7 @@ LOGGER = logging.getLogger(__name__)
 def _launch_command(
     odoo_path: Path,
     odoo_conf_path: Path,
-    extra_cmd_args: List[str],
+    extra_cmd_args: list[str],
     workspace_addon_path: Path,
     upgrade_workspace_modules: bool = True,
 ) -> str:
@@ -76,8 +76,8 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
     odoo_demo: bool,
     dev_mode: bool,
     multithread_worker_count: int = 0,
-    extra_launch_args: Optional[List[str]] = None,
-    extra_bootstrap_args: Optional[List[str]] = None,
+    extra_launch_args: Optional[list[str]] = None,
+    extra_bootstrap_args: Optional[list[str]] = None,
     log_file_path: Optional[Path] = None,
     install_workspace_addons: bool = True,
     launch_or_bootstrap: bool = False,
@@ -203,9 +203,9 @@ def launch_odoo(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_password: Annotated[str, CLI.database.db_password] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
-    extra_args: Annotated[str, CLI.odoo_launch.extra_cmd_args] = None,
-    extra_bootstrap_args: Annotated[str, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
-    log_file_path: Annotated[Path, CLI.odoo_launch.log_file_path] = None,
+    extra_args: Annotated[Optional[str], CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[Optional[str], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    log_file_path: Annotated[Optional[Path], CLI.odoo_launch.log_file_path] = None,
     install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
     odoo_demo: Annotated[bool, CLI.odoo_launch.odoo_demo] = False,
     dev_mode: Annotated[bool, CLI.odoo_launch.dev_mode] = False,
@@ -260,7 +260,7 @@ def launch_odoo(
 
 def launch_import(
     load_data_path: Annotated[
-        List[Path],
+        list[Path],
         typer.Argument(help="Starts Async Importer Job with provided path(s)."),
     ],
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
@@ -278,9 +278,9 @@ def launch_import(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
-    extra_launch_args: Annotated[str, CLI.odoo_launch.extra_cmd_args] = None,
-    extra_bootstrap_args: Annotated[str, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
-    log_file_path: Annotated[Path, CLI.odoo_launch.log_file_path] = None,
+    extra_launch_args: Annotated[Optional[str], CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[Optional[str], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    log_file_path: Annotated[Optional[Path], CLI.odoo_launch.log_file_path] = None,
     install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
     multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
 ):

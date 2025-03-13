@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 from logging import getLogger
-from typing import List
 
 from godoo_cli.helpers.system import run_cmd
 
@@ -53,7 +52,7 @@ def _check_pip_command() -> str:
         raise RuntimeError("No pip command available. Please ensure pip is installed or use a uv venv.") from e
 
 
-def pip_install(package_names: List[str]):
+def pip_install(package_names: list[str]):
     """Ensure pip packages are installed if not already present."""
     # Some packages have different names on pypi and in odoo Manifests. Key is Odoo manigest, Value is pypi
     odoo_wrong_pkg_names = {

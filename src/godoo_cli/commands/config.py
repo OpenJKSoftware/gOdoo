@@ -8,7 +8,7 @@ command-line arguments.
 import logging
 from configparser import ConfigParser
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated
 
 import typer
 
@@ -19,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def set_odoo_config(
-    options: Annotated[List[str], typer.Argument(help="odoo.conf options by key=value")],
+    options: Annotated[list[str], typer.Argument(help="odoo.conf options by key=value")],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
 ):
     """Set odoo.conf values."""

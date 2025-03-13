@@ -9,10 +9,9 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Annotated, Any, Optional
 
 import typer
-from typing_extensions import Annotated
 
 from ..cli_common import CommonCLI
 from ..helpers.modules import get_addon_paths, godooModules
@@ -26,7 +25,7 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-def _add_default_argument(cmd_list: List[str], arg: str, arg_val: Any):
+def _add_default_argument(cmd_list: list[str], arg: str, arg_val: Any):
     """Add a default argument to the command list if not already present.
 
     Args:
@@ -41,11 +40,11 @@ def _add_default_argument(cmd_list: List[str], arg: str, arg_val: Any):
 def _boostrap_command(
     odoo_main_path: Path,
     odoo_conf_path: Path,
-    addon_paths: List[Path],
+    addon_paths: list[Path],
     workspace_addon_path: Path,
     db_filter: str,
     db_connection: DBConnection,
-    extra_cmd_args: Optional[List[str]] = None,
+    extra_cmd_args: Optional[list[str]] = None,
     install_workspace_modules: bool = True,
     multithread_worker_count: int = -1,
     languages: str = "de_DE,en_US",
@@ -137,7 +136,7 @@ def bootstrap_odoo(
     db_host: Annotated[str, CLI.database.db_host],
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
-    extra_cmd_args: Annotated[List[str], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    extra_cmd_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
     multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
     languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
     install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,

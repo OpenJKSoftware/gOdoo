@@ -6,7 +6,7 @@ module status.
 """
 
 import logging
-from typing import Annotated, Any, List
+from typing import Annotated, Any, Optional
 
 import typer
 from godoo_rpc import OdooApiWrapper
@@ -18,7 +18,9 @@ LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
 
-def rpc_get_modules(odoo_api: OdooApiWrapper, module_query: str, valid_module_names: List[str] = None) -> List[Any]:
+def rpc_get_modules(
+    odoo_api: OdooApiWrapper, module_query: str, valid_module_names: Optional[list[str]] = None
+) -> list[Any]:
     """Get ir.module.module records by a query search string.
 
     This function searches for Odoo modules based on a query string and

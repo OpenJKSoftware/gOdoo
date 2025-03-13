@@ -1,10 +1,9 @@
 import logging
 import re
 from pathlib import Path
-from typing import List
+from typing import Annotated, Optional
 
 import typer
-from typing_extensions import Annotated, Optional
 
 from ...cli_common import CommonCLI
 from ...helpers.modules import get_addon_paths, godooModules
@@ -18,7 +17,7 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-def _test_modules_special_cases(in_modules: List[str], workspace_addon_path: Path):
+def _test_modules_special_cases(in_modules: list[str], workspace_addon_path: Path):
     if len(in_modules) == 1:
         # In _modules could be a command
         out_modules = []
@@ -51,7 +50,7 @@ def odoo_get_changed_modules(
 
 def odoo_run_tests(  # noqa: C901
     test_module_names: Annotated[
-        List[str],
+        list[str],
         typer.Argument(
             help="""
         Space separated list of Modules to Test or special commands:
@@ -73,12 +72,12 @@ def odoo_run_tests(  # noqa: C901
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
     odoo_log_level: Annotated[str, typer.Option(help="Log level")] = "test",
-    extra_launch_args: Annotated[List[str], CLI.odoo_launch.extra_cmd_args] = None,
-    extra_bootstrap_args: Annotated[List[str], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    extra_launch_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
     languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
     pregenerate_assets: Annotated[bool, typer.Option(help="Pregenerate assets before running tests")] = True,
     skip_test_modules: Annotated[
-        Optional[List[str]],
+        Optional[list[str]],
         typer.Option(
             envvar="ODOO_TEST_SKIP_MODULES",
             help="Modules not to Test even if specified in test_modules",

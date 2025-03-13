@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated, Optional
 
 import typer
 from ruamel.yaml import YAML
@@ -87,7 +87,7 @@ def unpack_addon_archives(
                 shutil.move(m.path, module_target)
 
 
-def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: List[Path]):
+def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: list[Path]):
     """Update Odoo.Conf with Addon Paths.
 
     Parameters
@@ -169,7 +169,7 @@ def get_installed_module_paths(
 
 def py_depends_by_modules(
     module_list: Annotated[
-        List[str],
+        list[str],
         typer.Argument(help="Modules to check for dependencies (can use all for all available addons)"),
     ],
     thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
@@ -192,7 +192,7 @@ def py_depends_by_modules(
 
 def get_source_file(
     save_path: Annotated[Path, typer.Option(file_okay=True, dir_okay=False, help="Where to write the file")],
-    manifest_path: Annotated[Path, CLI.source.mainfest_path] = None,
+    manifest_path: Annotated[Optional[Path], CLI.source.mainfest_path] = None,
     file_path: Annotated[str, typer.Option(help="Relative Filepath in Repository")] = "",
     repo_url: Annotated[str, typer.Option(help="git repo url, for specific repo (skip manifest_yml)")] = "",
     file_ref: Annotated[str, typer.Option(help="When not using manifest. File Branch, Commit, Tag...")] = "",
@@ -224,7 +224,7 @@ def get_source(
         Path, typer.Option(envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Source folder, where to look for Addon zips")
     ],
     update_mode: Annotated[UpdateMode, typer.Argument(help="What to Update")] = UpdateMode.all,
-    manifest_path: Annotated[Path, CLI.source.mainfest_path] = None,
+    manifest_path: Annotated[Optional[Path], CLI.source.mainfest_path] = None,
     download_zipmode: Annotated[bool, CLI.source.source_download_archive] = False,
     add_compare_comments: Annotated[
         bool,

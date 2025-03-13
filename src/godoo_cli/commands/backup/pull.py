@@ -7,10 +7,10 @@ supporting various transfer methods and backup formats.
 import logging
 import subprocess
 from pathlib import Path
+from typing import Annotated, Optional
 
 import typer
 from rich.progress import track
-from typing_extensions import Annotated
 
 from ...cli_common import CommonCLI
 from ...helpers.system import typer_ask_overwrite_path
@@ -147,30 +147,30 @@ class InstancePuller:
         pg_db_user: Annotated[str, CLI.database.db_user],
         pg_db_name: Annotated[str, CLI.database.db_name],
         ssh_user: Annotated[
-            str,
+            Optional[str],
             typer.Option(
                 help="SSH User of remote instance.", rich_help_panel="Remote Options", envvar="ODOO_PULL_SSH_USER"
             ),
         ] = None,
         ssh_hostname: Annotated[
-            str,
+            Optional[str],
             typer.Option(
                 help="SSH Hostname of remote instance.", rich_help_panel="Remote Options", envvar="ODOO_PULL_HOST"
             ),
         ] = None,
         filestore_folder: Annotated[
-            Path,
+            Optional[Path],
             typer.Option(help="Path to odoo web folder.", rich_help_panel="Filestore Options"),
         ] = None,
         filestore_volume: Annotated[
-            str,
+            Optional[str],
             typer.Option(
                 help="Alternative to valib-folder. A Docker volume name, that gets used to derive filestore-folder.",
                 rich_help_panel="Filestore Options",
             ),
         ] = None,
         pg_container: Annotated[
-            str,
+            Optional[str],
             typer.Option(
                 help="Postgres Container Name. (Optional)",
                 rich_help_panel="Database Options",

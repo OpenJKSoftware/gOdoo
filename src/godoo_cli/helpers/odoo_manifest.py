@@ -9,7 +9,6 @@ addon folders.
 import logging
 import shutil
 from pathlib import Path
-from typing import List
 
 from git import Repo
 from ruamel.yaml import YAML
@@ -19,7 +18,7 @@ from ..git.git_url import GitUrl
 LOGGER = logging.getLogger(__name__)
 
 
-def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_folders: List[Path]):
+def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_folders: list[Path]):
     """Remove folders that are not included in git_repos anymore.
 
     Parameters

@@ -5,7 +5,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import List, Union
+from typing import Union
 
 import click
 import requests
@@ -97,7 +97,7 @@ def path_has_content(path: Path):
         return path.exists() and path.stat().st_size
 
 
-def typer_ask_overwrite_path(paths: Union[List[Path], Path]) -> bool:
+def typer_ask_overwrite_path(paths: Union[list[Path], Path]) -> bool:
     """Checks if the provided Paths do already exist.
 
     Ignores 0 size files and empty folders.

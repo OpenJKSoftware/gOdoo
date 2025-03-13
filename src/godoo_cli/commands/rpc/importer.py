@@ -7,7 +7,7 @@ various file formats and sources.
 
 import logging
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated
 
 import typer
 from godoo_rpc import import_data
@@ -21,7 +21,7 @@ LOGGER = logging.getLogger(__name__)
 
 def import_to_odoo(
     read_paths: Annotated[
-        List[Path],
+        list[Path],
         typer.Argument(readable=True, exists=True, help="Folder in which to search for import"),
     ],
     rpc_host: Annotated[str, CLI.rpc.rpc_host],

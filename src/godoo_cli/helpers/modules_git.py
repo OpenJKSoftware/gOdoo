@@ -2,7 +2,6 @@
 
 from logging import getLogger
 from pathlib import Path
-from typing import List
 
 from git import Repo
 
@@ -14,7 +13,7 @@ LOGGER = getLogger(__name__)
 def get_changed_modules(
     addon_path: Path,
     diff_ref: str,
-) -> List[godooModule]:
+) -> list[godooModule]:
     """Get Paths of changed modules since git diff.
 
     Parameters
@@ -57,7 +56,7 @@ def get_changed_modules(
     return changed_modules
 
 
-def get_changed_modules_and_depends(diff_ref: str, addon_path: Path) -> List[godooModule]:
+def get_changed_modules_and_depends(diff_ref: str, addon_path: Path) -> list[godooModule]:
     """Get Modules that have changed compared to diff_ref and all modules that depend on them."""
     changed_modules = get_changed_modules(addon_path=addon_path, diff_ref=diff_ref)
     if not changed_modules:

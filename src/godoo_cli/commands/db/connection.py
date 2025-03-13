@@ -8,7 +8,7 @@ import logging
 import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Annotated, Dict, Optional
+from typing import Annotated, Optional
 
 import psycopg2
 
@@ -86,7 +86,7 @@ class DBConnection:
         )
 
     @property
-    def cli_dict(self) -> Dict[str, Optional[str]]:
+    def cli_dict(self) -> dict[str, Optional[str]]:
         """Get connection parameters as a dictionary.
 
         Returns:
@@ -101,7 +101,7 @@ class DBConnection:
         }
 
     @contextmanager
-    def connect(self):
+    def connect(self) -> psycopg2.cursor:
         """Create a database connection and cursor.
 
         This context manager creates a database connection and cursor,
@@ -129,7 +129,7 @@ class DBConnection:
             cr.close()
             connection.close()
 
-    def run_psql_shell_command(self, command: str, **kwargs):
+    def run_psql_shell_command(self, command: str, **kwargs) -> subprocess.CompletedProcess:
         """Run a psql command using the provided credentials.
 
         {} in the command will get templated with the connection string.
