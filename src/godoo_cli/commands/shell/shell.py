@@ -8,7 +8,7 @@ Odoo environment. It supports both interactive and script-based operations.
 import logging
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 import typer
 
@@ -43,9 +43,9 @@ def uninstall_modules(
 
 def odoo_shell(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
-    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
-    db_name: Annotated[str, CLI.database.db_name],
-    db_user: Annotated[str, CLI.database.db_user],
+    odoo_conf_path: Annotated[Optional[Path], CLI.odoo_paths.conf_path] = None,
+    db_name: Annotated[Optional[str], CLI.database.db_name] = None,
+    db_user: Annotated[Optional[str], CLI.database.db_user] = None,
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
@@ -133,7 +133,15 @@ def odoo_shell_run_script(
     run_cmd(shell_cmd, stdin=script_path.open("r"))
 
 
-def odoo_pregenerate_assets(odoo_main_path: Path):
+def odoo_pregenerate_assets(
+    odoo_main_path: Path,
+    odoo_conf_path: Optional[Path] = None,
+    db_name: Optional[str] = None,
+    db_user: Optional[str] = None,
+    db_host: Optional[str] = None,
+    db_port: Optional[int] = None,
+    db_password: Optional[str] = None,
+):
     """Use Odoo shell to pregenerate asset bundles.
 
     This function ensures that asset bundles are present in the filestore
@@ -150,4 +158,13 @@ def odoo_pregenerate_assets(odoo_main_path: Path):
         LOGGER.error(msg)
         raise NotImplementedError(msg)
     LOGGER.info("Pregenerating Assets for Odoo version %s", odoo_version.raw)
-    odoo_shell(pipe_in_command=pregen_command)
+    odoo_shell(
+        pipe_in_command=pregen_command,
+        odoo_main_path=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
+        db_name=db_name,
+        db_user=db_user,
+        db_host=db_host,
+        db_port=db_port,
+        db_password=db_password,
+    )

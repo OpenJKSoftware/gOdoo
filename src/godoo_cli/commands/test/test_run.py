@@ -166,7 +166,15 @@ def odoo_run_tests(  # noqa: C901
     )
     if isinstance(launch_cmd, str):
         if pregenerate_assets:
-            odoo_pregenerate_assets(odoo_main_path)
+            odoo_pregenerate_assets(
+                odoo_main_path=odoo_main_path,
+                odoo_conf_path=odoo_conf_path,
+                db_name=db_name,
+                db_user=db_user,
+                db_host=db_host,
+                db_port=db_port,
+                db_password=db_password,
+            )
         LOGGER.info("Launching Odoo Tests")
         return CLI.returner(run_cmd(launch_cmd).returncode)
 
