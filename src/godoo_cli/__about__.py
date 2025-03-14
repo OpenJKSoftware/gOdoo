@@ -2,7 +2,7 @@
 
 from packaging import version
 
-__version__ = "0.14.4"  # Initial version, will be managed by Hatch
+__version__ = "0.14.5"  # Initial version, will be managed by Hatch
 
 
 def get_version_tuple() -> tuple[int, int, int]:
