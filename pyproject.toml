@@ -134,7 +134,6 @@ ignore = [
     "ANN401", # Dynamically typed expressions (Any) are disallowed
     "ANN201", # Missing  return type for public method
     "ANN202", # Missing type for private method
-    "ANN101", # Missing type annotation for self in method
     "TD002",  # Missing author in TODO
     "TD003",  # Missing issue link in TODO
     "COM812", # enforce trailing comma in broken up lists
@@ -202,6 +201,7 @@ enable = [
     "missing-return",
     "syntax-error",
     "undefined-variable",
+    "no-value-for-parameter",  # E1120
 ]
 
 [tool.pylint.similarities]
