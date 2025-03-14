@@ -14,7 +14,7 @@ from typing import Annotated, Any, Optional
 import typer
 
 from ..cli_common import CommonCLI
-from ..helpers.modules import get_addon_paths, godooModules
+from ..helpers.modules import GodooModules, get_addon_paths
 from ..helpers.modules_py import _install_py_reqs_by_odoo_cmd
 from ..helpers.system import run_cmd
 from .db.connection import DBConnection
@@ -86,11 +86,10 @@ def _boostrap_command(
 
     init_modules = []
     extra_cmd_args_str = " ".join(extra_cmd_args or [])
-    if not re.search(r"(-i|--init) ", extra_cmd_args_str):
-        if install_workspace_modules:
-            workspace_modules = godooModules([workspace_addon_path])
-            if workspace_addons := workspace_modules.get_modules():
-                init_modules += [f.name for f in workspace_addons]
+    if install_workspace_modules and not re.search(r"(-i|--init) ", extra_cmd_args_str):
+        workspace_modules = GodooModules([workspace_addon_path])
+        if workspace_addons := workspace_modules.get_modules():
+            init_modules += [f.name for f in workspace_addons]
     init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
 
     addon_paths_str_list = [str(p.absolute()) for p in addon_paths if p and p.exists()]
@@ -99,7 +98,7 @@ def _boostrap_command(
     base_cmds = [
         str(odoo_main_path.absolute()) + "/odoo-bin",
         init_cmd,
-        f"--config {str(odoo_conf_path.absolute())}",
+        f"--config {odoo_conf_path.absolute()!s}",
         "--save",
         f"--load-language {languages}",
         "--stop-after-init",

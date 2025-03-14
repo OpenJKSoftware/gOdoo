@@ -13,7 +13,7 @@ from ruamel.yaml import YAML
 
 from ..cli_common import CommonCLI
 from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
-from ..helpers.modules import get_addon_paths, get_zip_addon_path, godooModules
+from ..helpers.modules import GodooModules, get_addon_paths, get_zip_addon_path
 from ..helpers.modules_py import _install_py_reqs_for_modules
 from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
@@ -70,8 +70,8 @@ def unpack_addon_archives(
             # We can have zip files with one or more modules.
             # Either the first folder contains multiple or its a module by itself
             # So first get the real modules form the zip root or one level down and then move them to subpaths
-            possible_paths = [td] + list(td.glob("*/"))
-            zip_modules = list(godooModules(possible_paths).get_modules())
+            possible_paths = [td, *list(td.glob("*/"))]
+            zip_modules = list(GodooModules(possible_paths).get_modules())
             if not zip_modules:
                 LOGGER.warning("Could not find valid modules in thirdparty zip: %s", zip_file)
                 continue
@@ -98,7 +98,9 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: list[Path]):
         list of paths
     """
     if not odoo_conf.exists():
-        raise FileNotFoundError("Odoo.conf not found at: %s" % odoo_conf)
+        msg = f"Odoo.conf not found at: {odoo_conf!s}"
+        LOGGER.error(msg)
+        raise FileNotFoundError(msg)
     config = configparser.ConfigParser()
     config.read(odoo_conf)
     path_strings = [str(p.absolute()) for p in addon_paths]
@@ -135,7 +137,7 @@ def py_depends_by_db(
         thirdparty_addon_path=thirdparty_addon_path,
     )
     module_list = list(module_list)
-    module_reg = godooModules(odoo_addon_paths)
+    module_reg = GodooModules(odoo_addon_paths)
     modules = list(module_reg.get_modules(module_list, raise_missing_names=False))
     _install_py_reqs_for_modules(modules, module_reg)
 
@@ -162,7 +164,7 @@ def get_installed_module_paths(
         thirdparty_addon_path=thirdparty_addon_path,
     )
     module_list = list(module_list)
-    modules = godooModules(odoo_addon_paths).get_modules(module_list)
+    modules = GodooModules(odoo_addon_paths).get_modules(module_list)
     for m in modules:
         print(m.path.absolute())  # pylint: disable=print-used
 
@@ -185,7 +187,7 @@ def py_depends_by_modules(
 
     if len(module_list) == 1 and module_list[0] == "all":
         module_list = []
-    module_reg = godooModules(odoo_addon_paths)
+    module_reg = GodooModules(odoo_addon_paths)
     modules = list(module_reg.get_modules(module_list))
     _install_py_reqs_for_modules(modules, module_reg)
 
@@ -199,16 +201,18 @@ def get_source_file(
 ):
     """Get Raw file from manifest git remotes or specific git remote."""
     if not repo_url and not manifest_path:
-        raise ValueError("Need to provide either manifest_yml or repo_url")
+        msg = "Need to provide either manifest_yml or repo_url"
+        LOGGER.error(msg)
+        raise ValueError(msg)
     if manifest_path and not repo_url:
         manifest = YAML().load(manifest_path.resolve())
         odoo_spec = manifest["odoo"]
         repo_url = odoo_spec["url"]
         file_ref = odoo_spec.get("commit") or odoo_spec.get("branch")
     if not file_ref:
-        raise ValueError(
-            "Need to provide file ref. If you provided a manifest, make sure there is a branch or commit key in the odoo section"
-        )
+        msg = "Need to provide file ref. If you provided a manifest, make sure there is a branch or commit key in the odoo section"
+        LOGGER.error(msg)
+        raise ValueError(msg)
     git_url = GitUrl(repo_url)
     file_url = git_url.get_file_raw_url(ref=file_ref, file_path=file_path)
 
@@ -287,10 +291,10 @@ def get_source(
 
 
 def update_odoo_conf(
-    odoo_conf=CLI.odoo_paths.conf_path,
-    odoo_main_path=CLI.odoo_paths.bin_path,
-    workspace_addon_path=CLI.odoo_paths.workspace_addon_path,
-    thirdparty_addon_path=CLI.odoo_paths.thirdparty_addon_path,
+    odoo_conf: Annotated[Path, CLI.odoo_paths.conf_path],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
 ):
     """Update Odoo.conf with Addon Paths."""
     odoo_addon_paths = get_addon_paths(

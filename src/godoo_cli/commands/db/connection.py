@@ -6,9 +6,10 @@ executing database queries using the psycopg2 library.
 
 import logging
 import subprocess
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import psycopg2
 
@@ -101,7 +102,7 @@ class DBConnection:
         }
 
     @contextmanager
-    def connect(self) -> psycopg2.cursor:
+    def connect(self) -> Generator[psycopg2.extensions.cursor, None, None]:
         """Create a database connection and cursor.
 
         This context manager creates a database connection and cursor,
@@ -129,7 +130,7 @@ class DBConnection:
             cr.close()
             connection.close()
 
-    def run_psql_shell_command(self, command: str, **kwargs) -> subprocess.CompletedProcess:
+    def run_psql_shell_command(self, command: str, **kwargs: dict[str, Any]) -> subprocess.CompletedProcess:
         """Run a psql command using the provided credentials.
 
         {} in the command will get templated with the connection string.

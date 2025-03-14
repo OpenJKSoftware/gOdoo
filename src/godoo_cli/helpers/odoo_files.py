@@ -46,4 +46,6 @@ def odoo_bin_get_version(odoo_main_repo_path: Path) -> OdooVersion:
             major=int(vers_match.group("major")),
             minor=int(vers_match.group("minor")),
         )
-    raise ValueError(f"Could not parse Odoo Version from: '{version_out}'")
+    msg = f"Could not parse Odoo Version from: '{version_out}'"
+    LOGGER.error(msg)
+    raise ValueError(msg)

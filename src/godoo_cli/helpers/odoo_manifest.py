@@ -18,7 +18,9 @@ from ..git.git_url import GitUrl
 LOGGER = logging.getLogger(__name__)
 
 
-def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_folders: list[Path]):
+def remove_unused_folders(
+    thirdparty_addon_path: Path, thirdparty_repos: dict[str, list[dict]], keep_folders: list[Path]
+):
     """Remove folders that are not included in git_repos anymore.
 
     Parameters
@@ -45,7 +47,7 @@ def remove_unused_folders(thirdparty_addon_path: Path, thirdparty_repos, keep_fo
 
 
 def update_yml(
-    repo_yml,
+    repo_yml: dict,
     clone_results: dict[str, Repo],
     generate_yml_compare_comments: bool = False,
     generate_yml_commit_pins: bool = False,
@@ -79,7 +81,7 @@ def update_yml(
                 yaml_remove_compare_commit(repo)
 
 
-def yaml_add_compare_commit(repo_dict, compare_target: str):
+def yaml_add_compare_commit(repo_dict: dict, compare_target: str):
     """Add comment with compare URL to repo.
 
     Parameters
@@ -94,11 +96,12 @@ def yaml_add_compare_commit(repo_dict, compare_target: str):
         compare_url = git_url.get_compare_url(repo_dict["commit"], compare_target)
         repo_dict.yaml_add_eol_comment(compare_url, "commit")
     except Exception as e:
-        LOGGER.warn(f"Cannot Generate compare URL for: {git_url.url}")
+        msg = f"Cannot Generate compare URL for: {git_url.url}"
+        LOGGER.warning(msg)
         LOGGER.debug(e)
 
 
-def yaml_remove_compare_commit(repo_dict):
+def yaml_remove_compare_commit(repo_dict: dict):
     """Remove comments that have /compare/ in them.
 
     Parameters

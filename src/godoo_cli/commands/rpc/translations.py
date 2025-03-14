@@ -8,20 +8,20 @@ exporting, and updating translations.
 import logging
 from base64 import b64decode
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from godoo_rpc.login import wait_for_odoo
 
 from ...cli_common import CommonCLI
-from ...helpers.modules import godooModule, godooModules
+from ...helpers.modules import GodooModule, GodooModules
 from .modules import rpc_get_modules
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-def _dump_translation_for_module(module, target_path: Path):
+def _dump_translation_for_module(module: Any, target_path: Path):
     """Dump translation of a module into POT file.
 
     Parameters
@@ -43,8 +43,8 @@ def _dump_translation_for_module(module, target_path: Path):
 
 
 def _dump_translations(
-    modules,
-    godoo_modules: list[godooModule],
+    modules: list[Any],
+    godoo_modules: list[GodooModule],
     upgrade_modules: bool = True,
 ):
     """Dump translations of given Modules into their addon folders.
@@ -65,7 +65,9 @@ def _dump_translations(
     for mod in modules:
         godoo_mod = [m for m in godoo_modules if m.name == mod.name]
         if not godoo_mod:
-            raise ValueError(f"Module {mod.name} not found in godoo_modules")
+            msg = f"Module {mod.name} not found in godoo_modules"
+            LOGGER.error(msg)
+            raise ValueError(msg)
         godoo_mod = godoo_mod[0]
         pot_path: Path = godoo_mod.path / "i18n" / (mod.name + ".pot")
         _dump_translation_for_module(mod, pot_path)
@@ -91,7 +93,7 @@ def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
         return
     workspace_folder = Path(workspace_folder)
 
-    addons = godooModules(workspace_folder).get_modules()
+    addons = GodooModules(workspace_folder).get_modules()
     for addon in addons:
         if not incomplete or addon.name.startswith(incomplete):
             yield addon.name
@@ -113,7 +115,7 @@ def dump_translations(
     upgrade_modules: Annotated[bool, typer.Option(help="Upgrade modules before exporting")] = True,
 ):
     """Dump translations of module to <module_folder>/i18n/<module_name>.pot."""
-    godoo_modules = list(godooModules(workspace_addon_path).get_modules(modules))
+    godoo_modules = list(GodooModules(workspace_addon_path).get_modules(modules))
     module_names = [m.name for m in godoo_modules]
     LOGGER.debug("Found modules: %s", module_names)
 

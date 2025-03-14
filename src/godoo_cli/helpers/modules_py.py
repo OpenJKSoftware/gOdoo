@@ -11,13 +11,13 @@ import re
 from pathlib import Path
 from types import GeneratorType
 
-from .modules import godooModule, godooModules
+from .modules import GodooModule, GodooModules
 from .pip import pip_install
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _install_py_reqs_for_modules(modules: list[godooModule], module_reg: godooModules):
+def _install_py_reqs_for_modules(modules: list[GodooModule], module_reg: GodooModules):
     """Install Python Requirements mentioned in odoo module manifests of given modules.
 
     Parameters
@@ -61,7 +61,7 @@ def _install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: str):
         install_modules += m.group(2).split(",")
     if install_modules:
         LOGGER.debug("Found Modules to install in odoo-bin command: %s", install_modules)
-        module_reg = godooModules(addon_paths)
+        module_reg = GodooModules(addon_paths)
         modules = [module_reg.get_module(m) for m in install_modules]
         modules = [m for m in modules if m]
         return _install_py_reqs_for_modules(modules, module_reg)

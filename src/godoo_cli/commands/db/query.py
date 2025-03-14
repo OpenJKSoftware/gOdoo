@@ -16,7 +16,7 @@ from ...helpers.cli import check_dangerous_command
 from .connection import DBConnection
 
 
-class DB_BOOTSTRAP_STATUS(enum.Enum):
+class DbBootstrapStatus(enum.Enum):
     """Database bootstrap status enumeration.
 
     This enum represents the possible states of database bootstrapping:
@@ -78,24 +78,23 @@ def query_database(
             except ProgrammingError:
                 # When there is nothing to fetch, fetchall() raises a ProgrammingError
                 pass
-        except Exception as e:
-            LOGGER.exception(e)
+        except Exception:
             raise typer.Exit(1)  # noqa: B904
 
 
-def _is_bootstrapped(db_connection: DBConnection) -> DB_BOOTSTRAP_STATUS:
+def _is_bootstrapped(db_connection: DBConnection) -> DbBootstrapStatus:
     """Check if postgres contains database db_name and if this database has any tables present."""
     try:
         with db_connection.connect() as cursor:
             cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public');")
             if not cursor.fetchone()[0]:
                 LOGGER.debug("Database '%s' is empty", db_connection.db_name)
-                return DB_BOOTSTRAP_STATUS.EMPTY_DB
+                return DbBootstrapStatus.EMPTY_DB
             LOGGER.debug("Database '%s' is not empty", db_connection.db_name)
-            return DB_BOOTSTRAP_STATUS.BOOTSTRAPPED
+            return DbBootstrapStatus.BOOTSTRAPPED
     except OperationalError:
         LOGGER.debug("Database '%s' does not exist", db_connection.db_name)
-        return DB_BOOTSTRAP_STATUS.NO_DB
+        return DbBootstrapStatus.NO_DB
 
 
 def is_bootstrapped(
@@ -119,16 +118,16 @@ def is_bootstrapped(
     bootstrap_value = _is_bootstrapped(db_connection=connection)
     LOGGER.info("Odoo Database Status: %s", bootstrap_value.value)
     ret_mapping = {
-        DB_BOOTSTRAP_STATUS.BOOTSTRAPPED: 0,
-        DB_BOOTSTRAP_STATUS.NO_DB: 20,
-        DB_BOOTSTRAP_STATUS.EMPTY_DB: 21,
+        DbBootstrapStatus.BOOTSTRAPPED: 0,
+        DbBootstrapStatus.NO_DB: 20,
+        DbBootstrapStatus.EMPTY_DB: 21,
     }
     raise typer.Exit(ret_mapping[bootstrap_value])
 
 
-def _get_installed_modules(db_connection: DBConnection, to_install=False):
+def _get_installed_modules(db_connection: DBConnection, to_install: bool = False) -> list[str]:
     """Get list of installed modules in database (to_install includes the modules marked for installation)."""
-    if (boot := _is_bootstrapped(db_connection=db_connection)) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
+    if (boot := _is_bootstrapped(db_connection=db_connection)) != DbBootstrapStatus.BOOTSTRAPPED:
         return boot.value
     lookup_states = ["installed", "to upgrade"]
     if to_install:

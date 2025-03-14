@@ -53,16 +53,15 @@ def set_banner(banner_text: Optional[str] = "Development", banner_background_col
         view_env.create(view_dic)
 
 
-def disable_record(ref):
+def disable_record(ref: str):
     """Disable a record in the Odoo database by its XML ID.
 
     Args:
         ref: XML ID of the record to disable.
     """
-    if rec := env.ref(ref, raise_if_not_found=False):
-        if rec.active:
-            LOGGER.info("Disabling Record: %s", rec.display_name)
-            rec.active = False
+    if (rec := env.ref(ref, raise_if_not_found=False)) and rec.active:
+        LOGGER.info("Disabling Record: %s", rec.display_name)
+        rec.active = False
 
 
 def remove_upgrade_test_ribbon():

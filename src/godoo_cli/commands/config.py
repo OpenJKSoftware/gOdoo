@@ -30,8 +30,9 @@ def set_odoo_config(
     custom_opts = {}
     for op in options:
         if "=" not in op:
-            LOGGER.error("Cannot parse Option: '%s' --> missing = sign", op)
-            raise ValueError("Configuration option must be in format key=value")
+            msg = f"Cannot parse Option: '{op}' --> missing '=' sign (key=value)"
+            LOGGER.error(msg)
+            raise ValueError(msg)
         op_split = op.split("=")
         custom_opts[op_split[0]] = op_split[1]
     LOGGER.debug("Writing Conf Options: %s", custom_opts)

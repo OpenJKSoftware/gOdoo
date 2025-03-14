@@ -82,9 +82,9 @@ installer = "uv"
 
 # Linting commands
 lint = [
-  "ruff check src",
-  "ruff format --check src",
-  "pylint src",  # Keep pylint for Odoo-specific checks
+  "ruff check .",
+  "ruff format --check .",
+  "pylint .",  # Keep pylint for Odoo-specific checks
 ]
 
 # Testing commands
@@ -112,11 +112,35 @@ select = [
     "C",    # flake8-comprehensions
     "B",    # flake8-bugbear
     "D",    # pydocstyle
+    "ANN",  # flake8-annotations (type hints)
+    "ARG",  # flake8-unused-arguments
+    "COM",  # flake8-commas
+    "DTZ",  # flake8-datetimez
+    "EM",   # flake8-errmsg (better error messages)
+    "ERA",  # eradicate (commented out code)
+    "N",    # pep8-naming
+    "PIE",  # flake8-pie
+    "PT",   # flake8-pytest-style
+    "RUF",  # Ruff-specific rules
+    "SIM",  # flake8-simplify
+    "TD",   # flake8-todos
+    "TRY",  # flake8-try-except-raise
+    "UP",   # pyupgrade
 ]
 ignore = [
     "E203",  # Whitespace before ':'
     "E266",  # Too many leading '#' for block comment
     "E501",  # Line too long (handled by formatter)
+    "ANN401", # Dynamically typed expressions (Any) are disallowed
+    "ANN201", # Missing  return type for public method
+    "ANN202", # Missing type for private method
+    "ANN101", # Missing type annotation for self in method
+    "TD002",  # Missing author in TODO
+    "TD003",  # Missing issue link in TODO
+    "COM812", # enforce trailing comma in broken up lists
+    "TRY003", # Dont enforce exception subclasses
+    "TRY201", # Allow reraise of caught exception
+    "DTZ006", # Datetime timezone requrement
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -129,6 +153,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.per-file-ignores]
+"__manifest__.py" = ["D101","D100","B018"]
 "__init__.py" = ["F401", "F403"]  # Ignore unused and * imports in __init__.py files
 "tests/*" = ["S101", "D100", "D101", "D102", "D103", "D104", "D105", "D107"]  # Ignore assert usage and docstrings in tests
 "test_*.py" = ["S101", "D100", "D101", "D102", "D103", "D104", "D105", "D107"]  # Same for test files in any directory

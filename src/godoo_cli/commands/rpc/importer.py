@@ -67,7 +67,9 @@ def import_to_odoo(
     )
 
     if missing_paths := [p for p in read_paths if not p.exists()]:
-        raise ValueError("Provided import Paths: %s doesn't exist", ", ".join(missing_paths))
+        msg = f"Provided import Paths: {', '.join(missing_paths)} doesn't exist"
+        LOGGER.error(msg)
+        raise ValueError(msg)
 
     for path in read_paths:
         import_data(

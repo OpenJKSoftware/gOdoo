@@ -7,7 +7,10 @@ operations like generating raw file URLs and archive download links.
 
 import re
 from enum import Enum
+from logging import getLogger
 from typing import Literal, Optional
+
+LOGGER = getLogger(__name__)
 
 
 class GitRemoteType(Enum):
@@ -59,11 +62,15 @@ class GitUrl:
             http_regex = r"(?P<schema>https?):\/\/(?P<domain>[^\/]+)(?P<path>.*)"
             http_match: Optional[re.Match[str]] = re.search(http_regex, url)
             if not http_match:
-                raise ValueError(f"Invalid HTTP URL format: {url}")
+                msg = f"Invalid HTTP URL format: {url}"
+                LOGGER.error(msg)
+                raise ValueError(msg)
 
             schema = http_match.group("schema")
             if schema not in ("http", "https"):
-                raise ValueError(f"Invalid schema: {schema}")
+                msg = f"Invalid schema: {schema}"
+                LOGGER.error(msg)
+                raise ValueError(msg)
             self.url_type = schema  # Now we can use the actual schema
             self.domain = http_match.group("domain")
             self.path = http_match.group("path")
@@ -73,7 +80,9 @@ class GitUrl:
             ssh_regex = r"(?P<user>\w+)@(?P<domain>[^:]+):(?:(?P<port>\d+)]?:)?(?P<path>.*)"
             ssh_match: Optional[re.Match[str]] = re.search(ssh_regex, url)
             if not ssh_match:
-                raise ValueError(f"Invalid SSH URL format: {url}")
+                msg = f"Invalid SSH URL format: {url}"
+                LOGGER.error(msg)
+                raise ValueError(msg)
 
             self.url_type = "ssh"
             self.domain = ssh_match.group("domain")
@@ -82,12 +91,9 @@ class GitUrl:
             port_str = ssh_match.group("port")
             self.port = int(port_str) if port_str else None
 
-        if self.path.endswith(".git"):  # TODO Python 3.9 Use Removesuffix and RemovePrefix
-            self.path = self.path[:-4]
-        if self.path.endswith("/"):
-            self.path = self.path[:-1]
-        if self.path.startswith("/"):
-            self.path = self.path[1:]
+        self.path = self.path.removesuffix("/")
+        self.path = self.path.removesuffix(".git")
+        self.path = self.path.removeprefix("/")
         self.name = self.path.split("/")[-1]
 
     def _clean_http_url(self) -> str:
@@ -117,7 +123,9 @@ class GitUrl:
             return GitRemoteType.gitlab
         if "github" in self.domain:
             return GitRemoteType.github
-        raise ValueError(f"Cant get Git Service type from {self.domain}")
+        msg = f"Cant get Git Service type from {self.domain}"
+        LOGGER.error(msg)
+        raise ValueError(msg)
 
     def get_compare_url(self, from_compare: str, to_compare: str) -> str:
         """Get Compare url between two Refs.
@@ -161,7 +169,9 @@ class GitUrl:
             if ref is not specified
         """
         if not ref:
-            raise ValueError("Missing either download ref (e.g. branch or commit) to generate Archive URL.")
+            msg = "Missing either download ref (e.g. branch or commit) to generate Archive URL."
+            LOGGER.error(msg)
+            raise ValueError(msg)
         http_url = self._clean_http_url()
         remote_type = self._git_type()
         if remote_type == GitRemoteType.github:

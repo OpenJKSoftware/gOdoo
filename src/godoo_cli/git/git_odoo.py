@@ -38,11 +38,15 @@ def git_ensure_odoo_repo(
     yaml = yaml_roundtrip_loader()
     git_repos = yaml.load(manifest_file.resolve())
     if not git_repos:
-        raise FileNotFoundError(f"Couldnt load yml file from: {str(manifest_file)}")
+        msg = f"Couldnt load yml file from: {manifest_file!s}"
+        LOGGER.error(msg)
+        raise FileNotFoundError(msg)
 
     odoo_data = git_repos.get("odoo")
     if not odoo_data:
-        raise KeyError(f"Could not find key 'odoo' in {str(manifest_file)}")
+        msg = f"Could not find key 'odoo' in {manifest_file!s}"
+        LOGGER.error(msg)
+        raise KeyError(msg)
 
     odoo_url = odoo_data["url"]
     odoo_branch = odoo_data.get("branch", "master")

@@ -41,10 +41,7 @@ def rpc_get_modules(
     if "," in module_query:
         search_domain = [("name", "in", module_query.split(","))]
     else:
-        if "%" in module_query:
-            search_domain = [("name", "=ilike", module_query)]
-        else:
-            search_domain = [("name", "=", module_query)]
+        search_domain = [("name", "=ilike", module_query)] if "%" in module_query else [("name", "=", module_query)]
 
     if valid_module_names:
         base_domain.insert(1, "&")

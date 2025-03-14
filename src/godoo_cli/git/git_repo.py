@@ -3,6 +3,7 @@
 import logging
 import shutil
 from pathlib import Path
+from typing import Any
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
@@ -12,7 +13,7 @@ from .zip_download import git_download_zip
 LOGGER = logging.getLogger(__name__)
 
 
-def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs):
+def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs: dict[str, Any]):
     """Clears targetfolder and does a clean clone_from.
 
     Parameters
@@ -89,7 +90,7 @@ def git_ensure_ref(
     branch: str = "master",
     commit: str = "",
     pull: str = "",
-    **kwargs,
+    **kwargs: dict[str, Any],
 ):
     """Clone a git repo and ensure its HEAD is set to branch and commit.
 
@@ -155,7 +156,7 @@ def git_ensure_repo(
     commit: str = "",
     pull: str = "",
     zip_mode: bool = False,
-    **kwargs,
+    **kwargs: dict[str, Any],
 ):
     """Ensures git remote contents are in folder.
 

@@ -5,7 +5,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 import click
 import requests
@@ -20,7 +20,7 @@ from . import cli as godoo_cli_helpers
 LOGGER = logging.getLogger(__name__)
 
 
-def run_cmd(command: str, **kwargs) -> subprocess.CompletedProcess:
+def run_cmd(command: str, **kwargs: dict[str, Any]) -> subprocess.CompletedProcess:
     """Runs command via subprocess.run."""
     LOGGER.debug("Running shell:\n%s", command)
     if not kwargs.get("shell"):
@@ -34,7 +34,9 @@ def ensure_dotenv(varname: str) -> str:
     """Load environment variable and raise error if not set."""
     var = os.getenv(varname)
     if var is None:
-        raise ReferenceError(f"Env Variable: {varname} is not set")
+        msg = f"Env Variable: {varname} is not set"
+        LOGGER.error(msg)
+        raise ReferenceError(msg)
     return var
 
 
@@ -85,16 +87,14 @@ def file_or_folder_size_mb(path: Path) -> float:
 
     if path.is_file():
         return file_size_mb(path)
-    else:
-        return sum([file_size_mb(f) for f in path.rglob("*")])
+    return sum([file_size_mb(f) for f in path.rglob("*")])
 
 
 def path_has_content(path: Path):
     """Check if path exists and is not an empty directory."""
     if path.is_dir():
         return bool(path.glob("*"))
-    else:
-        return path.exists() and path.stat().st_size
+    return path.exists() and path.stat().st_size
 
 
 def typer_ask_overwrite_path(paths: Union[list[Path], Path]) -> bool:

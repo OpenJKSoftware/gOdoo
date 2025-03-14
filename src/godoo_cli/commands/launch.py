@@ -14,12 +14,12 @@ from typing import Annotated, Optional, Union
 import typer
 
 from ..cli_common import CommonCLI
-from ..helpers.modules import godooModules
+from ..helpers.modules import GodooModules
 from ..helpers.odoo_files import odoo_bin_get_version
 from ..helpers.system import run_cmd
 from .bootstrap import bootstrap_odoo
 from .db.connection import DBConnection
-from .db.query import DB_BOOTSTRAP_STATUS, _is_bootstrapped
+from .db.query import DbBootstrapStatus, _is_bootstrapped
 from .rpc import import_to_odoo
 from .source_get import py_depends_by_db, update_odoo_conf
 
@@ -51,7 +51,7 @@ def _launch_command(
         str: The complete command string to launch Odoo.
     """
     upgrade_addons = (
-        [f.name for f in godooModules(workspace_addon_path).get_modules()] if upgrade_workspace_modules else []
+        [f.name for f in GodooModules(workspace_addon_path).get_modules()] if upgrade_workspace_modules else []
     )
     if any(arg in ("-u", "--update") for arg in extra_cmd_args):
         upgrade_addons = []
@@ -60,8 +60,9 @@ def _launch_command(
     odoo_cmd = [
         str(odoo_path.absolute()) + "/odoo-bin",
         update_addon_string,
-        f"-c {str(odoo_conf_path.absolute())}",
-    ] + extra_cmd_args
+        f"-c {odoo_conf_path.absolute()!s}",
+        *extra_cmd_args,
+    ]
     odoo_cmd = list(filter(None, odoo_cmd))
     return " ".join(odoo_cmd)
 
@@ -124,7 +125,7 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
     LOGGER.info("Bootstrap Flag Status: '%s'", bootstraped.value)
     ret = ""
     did_bootstrap = False
-    if bootstraped != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED:
+    if bootstraped != DbBootstrapStatus.BOOTSTRAPPED:
         _extra_bootstrap_args = extra_odoo_args.copy()
         if ea := extra_bootstrap_args:
             _extra_bootstrap_args += ea
@@ -155,8 +156,8 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
     odoo_version = odoo_bin_get_version(odoo_main_path)
 
     if (
-        bootstraped != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED
-        and _is_bootstrapped(db_connection) != DB_BOOTSTRAP_STATUS.BOOTSTRAPPED
+        bootstraped != DbBootstrapStatus.BOOTSTRAPPED
+        and _is_bootstrapped(db_connection) != DbBootstrapStatus.BOOTSTRAPPED
     ):
         LOGGER.error("404 Database not found. Aborting Launch...")
         return 404

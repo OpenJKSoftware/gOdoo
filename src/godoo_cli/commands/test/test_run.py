@@ -6,7 +6,7 @@ from typing import Annotated, Optional
 import typer
 
 from ...cli_common import CommonCLI
-from ...helpers.modules import get_addon_paths, godooModules
+from ...helpers.modules import GodooModules, get_addon_paths
 from ...helpers.modules_git import get_changed_modules_and_depends
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
@@ -23,7 +23,7 @@ def _test_modules_special_cases(in_modules: list[str], workspace_addon_path: Pat
         out_modules = []
         command = in_modules[0]
         if command == "all":
-            out_modules = godooModules(workspace_addon_path).get_modules()
+            out_modules = GodooModules(workspace_addon_path).get_modules()
         elif re_match := re.match(r"changes\:(.*)", command):
             compare_branch = re_match.group(1)
             changed_modules = get_changed_modules_and_depends(
@@ -90,7 +90,7 @@ def odoo_run_tests(  # noqa: C901
     """
     test_module_names = _test_modules_special_cases(test_module_names, workspace_addon_path)
     addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)
-    module_reg = godooModules(addon_paths)
+    module_reg = GodooModules(addon_paths)
     test_modules = list(module_reg.get_modules(test_module_names))
     depends = []
     for mod in test_modules:

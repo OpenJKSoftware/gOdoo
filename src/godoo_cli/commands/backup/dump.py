@@ -50,10 +50,14 @@ def dump_instance(
         port=db_port,
     )
     if not conf_path.exists():
-        raise typer.Exit("No Odoo Conf Path provided or doesnt exists: '%s'" % conf_path)
+        msg = f"No Odoo Conf Path provided or doesnt exists: '{conf_path}'"
+        LOGGER.error(msg)
+        raise typer.Exit(msg)
 
     if not dump_path.exists():
-        raise typer.Exit("No Dump Path provided or doesnt exists: %s" % dump_path)
+        msg = f"No Dump Path provided or doesnt exists: '{dump_path}'"
+        LOGGER.error(msg)
+        raise typer.Exit(msg)
 
     # Read .conf value [options] datad_dir
     parser = ConfigParser()
@@ -70,7 +74,7 @@ def dump_instance(
     db_dump_target = dump_path / "odoo.dump"
     LOGGER.info("Dumping DB -> %s", db_dump_target)
     db_dump_target.unlink(missing_ok=True)
-    db_connection.run_psql_shell_command("pg_dump --format c {} > %s" % db_dump_target)
+    db_connection.run_psql_shell_command(f"pg_dump --format c {{}} > {db_dump_target}")
     LOGGER.info("SQL Dump Completed with size -> %.2f MB", db_dump_target.stat().st_size / (1024 * 1024))
 
     readme_path = dump_path / "README.md"

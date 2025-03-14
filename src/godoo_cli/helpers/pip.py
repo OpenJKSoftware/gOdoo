@@ -15,9 +15,10 @@ def _has_uv() -> bool:
     """Check if uv is available."""
     try:
         run_cmd("uv --version", check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return True
     except subprocess.CalledProcessError:
         return False
+    else:
+        return True
 
 
 def _check_pip_command() -> str:
@@ -34,10 +35,8 @@ def _check_pip_command() -> str:
         If no supported pip command is available
     """
     # Check if uv is available
-    if _has_uv():
-        # If we have a virtual environment, use uv pip
-        if os.getenv("VIRTUAL_ENV"):
-            return "uv pip"
+    if _has_uv() and os.getenv("VIRTUAL_ENV"):
+        return "uv pip"
 
     # Try python -m pip as fallback
     try:
@@ -47,9 +46,12 @@ def _check_pip_command() -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        return f"{sys.executable} -m pip"
     except subprocess.CalledProcessError as e:
-        raise RuntimeError("No pip command available. Please ensure pip is installed or use a uv venv.") from e
+        msg = "No pip command available. Please ensure pip is installed or use a uv venv."
+        LOGGER.exception(msg)
+        raise RuntimeError(msg) from e
+    else:
+        return f"{sys.executable} -m pip"
 
 
 def pip_install(package_names: list[str]):
@@ -77,5 +79,7 @@ def pip_install(package_names: list[str]):
         LOGGER.info("Installing Python requirements: %s", missing_packages)
         res = run_cmd(f"{pip_cmd} install {' '.join(missing_packages)}", shell=True)
         if res.returncode != 0:
-            raise FileNotFoundError(f"Package installation error for: {missing_packages}")
+            msg = f"Package installation error for: {missing_packages}"
+            LOGGER.error(msg)
+            raise FileNotFoundError(msg)
         return res

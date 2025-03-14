@@ -5,7 +5,7 @@ from typing import Annotated, Optional
 import typer
 
 from ...cli_common import CommonCLI
-from ...helpers.modules import get_addon_paths, godooModules
+from ...helpers.modules import GodooModules, get_addon_paths
 from ...helpers.system import run_cmd
 from ..db.connection import DBConnection
 from ..launch import bootstrap_and_prep_launch_cmd
@@ -53,7 +53,7 @@ def odoo_load_test_data(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    godoo_test_modules = list(godooModules(addon_paths).get_modules(test_modules))
+    godoo_test_modules = list(GodooModules(addon_paths).get_modules(test_modules))
     test_module_names = [m.name for m in godoo_test_modules]
     module_list_csv = ",".join(test_module_names)
     LOGGER.info("Installing Test data for Odoo Modules:\n%s", sorted(test_module_names))

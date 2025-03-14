@@ -13,7 +13,7 @@ class NotAValidModuleError(ValueError):
     """Raised when a path is not a valid odoo module folder."""
 
 
-class godooModule:
+class GodooModule:
     """Encapsulates a odoo module folder."""
 
     def __init__(self, path: Path) -> None:
@@ -21,18 +21,13 @@ class godooModule:
         self.path = path
         self.validate_is_module()
 
-    def validate_is_module(self):
-        """Throws NotAModuleError if path is not a valid odoo module folder."""
-        if not self.path.is_dir() or not self.manifest_file.exists():
-            raise NotAValidModuleError(f"{self.path} is not a valid odoo module")
-
     def __repr__(self) -> str:
         """Return a string representation of the godooModule instance."""
-        return f"godooModule({str(self.path.name)})"
+        return f"godooModule({self.path.name!s})"
 
     def __eq__(self, __value: object) -> bool:
         """Compare two godooModule instances for equality based on their absolute paths."""
-        if isinstance(__value, godooModule):
+        if isinstance(__value, GodooModule):
             return self.path.absolute() == __value.path.absolute()
         return False
 
@@ -66,8 +61,18 @@ class godooModule:
         """List of Odoo module dependencies required by this module."""
         return self.manifest.get("depends", [])
 
+    def validate_is_module(self):
+        """Throws NotAModuleError if path is not a valid odoo module folder."""
+        if not self.path.is_dir():
+            msg = f"{self.path} is not a directory"
+            raise NotAValidModuleError(msg)
+        if not self.manifest_file.exists():
+            msg = f"{self.path} is not a valid odoo module"
+            LOGGER.debug(msg)
+            raise NotAValidModuleError(msg)
 
-class godooModules:
+
+class GodooModules:
     """Abstract interface to Addon-Paths. Finds modules and their dependencies."""
 
     def __init__(self, addon_paths: Union[list[Path], Path]) -> None:
@@ -79,11 +84,11 @@ class godooModules:
         if not isinstance(addon_paths, list):
             addon_paths = [addon_paths]
         self.addon_paths = addon_paths
-        self.godoo_modules: dict[str, godooModule] = {}
+        self.godoo_modules: dict[str, GodooModule] = {}
 
     def get_modules(
-        self, module_names: Optional[list[str]] = None, raise_missing_names=True
-    ) -> Generator[godooModule, None, None]:
+        self, module_names: Optional[list[str]] = None, raise_missing_names: bool = True
+    ) -> Generator[GodooModule, None, None]:
         """Get all Modules in Addon Paths or only the ones specified in module_names."""
         if module_names:
             for name in module_names:
@@ -97,40 +102,41 @@ class godooModules:
         else:
             yield from self._get_modules()
 
-    def _get_modules(self) -> Generator[godooModule, None, None]:
+    def _get_modules(self) -> Generator[GodooModule, None, None]:
         """Generator that Iterates Addon Paths and yields all godooModules found in them."""
         for path in self.addon_paths:
             for addon_folder_child in path.iterdir():
                 try:
                     mod = self.godoo_modules.get(addon_folder_child.name)
                     if not mod:
-                        mod = godooModule(addon_folder_child)
+                        mod = GodooModule(addon_folder_child)
                         self.godoo_modules[mod.name] = mod
                     if mod.path != addon_folder_child:
-                        raise IndexError(
-                            f"Module {mod.name} is found in multiple paths:\n{mod.path}\n{addon_folder_child}"
-                        )
+                        msg = f"Module {mod.name} is found in multiple paths:\n{mod.path}\n{addon_folder_child}"
+                        LOGGER.error(msg)
+                        raise IndexError(msg)
                     yield mod
                 except NotAValidModuleError:
                     # Silently skip dir, as it's not a Odoo Module
                     continue
 
-    def get_module(self, name: str) -> Optional[godooModule]:
+    def get_module(self, name: str) -> Optional[GodooModule]:
         """Get one Specific Module by Name. Returns None if not found."""
         if mod := self.godoo_modules.get(name):
             return mod
         for mod in self._get_modules():
             if mod.name == name:
                 return mod
-        raise ModuleNotFoundError(
-            f"Module '{name}' not found in Paths: {[str(s.absolute()) for s in self.addon_paths]}"
-        )
+        path_str = ", ".join([str(s.absolute()) for s in self.addon_paths])
+        msg = f"Module '{name}' not found in Paths: {path_str}"
+        LOGGER.error(msg)
+        raise ModuleNotFoundError(msg)
 
     def get_module_dependencies(
-        self, module: Union[godooModule, list[godooModule]], dont_follow: Optional[list[str]] = None
-    ) -> list[godooModule]:
+        self, module: Union[GodooModule, list[GodooModule]], dont_follow: Optional[list[str]] = None
+    ) -> list[GodooModule]:
         """Get dependant modules of module(s). Recursively follows dependencies."""
-        if isinstance(module, godooModule):
+        if isinstance(module, GodooModule):
             module = [module]
         deps = []
         for mod in module:
@@ -189,13 +195,13 @@ def get_addon_paths(
             in the Odoo addons_path configuration.
     """
     odoo_addon_paths = [odoo_main_repo / "addons", odoo_main_repo / "odoo" / "addons"]
-    if godooModules(workspace_addon_path).get_modules():
+    if GodooModules(workspace_addon_path).get_modules():
         odoo_addon_paths.append(workspace_addon_path)
     zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
-    zip_addon_repos = [f for f in zip_addon_path.iterdir() if f.is_dir() and next(godooModules(f).get_modules(), None)]
+    zip_addon_repos = [f for f in zip_addon_path.iterdir() if f.is_dir() and next(GodooModules(f).get_modules(), None)]
     odoo_addon_paths += zip_addon_repos
     git_thirdparty_addon_repos = [
-        p for p in thirdparty_addon_path.iterdir() if next(godooModules(p).get_modules(), None)
+        p for p in thirdparty_addon_path.iterdir() if next(GodooModules(p).get_modules(), None)
     ]
     odoo_addon_paths += git_thirdparty_addon_repos
     return list(set(odoo_addon_paths))

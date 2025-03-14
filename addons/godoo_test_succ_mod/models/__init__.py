@@ -1,3 +1,5 @@
+"""Models for the Test Succ Mod."""
+
 from logging import getLogger
 
 LOGGER = getLogger(__name__)

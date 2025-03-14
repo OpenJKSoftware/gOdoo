@@ -28,7 +28,9 @@ def load_pg_dump(
 ):
     """Drop and recreate db_name and restore dump_path into it."""
     if not dump_path.exists():
-        raise FileNotFoundError("Cannot find Odoo Dump @ %s" % dump_path)
+        msg = f"Cannot find Odoo Dump @ {dump_path}"
+        LOGGER.error(msg)
+        raise FileNotFoundError(msg)
 
     conn = DBConnection(
         db_name="postgres",
@@ -49,10 +51,11 @@ def load_pg_dump(
         round(dump_path.stat().st_size / (1024 * 1024), 2),
         db_name,
     )
-    if dump_path.suffix == ".dump":
-        command = "pg_restore --no-owner --format c --dbname %s --jobs 8 {} %s" % (db_name, dump_path)
-    else:
-        command = "cat %s | psql {} >/dev/null" % dump_path
+    command = (
+        f"pg_restore --no-owner --format c --dbname {db_name} --jobs 8 {dump_path}"
+        if dump_path.suffix == ".dump"
+        else f"cat {dump_path} | psql {db_name} >/dev/null"
+    )
     load_return = conn.run_psql_shell_command(
         command=command,
         text=True,

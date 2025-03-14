@@ -44,7 +44,9 @@ def git_download_zip(repo_url: str, target_folder: Path, branch: str, commit: st
         LOGGER.debug("Target Path: '%s' ", zip_path)
         download_file(download_url, zip_path)
         if not zip_path.exists():
-            raise FileNotFoundError(f"Could not download Repo Zip from: {download_url}")
+            msg = f"Could not download Repo Zip from: {download_url}"
+            LOGGER.error(msg)
+            raise FileNotFoundError(msg)
         LOGGER.info("Extracting GitRepo Zip: %s", git_url.name)
         ex_location = Path(tdir) / "extract"
         with zipfile.ZipFile(zip_path, "r") as zip_ref:

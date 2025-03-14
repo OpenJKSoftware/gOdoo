@@ -146,6 +146,8 @@ def odoo_pregenerate_assets(odoo_main_path: Path):
     if odoo_version.major == 16:
         pregen_command = "env['ir.qweb']._pregenerate_assets_bundles();env.cr.commit()"
     else:
-        raise NotImplementedError(f"Odoo Version {odoo_version.raw} not supported in gOdoo for pregenerate_assets")
+        msg = f"Odoo Version {odoo_version.raw} not supported in gOdoo for pregenerate_assets"
+        LOGGER.error(msg)
+        raise NotImplementedError(msg)
     LOGGER.info("Pregenerating Assets for Odoo version %s", odoo_version.raw)
     odoo_shell(pipe_in_command=pregen_command)

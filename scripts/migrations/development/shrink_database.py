@@ -4,7 +4,7 @@ from logging import getLogger
 
 LOGGER = getLogger("migrations.shrink_database")
 
-env = env  # Just to silence pyright # pyright: ignore # NOQA
+env = env  # noqa: F821 # pylint: disable=undefined-variable # pyright: ignore
 
 LOGGER.info("Shrinking Database")
 att = env["ir.attachment"].search(
@@ -22,7 +22,8 @@ LOGGER.info("Attachments to Delete: %d", len(att))
 LOGGER.info("Size: %dMB", round(sum(att.mapped("file_size")) / 1024 / 1024, 2))
 
 
-def chunks(lst, n):
+def chunks(lst: list, n: int):
+    """Chunk an iterable into chunks of size n."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
 

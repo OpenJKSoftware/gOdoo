@@ -24,5 +24,7 @@ def check_dangerous_command():
         typer.Exit: If the environment is not marked as development.
     """
     isdev = str(os.getenv("WORKSPACE_IS_DEV"))
-    if not isdev.lower() == "true":
-        raise typer.Exit("This is a dangerous command. Only allowed in Dev Mode.")
+    if isdev.lower() != "true":
+        msg = "This is a dangerous command. Only allowed in Dev Mode."
+        LOGGER.error(msg)
+        raise typer.Exit(msg)
