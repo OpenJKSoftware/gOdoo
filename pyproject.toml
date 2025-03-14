@@ -102,6 +102,7 @@ ci = [
 [tool.ruff]
 line-length = 120
 target-version = "py39"
+exclude = [".venv"]
 
 [tool.ruff.lint]
 select = [
@@ -160,7 +161,7 @@ line-ending = "auto"
 
 [tool.pylint.master]
 load-plugins = "pylint_odoo,pylint.extensions.no_self_use"
-ignore = ["CVS", ".git", ".hg", ".tox", ".eggs", "*.egg", "build", "dist"]
+ignore = ["CVS", ".git", ".hg", ".tox", ".eggs", "*.egg", "build", "dist", ".venv"]
 persistent = true
 jobs = 0
 
