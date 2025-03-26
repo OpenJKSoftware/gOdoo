@@ -68,7 +68,6 @@ class GodooModule:
             raise NotAValidModuleError(msg)
         if not self.manifest_file.exists():
             msg = f"{self.path} is not a valid odoo module"
-            LOGGER.debug(msg)
             raise NotAValidModuleError(msg)
 
 
