@@ -77,7 +77,7 @@ def pip_install(package_names: list[str]):
     installed_packages = [p.get("name") for p in installed_packages]
     if missing_packages := [p for p in package_names if p not in installed_packages]:
         LOGGER.info("Installing Python requirements: %s", missing_packages)
-        res = run_cmd(f"{pip_cmd} install {' '.join(missing_packages)}", shell=True)
+        res = run_cmd(f"{pip_cmd} install {' '.join(f'"{p}"' for p in missing_packages)}", shell=True)
         if res.returncode != 0:
             msg = f"Package installation error for: {missing_packages}"
             LOGGER.error(msg)
