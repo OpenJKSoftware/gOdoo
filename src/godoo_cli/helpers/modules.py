@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 LOGGER = getLogger(__name__)
+NO_MODULE_PATHS: set[Path] = set()
 
 
 class NotAValidModuleError(ValueError):
@@ -105,6 +106,9 @@ class GodooModules:
         """Generator that Iterates Addon Paths and yields all godooModules found in them."""
         for path in self.addon_paths:
             for addon_folder_child in path.iterdir():
+                if addon_folder_child in NO_MODULE_PATHS:
+                    # Skip paths that are already known to not be modules
+                    continue
                 try:
                     mod = self.godoo_modules.get(addon_folder_child.name)
                     if not mod:
@@ -117,6 +121,7 @@ class GodooModules:
                     yield mod
                 except NotAValidModuleError:
                     # Silently skip dir, as it's not a Odoo Module
+                    NO_MODULE_PATHS.add(addon_folder_child)
                     continue
 
     def get_module(self, name: str) -> Optional[GodooModule]:
