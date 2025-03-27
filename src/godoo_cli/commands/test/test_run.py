@@ -89,6 +89,10 @@ def odoo_run_tests(  # noqa: C901
     Will set test specific odoo.conf if it needs to bootstrap. Exits after run, so no webserver is started.
     """
     test_module_names = _test_modules_special_cases(test_module_names, workspace_addon_path)
+    if not test_module_names:
+        LOGGER.info("No Modules to Test. Skipping.")
+        return
+
     addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)
     module_reg = GodooModules(addon_paths)
     test_modules = list(module_reg.get_modules(test_module_names))
