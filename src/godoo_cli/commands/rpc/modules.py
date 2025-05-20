@@ -71,7 +71,7 @@ def rpc_install_modules(
     install_module_ids = [m.id for m in modules if m.state == "uninstalled"]
     if install_module_ids:
         install_modules = modules.browse(install_module_ids)
-        LOGGER.info("Installing Module: " + ", ".join(install_modules.mapped("name")))
+        LOGGER.info("Installing Module: " + ", ".join([m.name for m in install_modules]))
         install_modules.button_immediate_install()
         did_something = True
 
@@ -79,7 +79,7 @@ def rpc_install_modules(
         up_module_ids := [m.id for m in modules if m.state == "installed" and m.id not in install_module_ids]
     ):
         up_modules = modules.browse(up_module_ids)
-        LOGGER.info("Updating Module: " + ", ".join(up_modules.mapped("name")))
+        LOGGER.info("Updating Module: " + ", ".join([m.name for m in up_modules]))
         up_modules.button_immediate_upgrade()
         did_something = True
     return did_something
@@ -145,7 +145,7 @@ def uninstall_modules(
         uninstall_module_ids = [m.id for m in modules if m.state == "installed"]
         if uninstall_module_ids:
             uninstall_modules = modules.browse(uninstall_module_ids)
-            LOGGER.info("Uninstalling Module: " + ", ".join(uninstall_modules.mapped("name")))
+            LOGGER.info("Uninstalling Module: " + ", ".join([m.name for m in uninstall_modules]))
             uninstall_modules.button_immediate_uninstall()
         else:
             LOGGER.warn("Found Modules, but didn't do anything on DB.")

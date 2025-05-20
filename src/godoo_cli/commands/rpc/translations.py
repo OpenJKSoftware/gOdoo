@@ -59,7 +59,7 @@ def _dump_translations(
         Whether to upgrade modules before dumping, by default True
     """
     if upgrade_modules:
-        LOGGER.info("Upgrading Modules: '%s'", ", ".join(modules.mapped("name")))
+        LOGGER.info("Upgrading Modules: '%s'", ", ".join([m.name for m in modules]))
         modules.button_immediate_upgrade()
 
     for mod in modules:

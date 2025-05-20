@@ -19,7 +19,7 @@ att = env["ir.attachment"].search(
     ]
 )
 LOGGER.info("Attachments to Delete: %d", len(att))
-LOGGER.info("Size: %dMB", round(sum(att.mapped("file_size")) / 1024 / 1024, 2))
+LOGGER.info("Size: %dMB", round(sum([a.file_size for a in att]) / 1024 / 1024, 2))
 
 
 def chunks(lst: list, n: int):
