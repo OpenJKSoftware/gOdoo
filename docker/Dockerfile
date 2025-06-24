@@ -40,8 +40,10 @@ ARG SOURCE_CLONE_ARCHIVE
 ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
 
 # Install Dependencies using depends_build.sh
-RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.sh \
-    set -ex; sudo bash /tmp/depends_build.sh
+COPY docker/depends_build.sh docker/psql.gpg /tmp/
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked set -ex; \
+    sudo bash /tmp/depends_build.sh
 
 # ------------------------------------------------------------------------------------------------------
 # Install godoo from this workspace. (see pip install below)
@@ -159,48 +161,60 @@ FROM dev_odoo AS devcontainer
 # Instal godoo autocomplete. Env var to disable shellingham, as docker doesnt run in a shell
 RUN set -ex; _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
 
-ARG USERNAME
 ARG NVM_VERSION
 ARG NODE_VERSION
 ENV NVM_DIR=/usr/local/nvm \
     NODE_VERSION=${NODE_VERSION}
+
+# Setup NVM directory with proper permissions
 RUN set -ex; sudo install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
 
+# Install NVM, Node.js and npm as non-root user
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
-# install node and npm
-RUN set -ex; \
+# Install node and npm
+RUN set -e; \
     . $NVM_DIR/nvm.sh \
     && nvm install $NODE_VERSION \
     && nvm alias default $NODE_VERSION \
     && npm config -g set cafile /etc/ssl/certs/ca-certificates.crt \
     && nvm use default
-# add node and npm to path so the commands are available
+# Add node and npm to path so the commands are available
 ENV NODE_PATH=$NVM_DIR/v$NODE_VERSION/lib/node_modules \
     PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH\
     NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
-# Install PostgreSQL client and other development tools
-RUN --mount=type=bind,source=docker/depends_build.sh,target=/tmp/depends_build.sh \
-    set -ex; \
-    sudo bash /tmp/depends_build.sh \
-    && sudo bash -c 'mkdir -p /home/$USERNAME/{.vscode-server/extensions,.cache/pre-commit} \
-    && chown -R $USERNAME:$USERNAME /home/$USERNAME/{.vscode-server,.cache} \
-    && mkdir -p /etc/cups \
+# Configure system settings that require root
+USER root
+RUN set -ex; \
+    mkdir -p /etc/cups \
     && echo "ServerName cups:631" > /etc/cups/client.conf \
-    && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf'
+    && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf
 
 ARG WORKSPACE
 ENV ODOO_PRINT_PDF_LOCATION=$WORKSPACE
 
+# Setup nginx and fix permissions
 RUN set -ex; \
-    sudo rm -rf /tmp/* \
-    && sudo usermod -a -G www-data ${USERNAME} \
-    && bash -c 'sudo chown -R ${USERNAME} {/var/lib/nginx,/var/log/nginx}'
+    rm -rf /tmp/* \
+    && rm -f /etc/nginx/nginx.conf \
+    && ln -s /odoo/config/nginx.conf /etc/nginx/nginx.conf \
+    && rm -f /etc/nginx/proxy_headers.conf \
+    && ln -s /odoo/config/nginx-proxy_headers.conf /etc/nginx/proxy_headers.conf \
+    && usermod -a -G www-data ${USERNAME} \
+    && chown -R ${USERNAME} /var/lib/nginx /var/log/nginx
 
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 \
-    set -ex; \
+# Install system packages that require root
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked set -ex; \
+    apt-get install default-jre -y
+
+# Switch back to non-root user for npm and pip installations
+USER ${USERNAME}
+RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 \
+    --mount=type=cache,target=/root/.npm,uid=1000,gid=1000 set -ex; \
     npm install -g prettier eslint \
-    && git config --global --add safe.directory ${WORKSPACE}
+    && uv pip install pydevd-odoo pre-commit jingtrang \
+    && sudo apt-get install default-jre -y
+
 ENV EDITOR=code
-ENTRYPOINT  [ "/bin/sh", "-c", "sudo nginx -c /odoo/config/nginx.conf; sleep infinity"]
+ENTRYPOINT  [ "/bin/sh", "-c", "service nginx start; sleep infinity"]
