@@ -2,16 +2,11 @@ services:
   app:
     build:
       target: devcontainer
-      args:
-        SOURCE_CLONE_ARCHIVE: False
     command: ""
     volumes:
-      - vscode_server:/home/ContainerUser/.vscode-server
-      - devcontainer_cache:/home/ContainerUser/.cache
       - commandhistory:/home/ContainerUser/.commandhistory
       - ../:/odoo/godoo_workspace # Mount vscode Workspace
       - ../config:/odoo/config # Mount config folder
-      - venv:/odoo/venv
     cap_add:
       - SYS_PTRACE
 
@@ -20,7 +15,4 @@ services:
       context: cups
 
 volumes:
-  venv:
-  vscode_server:
   commandhistory:
-  devcontainer_cache:
