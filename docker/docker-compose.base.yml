@@ -23,7 +23,7 @@ services:
       - "postgres_socket:/var/run/postgresql"
 
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     environment:
       - TZ=${TZ:-Europe/Berlin}
       - POSTGRES_DB=postgres
