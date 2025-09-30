@@ -163,6 +163,7 @@ class SourceGetArgs:
         "--source-download-archive",
         envvar="SOURCE_CLONE_ARCHIVE",
         help="When using a HTTPs Repo Url for Github we can download a snapshop without the Repo history",
+        is_flag=True,
     )
 
 
