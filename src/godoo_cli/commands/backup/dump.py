@@ -14,6 +14,7 @@ import typer
 
 from ...cli_common import CommonCLI
 from ...helpers.odoo_files import odoo_bin_get_version
+from ...helpers.system import sizeof_fmt
 from ..db.connection import DBConnection
 from .util import call_rsync
 
@@ -70,6 +71,12 @@ def dump_instance(
     LOGGER.info("Dumping Filestore -> %s", filestore_target)
     call_rsync(source_folder=data_dir, target_folder=filestore_target)
 
+    def get_folder_size(path: Path) -> int:
+        return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+    filestore_size_human = sizeof_fmt(get_folder_size(filestore_target))
+    LOGGER.info("Filestore Dump Completed with size -> %s", filestore_size_human)
+
     # Dump DB using pg_dump
     db_dump_target = dump_path / "odoo.dump"
     LOGGER.info("Dumping DB -> %s", db_dump_target)
@@ -95,4 +102,11 @@ SQL Dump and Filestore of gOdoo Instance.
 
 """
     readme_path.write_text(readme_content)
-    LOGGER.info("Odoo Dump Completed -> %s", dump_path)
+    total_dump_size_human = sizeof_fmt(
+        get_folder_size(filestore_target) + db_dump_target.stat().st_size + readme_path.stat().st_size
+    )
+    LOGGER.info(
+        "Odoo Dump with total size %s Completed -> %s",
+        total_dump_size_human,
+        dump_path,
+    )

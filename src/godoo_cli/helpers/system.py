@@ -131,3 +131,17 @@ def typer_ask_overwrite_path(paths: Union[list[Path], Path]) -> bool:
         return True
     LOGGER.info("Aborting")
     return False
+
+
+def sizeof_fmt(num: float, suffix: str = "B"):
+    """Format number of bytes to human readable format.
+
+    Args:
+        num (int): Number of bytes.
+        suffix (str, optional): Suffix to append. Defaults to "B".
+    """
+    for unit in ("", "K", "M", "G", "T", "P", "E", "Z"):
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Y{suffix}"
