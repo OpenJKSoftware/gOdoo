@@ -65,12 +65,22 @@ def git_pull_checkout_reset(
     if pull:
         LOGGER.debug("Pulling Repo: %s, %s", repo.working_dir, pull)
         try:
-            repo.remotes[0].pull(None if isinstance(pull, bool) else pull)
+            repo.remotes[0].pull(None if isinstance(pull, bool) else pull, ff_only=True)
         except GitCommandError as e:
-            if "fatal: refusing to merge unrelated histories" in e.stderr:
-                clone_kwargs = {}
+            if (
+                "fatal: refusing to merge unrelated histories" in e.stderr
+                or "fatal: Not possible to fast-forward" in e.stderr
+            ):
+                clone_kwargs = {
+                    "filter": "blob:none",
+                    "single_branch": True,
+                }
                 if branch:
                     clone_kwargs["branch"] = branch
+                LOGGER.warning(
+                    "Repo %s needs to be re-cloned due to unrelated histories or non-fast-forwardable changes.",
+                    repo.working_dir,
+                )
                 repo = _git_clean_clone(repo.remotes[0].url, Path(repo.working_dir), **clone_kwargs)
             else:
                 raise e
