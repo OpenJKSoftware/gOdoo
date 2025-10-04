@@ -8,7 +8,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from ..db.connection import DBConnection
+from ...models import DBConnection
 
 LOGGER = logging.getLogger(__name__)
 

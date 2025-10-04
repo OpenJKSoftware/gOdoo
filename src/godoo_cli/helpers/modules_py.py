@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from types import GeneratorType
 
-from .modules import GodooModule, GodooModules
+from ..models import GodooModule, GodooModules
 from .pip import pip_install
 
 LOGGER = logging.getLogger(__name__)

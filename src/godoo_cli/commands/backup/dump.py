@@ -15,7 +15,7 @@ import typer
 from ...cli_common import CommonCLI
 from ...helpers.odoo_files import odoo_bin_get_version
 from ...helpers.system import sizeof_fmt
-from ..db.connection import DBConnection
+from ...models import DBConnection
 from .util import call_rsync
 
 LOGGER = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ def dump_instance(
     LOGGER.info("Dumping DB -> %s", db_dump_target)
     db_dump_target.unlink(missing_ok=True)
     db_connection.run_psql_shell_command(f"pg_dump --format c {{}} > {db_dump_target}")
-    LOGGER.info("SQL Dump Completed with size -> %.2f MB", db_dump_target.stat().st_size / (1024 * 1024))
+    LOGGER.info("SQL Dump Completed with size -> %s", sizeof_fmt(db_dump_target.stat().st_size))
 
     readme_path = dump_path / "README.md"
     readme_path.unlink(missing_ok=True)

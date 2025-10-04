@@ -15,6 +15,7 @@ import typer
 from ...cli_common import CommonCLI
 from ...helpers.odoo_files import odoo_bin_get_version
 from ...helpers.system import run_cmd
+from ...models import GodooConfig
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
@@ -133,15 +134,7 @@ def odoo_shell_run_script(
     run_cmd(shell_cmd, stdin=script_path.open("r"))
 
 
-def odoo_pregenerate_assets(
-    odoo_main_path: Path,
-    odoo_conf_path: Optional[Path] = None,
-    db_name: Optional[str] = None,
-    db_user: Optional[str] = None,
-    db_host: Optional[str] = None,
-    db_port: Optional[int] = None,
-    db_password: Optional[str] = None,
-):
+def odoo_pregenerate_assets(godoo_conf: GodooConfig):
     """Use Odoo shell to pregenerate asset bundles.
 
     This function ensures that asset bundles are present in the filestore
@@ -150,7 +143,7 @@ def odoo_pregenerate_assets(
     Raises:
         NotImplementedError: If the Odoo version is not supported.
     """
-    odoo_version = odoo_bin_get_version(odoo_main_repo_path=odoo_main_path)
+    odoo_version = odoo_bin_get_version(odoo_main_repo_path=godoo_conf.odoo_install_folder)
     if odoo_version.major == 16:
         pregen_command = "env['ir.qweb']._pregenerate_assets_bundles();env.cr.commit()"
     else:
@@ -160,11 +153,11 @@ def odoo_pregenerate_assets(
     LOGGER.info("Pregenerating Assets for Odoo version %s", odoo_version.raw)
     odoo_shell(
         pipe_in_command=pregen_command,
-        odoo_main_path=odoo_main_path,
-        odoo_conf_path=odoo_conf_path,
-        db_name=db_name,
-        db_user=db_user,
-        db_host=db_host,
-        db_port=db_port,
-        db_password=db_password,
+        odoo_main_path=godoo_conf.odoo_install_folder,
+        odoo_conf_path=godoo_conf.odoo_conf_path,
+        db_name=godoo_conf.db_name,
+        db_user=godoo_conf.db_user,
+        db_host=godoo_conf.db_host,
+        db_port=godoo_conf.db_port,
+        db_password=godoo_conf.db_password,
     )

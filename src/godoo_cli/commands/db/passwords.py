@@ -12,7 +12,7 @@ from passlib.context import CryptContext
 
 from ...cli_common import CommonCLI
 from ...helpers.cli import check_dangerous_command
-from .connection import DBConnection
+from ...models import DBConnection
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()

@@ -14,7 +14,7 @@ import typer
 from godoo_rpc.login import wait_for_odoo
 
 from ...cli_common import CommonCLI
-from ...helpers.modules import GodooModule, GodooModules
+from ...models import GodooModule, GodooModules
 from .modules import rpc_get_modules
 
 CLI = CommonCLI()

@@ -2,6 +2,7 @@
 
 from ast import literal_eval
 from collections.abc import Generator
+from functools import cached_property
 from logging import getLogger
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -41,10 +42,15 @@ class GodooModule:
         """Path to the module's manifest file (__manifest__.py)."""
         return self.path / "__manifest__.py"
 
-    @property
+    @cached_property
     def manifest(self) -> dict[str, Any]:
         """Dictionary containing the parsed contents of the module's manifest file."""
-        return literal_eval(self.manifest_file.read_text())
+        return literal_eval(self.manifest_file.read_text(encoding="utf-8"))
+
+    @property
+    def version(self) -> str:
+        """The version of the module, as specified in the manifest file."""
+        return self.manifest.get("version", "unknown")
 
     @property
     def name(self) -> str:
@@ -157,55 +163,3 @@ class GodooModules:
                 sub_dep_modules += self.get_module_dependencies(dep, dont_follow)
             return list(set(dep_modules + sub_dep_modules))
         return []
-
-
-def get_zip_addon_path(thirdparty_path: Path) -> Path:
-    """Get the path where zip-based addons are stored.
-
-    This function returns the standard location for addons that are installed from zip files
-    within the thirdparty addons directory.
-
-    Args:
-        thirdparty_path: Base path for thirdparty addons.
-
-    Returns:
-        Path: The 'custom' subdirectory within the thirdparty path where zip-based addons are stored.
-    """
-    return thirdparty_path / "custom"
-
-
-def get_addon_paths(
-    odoo_main_repo: Path,
-    workspace_addon_path: Path,
-    thirdparty_addon_path: Path,
-) -> list[Path]:
-    """Get all valid Odoo addon paths for the odoo.conf addons_path setting.
-
-    This function collects all valid addon paths from:
-    - Core Odoo addons (from odoo_main_repo)
-    - Workspace addons (if any valid modules exist)
-    - Thirdparty addons (both zip-based and git-based)
-
-    The function validates each path to ensure it contains valid Odoo modules
-    before including it in the result.
-
-    Args:
-        odoo_main_repo: Path to the main Odoo repository.
-        workspace_addon_path: Path to the workspace addons directory.
-        thirdparty_addon_path: Path to the thirdparty addons directory.
-
-    Returns:
-        List[Path]: List of unique, valid addon paths that should be included
-            in the Odoo addons_path configuration.
-    """
-    odoo_addon_paths = [odoo_main_repo / "addons", odoo_main_repo / "odoo" / "addons"]
-    if GodooModules(workspace_addon_path).get_modules():
-        odoo_addon_paths.append(workspace_addon_path)
-    zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
-    zip_addon_repos = [f for f in zip_addon_path.iterdir() if f.is_dir() and next(GodooModules(f).get_modules(), None)]
-    odoo_addon_paths += zip_addon_repos
-    git_thirdparty_addon_repos = [
-        p for p in thirdparty_addon_path.iterdir() if next(GodooModules(p).get_modules(), None)
-    ]
-    odoo_addon_paths += git_thirdparty_addon_repos
-    return list(set(odoo_addon_paths))

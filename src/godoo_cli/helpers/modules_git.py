@@ -5,7 +5,7 @@ from pathlib import Path
 
 from git import Repo
 
-from .modules import GodooModule, GodooModules
+from ..models import GodooModule, GodooModules
 
 LOGGER = getLogger(__name__)
 

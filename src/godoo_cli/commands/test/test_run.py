@@ -6,11 +6,10 @@ from typing import Annotated, Optional
 import typer
 
 from ...cli_common import CommonCLI
-from ...helpers.modules import GodooModules, get_addon_paths
 from ...helpers.modules_git import get_changed_modules_and_depends
 from ...helpers.system import run_cmd
-from ..db.connection import DBConnection
-from ..launch import bootstrap_and_prep_launch_cmd
+from ...models import GodooConfig, GodooModules
+from ..odoo_bin.bootstrap import bootstrap_and_prep_launch_cmd
 from ..shell.shell import odoo_pregenerate_assets
 
 CLI = CommonCLI()
@@ -93,8 +92,22 @@ def odoo_run_tests(  # noqa: C901
         LOGGER.info("No Modules to Test. Skipping.")
         return
 
-    addon_paths = get_addon_paths(odoo_main_path, workspace_addon_path, thirdparty_addon_path)
-    module_reg = GodooModules(addon_paths)
+    godoo_conf = GodooConfig(
+        db_user=db_user,
+        db_password=db_password,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_filter=db_filter,
+        odoo_install_folder=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+        multithread_worker_count=0,  # Tests should always run single threaded
+        languages=languages,
+    )
+
+    module_reg = GodooModules(godoo_conf.addon_paths)
     test_modules = list(module_reg.get_modules(test_module_names))
     depends = []
     for mod in test_modules:
@@ -144,41 +157,18 @@ def odoo_run_tests(  # noqa: C901
     if extra_bootstrap_args:
         bootstrap_args = extra_bootstrap_args + bootstrap_args
 
-    db_connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name=db_name,
-    )
-
     launch_cmd = bootstrap_and_prep_launch_cmd(
-        odoo_main_path=odoo_main_path,
-        workspace_addon_path=workspace_addon_path,
-        thirdparty_addon_path=thirdparty_addon_path,
-        odoo_conf_path=odoo_conf_path,
-        db_filter=db_filter,
-        db_connection=db_connection,
+        godoo_conf=godoo_conf,
         dev_mode=False,
         install_workspace_addons=False,
         extra_launch_args=launch_args,
         extra_bootstrap_args=bootstrap_args,
-        multithread_worker_count=0,
         odoo_demo=False,
-        languages=languages,
         launch_or_bootstrap=launch_or_bootstrap,
     )
     if isinstance(launch_cmd, str):
         if pregenerate_assets:
-            odoo_pregenerate_assets(
-                odoo_main_path=odoo_main_path,
-                odoo_conf_path=odoo_conf_path,
-                db_name=db_name,
-                db_user=db_user,
-                db_host=db_host,
-                db_port=db_port,
-                db_password=db_password,
-            )
+            odoo_pregenerate_assets(godoo_conf=godoo_conf)
         LOGGER.info("Launching Odoo Tests")
         return CLI.returner(run_cmd(launch_cmd).returncode)
 

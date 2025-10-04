@@ -5,10 +5,9 @@ from typing import Annotated, Optional
 import typer
 
 from ...cli_common import CommonCLI
-from ...helpers.modules import GodooModules, get_addon_paths
 from ...helpers.system import run_cmd
-from ..db.connection import DBConnection
-from ..launch import bootstrap_and_prep_launch_cmd
+from ...models import GodooConfig, GodooModules
+from ..odoo_bin.bootstrap import bootstrap_and_prep_launch_cmd
 from ..shell.shell import odoo_shell
 
 CLI = CommonCLI()
@@ -48,12 +47,20 @@ def odoo_load_test_data(
     Makes sure Odoo is bootstrapped with the given modules and then
     calls `tests.data.generate_test_data(env)` for each module.
     """
-    addon_paths = get_addon_paths(
-        odoo_main_repo=odoo_main_path,
+    godoo_conf = GodooConfig(
+        db_user=db_user,
+        db_password=db_password,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_filter=db_filter,
+        odoo_install_folder=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
+        multithread_worker_count=multithread_worker_count,
     )
-    godoo_test_modules = list(GodooModules(addon_paths).get_modules(test_modules))
+    godoo_test_modules = list(GodooModules(godoo_conf.addon_paths).get_modules(test_modules))
     test_module_names = [m.name for m in godoo_test_modules]
     module_list_csv = ",".join(test_module_names)
     LOGGER.info("Installing Test data for Odoo Modules:\n%s", sorted(test_module_names))
@@ -83,26 +90,12 @@ def odoo_load_test_data(
     if extra_bootstrap_args:
         bootstrap_args = extra_bootstrap_args + bootstrap_args
 
-    db_connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name=db_name,
-    )
-
     launch_cmd = bootstrap_and_prep_launch_cmd(
-        odoo_main_path=odoo_main_path,
-        workspace_addon_path=workspace_addon_path,
-        thirdparty_addon_path=thirdparty_addon_path,
-        odoo_conf_path=odoo_conf_path,
-        db_filter=db_filter,
-        db_connection=db_connection,
+        godoo_conf=godoo_conf,
         dev_mode=False,
         install_workspace_addons=False,
         extra_launch_args=launch_args,
         extra_bootstrap_args=bootstrap_args,
-        multithread_worker_count=multithread_worker_count,
         odoo_demo=False,
         launch_or_bootstrap=True,
     )

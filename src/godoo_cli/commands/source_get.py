@@ -13,11 +13,10 @@ from ruamel.yaml import YAML
 
 from ..cli_common import CommonCLI
 from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
-from ..helpers.modules import GodooModules, get_addon_paths, get_zip_addon_path
 from ..helpers.modules_py import _install_py_reqs_for_modules
 from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
-from .db.connection import DBConnection
+from ..models import DBConnection, GodooConfig, GodooModules
 from .db.query import _get_installed_modules
 
 LOGGER = logging.getLogger(__name__)
@@ -131,13 +130,20 @@ def py_depends_by_db(
         return CLI.returner(module_list)
     LOGGER.info("Ensuring Py Reqiurements for Installed Modules are met")
     LOGGER.debug("Modules:\n%s", module_list)
-    odoo_addon_paths = get_addon_paths(
-        odoo_main_repo=odoo_main_path,
+    godoo_config = GodooConfig(
+        db_user=db_user,
+        db_password=db_password,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_filter=".*",
+        odoo_install_folder=odoo_main_path,
+        odoo_conf_path=Path("/tmp/odoo.conf"),
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
     module_list = list(module_list)
-    module_reg = GodooModules(odoo_addon_paths)
+    module_reg = GodooModules(godoo_config.addon_paths)
     modules = list(module_reg.get_modules(module_list, raise_missing_names=False))
     _install_py_reqs_for_modules(modules, module_reg)
 
@@ -153,18 +159,22 @@ def get_installed_module_paths(
     db_password: Annotated[str, CLI.database.db_password] = "",
 ):
     """Get Paths of all installed modules in DB."""
-    connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
-    module_list = _get_installed_modules(connection)
-    if isinstance(module_list, int):
-        return CLI.returner(module_list)
-    LOGGER.debug("Searching Folders for:\n%s", module_list)
-    odoo_addon_paths = get_addon_paths(
-        odoo_main_repo=odoo_main_path,
+    godoo_config = GodooConfig(
+        db_user=db_user,
+        db_password=db_password,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        odoo_install_folder=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
+    module_list = _get_installed_modules(godoo_config.db_connection)
+    if isinstance(module_list, int):
+        return CLI.returner(module_list)
+    LOGGER.debug("Searching Folders for:\n%s", module_list)
     module_list = list(module_list)
-    modules = GodooModules(odoo_addon_paths).get_modules(module_list)
+    modules = GodooModules(godoo_config.addon_paths).get_modules(module_list)
     for m in modules:
         print(m.path.absolute())  # pylint: disable=print-used
 
@@ -179,15 +189,14 @@ def py_depends_by_modules(
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
 ):
     """Install dependencies from __manifest__.py in specified modules."""
-    odoo_addon_paths = get_addon_paths(
-        odoo_main_repo=odoo_main_path,
+    godoo_config = GodooConfig(
+        odoo_install_folder=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-
     if len(module_list) == 1 and module_list[0] == "all":
         module_list = []
-    module_reg = GodooModules(odoo_addon_paths)
+    module_reg = GodooModules(godoo_config.addon_paths)
     modules = list(module_reg.get_modules(module_list))
     _install_py_reqs_for_modules(modules, module_reg)
 
@@ -251,14 +260,21 @@ def get_source(
 ):
     """Download/unzip Odoo source and thirdparty addons."""
     LOGGER.info("Updating Source Repos")
-    zip_addon_path = get_zip_addon_path(thirdparty_addon_path)
+    godoo_config = GodooConfig(
+        odoo_install_folder=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+    )
 
     if update_mode in ["all", "zip"]:
-        unpack_addon_archives(thirdparty_zip_source, zip_addon_path, remove_excess=remove_unspecified_addons)
+        unpack_addon_archives(
+            thirdparty_zip_source, godoo_config.zip_addon_path, remove_excess=remove_unspecified_addons
+        )
 
     if update_mode in ["all", "odoo"]:
         git_ensure_odoo_repo(
-            target_folder=odoo_main_path,
+            target_folder=godoo_config.odoo_install_folder,
             manifest_file=manifest_path,
             force_fetch=force_fetch,
             add_compare_comment=add_compare_comments,
@@ -268,7 +284,7 @@ def get_source(
 
     if update_mode in ["all", "thirdparty"]:
         git_repos = git_ensure_addon_repos(
-            root_folder=thirdparty_addon_path,
+            root_folder=godoo_config.thirdparty_addon_path,
             git_yml_path=manifest_path,
             generate_yml_compare_comments=add_compare_comments,
             download_archive=download_zipmode,
@@ -276,17 +292,13 @@ def get_source(
         )
         if remove_unspecified_addons:
             remove_unused_folders(
-                thirdparty_addon_path=thirdparty_addon_path,
+                thirdparty_addon_path=godoo_config.thirdparty_addon_path,
                 thirdparty_repos=git_repos.get("thirdparty", []),
-                keep_folders=[zip_addon_path],
+                keep_folders=[godoo_config.zip_addon_path],
             )
 
     if (conf_path := odoo_conf_path).exists():
-        odoo_addon_paths = get_addon_paths(
-            odoo_main_repo=odoo_main_path,
-            workspace_addon_path=workspace_addon_path,
-            thirdparty_addon_path=thirdparty_addon_path,
-        )
+        odoo_addon_paths = godoo_config.addon_paths
         update_odoo_conf_addon_paths(odoo_conf=conf_path, addon_paths=odoo_addon_paths)
 
 
@@ -297,12 +309,13 @@ def update_odoo_conf(
     thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
 ):
     """Update Odoo.conf with Addon Paths."""
-    odoo_addon_paths = get_addon_paths(
-        odoo_main_repo=odoo_main_path,
+    godoo_conf = GodooConfig(
+        odoo_install_folder=odoo_main_path,
+        odoo_conf_path=odoo_conf,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    update_odoo_conf_addon_paths(odoo_conf=odoo_conf, addon_paths=odoo_addon_paths)
+    update_odoo_conf_addon_paths(odoo_conf=odoo_conf, addon_paths=godoo_conf.addon_paths)
 
 
 def source_cli_app():

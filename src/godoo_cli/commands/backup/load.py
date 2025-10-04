@@ -11,7 +11,7 @@ from typing import Annotated, Optional
 import typer
 
 from ...cli_common import CommonCLI
-from ..db.connection import DBConnection
+from ...models import DBConnection
 from .util import call_rsync, create_db, drop_db
 
 LOGGER = logging.getLogger(__name__)

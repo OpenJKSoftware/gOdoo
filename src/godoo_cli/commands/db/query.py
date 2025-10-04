@@ -13,7 +13,7 @@ from psycopg2 import OperationalError, ProgrammingError
 
 from ...cli_common import CommonCLI
 from ...helpers.cli import check_dangerous_command
-from .connection import DBConnection
+from ...models import DBConnection
 
 
 class DbBootstrapStatus(enum.Enum):
