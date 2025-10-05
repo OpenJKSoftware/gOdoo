@@ -206,15 +206,15 @@ RUN set -ex; \
 # Install system packages that require root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked set -ex; \
-    apt-get install default-jre -y
+    apt-get update \
+    && apt-get install default-jre -y
 
 # Switch back to non-root user for npm and pip installations
 USER ${USERNAME}
 RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 \
     --mount=type=cache,target=/root/.npm,uid=1000,gid=1000 set -ex; \
     npm install -g prettier eslint \
-    && uv pip install pydevd-odoo pre-commit jingtrang \
-    && sudo apt-get install default-jre -y
+    && uv pip install pydevd-odoo pre-commit jingtrang
 
 ENV EDITOR=code
 ENTRYPOINT  [ "/bin/sh", "-c", "service nginx start; sleep infinity"]
