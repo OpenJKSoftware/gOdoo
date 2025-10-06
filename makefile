@@ -28,3 +28,6 @@ reset-hard: # To be called from Outside the Devcontainer
 
 rebuild:
 	cd docker && docker compose -f docker-compose.base.yml -f docker-compose.devcontainer.yml build
+
+lint:
+	hatch run dev:lint
