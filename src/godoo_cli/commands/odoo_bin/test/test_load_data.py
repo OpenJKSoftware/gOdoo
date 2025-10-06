@@ -4,11 +4,11 @@ from typing import Annotated, Optional
 
 import typer
 
-from ...cli_common import CommonCLI
-from ...helpers.system import run_cmd
-from ...models import GodooConfig, GodooModules
-from ..odoo_bin.bootstrap import bootstrap_and_prep_launch_cmd
-from ..shell.shell import odoo_shell
+from ....cli_common import CommonCLI
+from ....helpers.system import run_cmd
+from ....models import GodooConfig, GodooModules
+from ..bootstrap import bootstrap_and_prep_launch_cmd
+from ..shell import odoo_shell
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)

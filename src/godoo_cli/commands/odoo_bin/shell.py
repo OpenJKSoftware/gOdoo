@@ -21,7 +21,7 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
-def uninstall_modules(
+def odoo_shell_uninstall_modules(
     module_list: Annotated[list[str], typer.Argument(help="List of Modules to uninstall")],
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
@@ -89,7 +89,7 @@ def complete_script_name():
     Returns:
         List[str]: List of script names without their .py extension.
     """
-    script_folder = Path(__file__).parent / "scripts"
+    script_folder = Path(__file__).parent / "shell-scripts"
     return [p.stem for p in script_folder.glob("*.py")]
 
 

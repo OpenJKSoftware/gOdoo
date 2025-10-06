@@ -13,22 +13,8 @@ from dotenv import load_dotenv
 from rich import print as rich_print
 
 from . import __about__
+from . import commands as cmd
 from .cli_common import CommonCLI
-from .commands import (
-    backup_cli_app,
-    bootstrap_odoo,
-    db_cli_app,
-    launch_import,
-    launch_odoo,
-    odoo_run_tests,
-    odoo_shell,
-    odoo_shell_run_script,
-    rpc_cli_app,
-    set_odoo_config,
-    source_cli_app,
-    test_cli_app,
-    uninstall_modules,
-)
 from .helpers.odoo_files import odoo_bin_get_version
 from .helpers.system import set_logging
 
@@ -83,30 +69,30 @@ def main_cli():
 
     # Nested Subcommands
     app.add_typer(
-        typer_instance=rpc_cli_app(),
+        typer_instance=cmd.rpc_cli_app(),
         name="rpc",
     )
     app.add_typer(
-        typer_instance=db_cli_app(),
+        typer_instance=cmd.db_cli_app(),
         name="db",
     )
     app.add_typer(
-        typer_instance=source_cli_app(),
+        typer_instance=cmd.source_cli_app(),
         name="source",
     )
-    app.add_typer(typer_instance=backup_cli_app(), name="backup")
-    app.add_typer(typer_instance=test_cli_app(), name="test")
+    app.add_typer(typer_instance=cmd.backup_cli_app(), name="backup")
+    app.add_typer(typer_instance=cmd.test_cli_app(), name="test")
 
     # Normal Subcommands
     app.command("version")(print_versions)
-    app.command("bootstrap")(bootstrap_odoo)
-    app.command("launch")(launch_odoo)
-    app.command("launch-import")(launch_import)
-    app.command("test")(odoo_run_tests)
-    app.command("config")(set_odoo_config)
-    app.command("shell")(odoo_shell)
-    app.command("shell-script")(odoo_shell_run_script)
-    app.command("uninstall")(uninstall_modules)
+    app.command("bootstrap")(cmd.bootstrap_odoo)
+    app.command("launch")(cmd.launch_odoo)
+    app.command("launch-import")(cmd.launch_import)
+    app.command("test")(cmd.odoo_run_tests)
+    app.command("config")(cmd.set_odoo_config)
+    app.command("shell")(cmd.odoo_shell)
+    app.command("shell-script")(cmd.odoo_shell_run_script)
+    app.command("uninstall")(cmd.odoo_shell_uninstall_modules)
     return app
 
 

@@ -18,9 +18,9 @@ from ...helpers.modules_py import _install_py_reqs_by_odoo_cmd
 from ...helpers.system import run_cmd
 from ...models import GodooConfig
 from ..db.query import DbBootstrapStatus, _is_bootstrapped
-from ..shell.shell import odoo_shell_run_script
 from ..source_get import py_depends_by_db, update_odoo_conf
 from .cli_generate import _boostrap_command, _launch_command
+from .shell import odoo_shell_run_script
 
 CLI = CommonCLI()
 
