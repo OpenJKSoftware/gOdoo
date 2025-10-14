@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from functools import cached_property  # <-- Add this import
 from pathlib import Path
+from typing import Optional
 
 from .db_connection import DBConnection
 from .godoo_modules import GodooModules
@@ -26,10 +27,10 @@ class OdooVersion:
 class GodooConfig:
     """Structure to hold Essential values for Godoo."""
 
-    odoo_install_folder: Path | None = None
-    odoo_conf_path: Path | None = None
-    workspace_addon_path: Path | None = None
-    thirdparty_addon_path: Path | None = None
+    odoo_install_folder: Optional[Path] = None
+    odoo_conf_path: Optional[Path] = None
+    workspace_addon_path: Optional[Path] = None
+    thirdparty_addon_path: Optional[Path] = None
 
     multithread_worker_count: int = -1  # -1 is treated as autodetect
     languages: str = "de_DE,en_US"
