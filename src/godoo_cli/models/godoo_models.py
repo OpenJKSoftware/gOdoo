@@ -26,10 +26,10 @@ class OdooVersion:
 class GodooConfig:
     """Structure to hold Essential values for Godoo."""
 
-    odoo_install_folder: Path = None
-    odoo_conf_path: Path = None
-    workspace_addon_path: Path = None
-    thirdparty_addon_path: Path = None
+    odoo_install_folder: Path | None = None
+    odoo_conf_path: Path | None = None
+    workspace_addon_path: Path | None = None
+    thirdparty_addon_path: Path | None = None
 
     multithread_worker_count: int = -1  # -1 is treated as autodetect
     languages: str = "de_DE,en_US"
@@ -70,7 +70,7 @@ class GodooConfig:
 
         return odoo_bin_get_version(self.odoo_install_folder)
 
-    @property
+    @cached_property
     def addon_paths(self) -> list[Path]:
         """Get all valid Odoo addon paths for the odoo.conf addons_path setting.
 
