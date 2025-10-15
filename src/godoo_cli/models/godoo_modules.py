@@ -90,8 +90,6 @@ class GodooModules:
         if not isinstance(addon_paths, list):
             addon_paths = [addon_paths]
         self.addon_paths = addon_paths
-        LOGGER.debug("Initializing GodooModules")
-        LOGGER.debug("Addon Paths: %s", ", ".join(str(p) for p in self.addon_paths))
         self.godoo_modules: dict[str, GodooModule] = {}
 
     def get_modules(
