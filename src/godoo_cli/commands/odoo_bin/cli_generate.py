@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ...models import GodooConfig, GodooModules
+from ..db.query import DbBootstrapStatus, _is_bootstrapped
 
 LOGGER = logging.getLogger(__name__)
 
@@ -99,15 +100,23 @@ def _boostrap_command(
     init_modules = []
 
     extra_cmd_args_str = " ".join(extra_cmd_args or [])
-    if not re.search(r"(-i|--init) ", extra_cmd_args_str):
-        if install_workspace_modules:
-            workspace_modules = GodooModules([godoo_config.workspace_addon_path])
-            if workspace_addons := workspace_modules.get_modules():
-                init_modules = [
-                    f.name for f in workspace_addons if f.version.split(".")[0] == godoo_config.odoo_version.major
-                ]
+    if install_workspace_modules and not re.search(r"(-i|--init|-u|--update) ", extra_cmd_args_str):
+        LOGGER.debug("Auto-detecting workspace modules for Bootstrapping")
+        workspace_modules = GodooModules([godoo_config.workspace_addon_path])
+        if workspace_addons := workspace_modules.get_modules():
+            init_modules = [
+                f.name for f in workspace_addons if f.version.split(".")[0] == godoo_config.odoo_version.major
+            ]
         init_modules = init_modules or ["base", "web"]
-    init_cmd = "--init " + ",".join(init_modules) if init_modules else ""
+
+    # if we are in a situation, where we call godoo bootstrap on a database that already has data,
+    # we should not pass --init but --update
+    init_cmd = ""
+    if init_modules:
+        if _is_bootstrapped(godoo_config.db_connection) == DbBootstrapStatus.BOOTSTRAPPED:
+            init_cmd = "--update " + ",".join(init_modules)
+        else:
+            init_cmd = "--init " + ",".join(init_modules)
 
     addon_paths_str_list = [str(p.absolute()) for p in addon_paths if p and p.exists()]
     addon_paths_str = ", ".join(addon_paths_str_list)
