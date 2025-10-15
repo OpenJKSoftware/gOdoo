@@ -39,6 +39,7 @@ class DBConnection:
     password: str
     db_name: str
     conn_timeout = 10
+    readonly: bool = False
 
     def get_connection(self):
         """Get a database connection."""
@@ -92,8 +93,9 @@ class DBConnection:
         cr = connection.cursor()
         try:
             yield cr
-            LOGGER.debug("Committing DB cursor")
-            connection.commit()
+            if not self.readonly:
+                LOGGER.debug("Committing DB cursor")
+                connection.commit()
         except Exception as e:
             LOGGER.warning("Rolling Back DB cursor. Got Exception: %s", e)
             connection.rollback()

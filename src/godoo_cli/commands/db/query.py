@@ -60,6 +60,7 @@ def query_database(
         username=db_user,
         password=db_password,
         db_name=db_name,
+        readonly=True,
     )
     with connection.connect() as cursor:
         try:
@@ -114,6 +115,7 @@ def is_bootstrapped(
         username=db_user,
         password=db_password,
         db_name=db_name,
+        readonly=True,
     )
     bootstrap_value = _is_bootstrapped(db_connection=connection)
     LOGGER.info("Odoo Database Status: %s", bootstrap_value.value)
@@ -162,6 +164,7 @@ def get_installed_modules(
         username=db_user,
         password=db_password,
         db_name=db_name,
+        readonly=True,
     )
     installed_modules = _get_installed_modules(db_connection=db_connection, to_install=to_install)
     if isinstance(installed_modules, int):
