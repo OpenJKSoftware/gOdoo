@@ -20,6 +20,8 @@ from ...models import GodooConfig
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
+SHELL_SCRIPTS_PATH = Path(__file__).parent / "shell_scripts"
+
 
 def odoo_shell_uninstall_modules(
     module_list: Annotated[list[str], typer.Argument(help="List of Modules to uninstall")],
@@ -89,8 +91,7 @@ def complete_script_name():
     Returns:
         List[str]: List of script names without their .py extension.
     """
-    script_folder = Path(__file__).parent / "shell-scripts"
-    return [p.stem for p in script_folder.glob("*.py")]
+    return [p.stem for p in SHELL_SCRIPTS_PATH.glob("*.py")]
 
 
 def odoo_shell_run_script(
@@ -114,10 +115,9 @@ def odoo_shell_run_script(
     Returns:
         int: 0 for success, non-zero for failure.
     """
-    script_folder = Path(__file__).parent / "scripts"
-    script_path = script_folder / f"{script_name}.py"
+    script_path = SHELL_SCRIPTS_PATH / f"{script_name}.py"
     if not script_path.exists():
-        LOGGER.error("Script '%s' not found in %s", script_name, script_folder)
+        LOGGER.error("Script '%s' not found in %s", script_name, SHELL_SCRIPTS_PATH)
         return CLI.returner(1)
 
     shell_cmd = f"{odoo_main_path.absolute()!s}/odoo-bin shell --no-http"
