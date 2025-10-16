@@ -41,6 +41,7 @@ def query_database(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
+    readonly: Annotated[bool, typer.Option(help="Run query in readonly mode", show_default=True)] = True,
 ):
     """Run a Query against the database.
 
@@ -60,7 +61,7 @@ def query_database(
         username=db_user,
         password=db_password,
         db_name=db_name,
-        readonly=True,
+        readonly=readonly,
     )
     with connection.connect() as cursor:
         try:
