@@ -51,10 +51,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Remove whats between the ----- and replace with: RUN pip install godoo
 # Install only dependencies, so they only reinstall when lock or toml where changed
 COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --no-install-project --compile-bytecode
+COPY ./src/godoo_cli/__about__.py ./src/godoo_cli/__about__.py
+RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --no-install-project --compile-bytecode --frozen
 
 COPY --chown=$USERNAME:$USERNAME ./src ./src
-RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --all-extras --compile-bytecode
+RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --all-extras --compile-bytecode --frozen
 # In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
 # ------------------------------------------------------------------------------------------------------
 # Godoo Pypi Install via pip

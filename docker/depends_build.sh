@@ -23,6 +23,7 @@ apt-get install -y -q --no-install-recommends \
     curl \
     unzip \
     postgresql-client-17 \
+    libpq-dev \
     libldap2-dev \
     libssl-dev \
     libsasl2-dev \
