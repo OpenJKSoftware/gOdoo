@@ -131,7 +131,8 @@ def odoo_run_tests(  # noqa: C901
     module_list = ",".join(module_names)
 
     LOGGER.info("Testing Odoo Modules:\n%s", sorted(module_names))
-    if "account" in [p.name for p in depends]:
+    if "account" in [p.name for p in depends] and godoo_conf.odoo_version.major <= 16:
+        # l10n_generic_coa got removed in Odoo 16
         bootstrap_args = [f"--init {module_list},l10n_generic_coa"]
     else:
         bootstrap_args = [f"--init {module_list}"]
