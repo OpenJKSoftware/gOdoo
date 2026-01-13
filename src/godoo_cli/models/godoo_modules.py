@@ -9,6 +9,7 @@ from typing import Any, Optional, Union
 
 LOGGER = getLogger(__name__)
 NO_MODULE_PATHS: set[Path] = set()
+SPECIAL_MODULES = {"base", "studio_customization"}
 
 
 class NotAValidModuleError(ValueError):
@@ -132,6 +133,8 @@ class GodooModules:
 
     def get_module(self, name: str) -> Optional[GodooModule]:
         """Get one Specific Module by Name. Returns None if not found."""
+        if name in SPECIAL_MODULES:
+            return None
         if mod := self.godoo_modules.get(name):
             return mod
         for mod in self._get_modules():
