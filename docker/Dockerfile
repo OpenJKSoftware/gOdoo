@@ -117,6 +117,7 @@ COPY --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATIO
 COPY --from=odoo_requirements $VIRTUAL_ENV $VIRTUAL_ENV
 
 COPY ../config/nginx.conf /etc/nginx/nginx.conf
+COPY ../config/nginx-proxy_headers.conf /etc/nginx/proxy_headers.conf
 COPY ../config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY ../scripts/launchodoo.sh launchodoo.sh
 COPY ../scripts/migrations migrations
