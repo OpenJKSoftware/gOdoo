@@ -12,99 +12,86 @@ from pathlib import Path
 
 from git import Repo
 
-from ..helpers.odoo_manifest import update_yml, yaml_roundtrip_loader
+from ..models import GodooGitRepo, GodooManifest
 from .git_repo import git_ensure_repo
-from .git_url import GitUrl
+
+
+def git_ensure_repo_matches_manifest(
+    target_folder: Path,
+    repo_spec: GodooGitRepo,
+    default_branch: str = "master",
+    force_fetch: bool = False,
+    download_archive: bool = False,
+    pin_commit: bool = False,
+) -> Repo:
+    """Clone or update a repository based on a manifest spec."""
+    effective_branch = repo_spec.branch or default_branch
+    repo = git_ensure_repo(
+        target_folder=target_folder,
+        repo_src=repo_spec.url,
+        branch=effective_branch,
+        commit=repo_spec.commit or "",
+        pull=repo_spec.ref if force_fetch else "",
+        zip_mode=download_archive,
+        filter="blob:none",
+        single_branch=True,
+    )
+    if pin_commit and repo:
+        repo_spec.commit = repo.head.commit.hexsha
+    return repo
+
 
 LOGGER = logging.getLogger(__name__)
 
 
-def git_ensure_addon_repos(
+def git_ensure_thirdparty_repos(
     root_folder: Path,
-    git_yml_path: Path,
-    generate_yml_compare_comments: bool = False,
+    manifest: GodooManifest,
     download_archive: bool = False,
     pin_commits: bool = False,
-):
-    """Clone repos specified in Yml.
-
-    Parameters
-    ----------
-    root_folder : Path
-        clone target folder
-    git_yml_path : Path
-        yml describing what to clone
-    generate_yml_compare_comments : bool, optional
-        wether to add three dot compare on remote to repo urls
-    download_archive : bool, optional
-        wether to download as .zip (fast but no history), by default False
-    pin_commits : bool, optional
-        pin commits in yml, by default False
-    """
-    yaml = yaml_roundtrip_loader()
-    git_repos = yaml.load(git_yml_path.resolve())
-    if result := _git_clone_addon_repos(
-        root_folder=root_folder, git_repos=git_repos, download_archive=download_archive
-    ):
-        update_yml(git_repos, result, generate_yml_compare_comments, pin_commits)
-        LOGGER.info("Updating Git Thirdparty Repo Commit hashes")
-        yaml.dump(git_repos, git_yml_path)
-
-    return git_repos
-
-
-def _git_clone_addon_repos(
-    root_folder: Path,
-    git_repos: dict[str, dict[str, str]],
-    download_archive: bool = False,
+    generate_yml_compare_comments: bool = False,
 ) -> dict[str, Repo]:
-    """Clones Git repos specified in dict into Root folder.
+    """Clone Thirdparty Addon Repositories specified in Manifest parallely.
 
     Ensures repo names are prefixed and uses 8 threads to clone.
 
-    Parameters
-    ----------
-    root_folder : Path
-        clone target folder
-    git_repos : Dict[str, Dict[str, str]]
-        dict of {parent_folder_name:{"url":clone_url,"branch":clone_branch,"commit":specific_commit_to_clone}}
-        branch and commit are optional
-        branch defaults to odoo branch from spec file
-    download_archive : bool, optional
-        wether to download as .zip (fast but no history), by default False
+    Args:
+        root_folder: Clone target folder.
+        manifest: Parsed GodooManifest instance.
+        download_archive: Whether to download as .zip (fast but no history).
+        pin_commits: Whether to pin commits in manifest to current HEAD SHA.
+        generate_yml_compare_comments: Whether to emit compare URL comments when manifest is saved.
 
     Returns:
-    -------
-    Dict[str:Commit]
-        dict of {git_src_url:HeadCommit}
+        Dict mapping addon folder names to Repo instances.
     """
-    default_branch = git_repos["odoo"].get("branch", "master")
+    if not manifest.thirdparty:
+        LOGGER.info("No Thirdparty Key in manifest. Skipping...")
+        return {}
+
     LOGGER.info("Cloning Thirdparty Addons source.")
+    if generate_yml_compare_comments:
+        LOGGER.debug("Compare URL comments will be handled during manifest serialization.")
     with concurrent.futures.ThreadPoolExecutor(8) as executor:
-        futures = []
-        thirdparty_repos: dict[str, list[dict[str, str]]] = git_repos.get("thirdparty")  # type: ignore
-        if not thirdparty_repos:
-            LOGGER.info("No Thirdparty Key in manifest. Skipping...")
-            return {}
-        for prefix, repos in thirdparty_repos.items():
-            for repo in repos:
-                url = repo["url"]
-                repo_url = GitUrl(url)
-                name = f"{prefix}_{repo_url.name}"
-                futures.append(
-                    (
-                        url,
-                        executor.submit(
-                            git_ensure_repo,
-                            target_folder=Path(root_folder / name),
-                            repo_src=repo_url.url,
-                            branch=repo.get("branch", default_branch),
-                            commit=repo.get("commit"),  # type: ignore
-                            zip_mode=download_archive,
-                            filter="blob:none",
-                            single_branch=True,
-                        ),
-                    )
+        futures: list[tuple[str, concurrent.futures.Future[Repo]]] = []
+
+        for prefix, repo_spec in manifest.iter_thirdparty_repos():
+            folder_name = f"{prefix}_{repo_spec.name}"
+            futures.append(
+                (
+                    folder_name,
+                    executor.submit(
+                        git_ensure_repo_matches_manifest,
+                        target_folder=root_folder / folder_name,
+                        repo_spec=repo_spec,
+                        default_branch=manifest.default_branch,
+                        force_fetch=False,
+                        download_archive=download_archive,
+                        pin_commit=pin_commits,
+                    ),
                 )
-        clone_results: dict[str, Repo] = {r: f.result() for r, f in futures if r}
+            )
+
+        clone_results: dict[str, Repo] = {folder: future.result() for folder, future in futures if folder}
+
     return clone_results

@@ -9,14 +9,13 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from ruamel.yaml import YAML
 
 from ..cli_common import CommonCLI
-from ..git import GitUrl, git_ensure_addon_repos, git_ensure_odoo_repo
+from ..git.git_odoo_addons import git_ensure_repo_matches_manifest, git_ensure_thirdparty_repos
+from ..git.git_url import GitUrl
 from ..helpers.modules_py import _install_py_reqs_for_modules
-from ..helpers.odoo_manifest import remove_unused_folders
 from ..helpers.system import download_file
-from ..models import DBConnection, GodooConfig, GodooModules
+from ..models import DBConnection, GodooConfig, GodooManifest, GodooModules
 from .db.query import _get_installed_modules
 
 LOGGER = logging.getLogger(__name__)
@@ -214,10 +213,9 @@ def get_source_file(
         LOGGER.error(msg)
         raise ValueError(msg)
     if manifest_path and not repo_url:
-        manifest = YAML().load(manifest_path.resolve())
-        odoo_spec = manifest["odoo"]
-        repo_url = odoo_spec["url"]
-        file_ref = odoo_spec.get("commit") or odoo_spec.get("branch")
+        manifest = GodooManifest.from_yaml_file(manifest_path)
+        repo_url = manifest.odoo.url
+        file_ref = manifest.odoo.ref
     if not file_ref:
         msg = "Need to provide file ref. If you provided a manifest, make sure there is a branch or commit key in the odoo section"
         LOGGER.error(msg)
@@ -266,36 +264,57 @@ def get_source(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
+    update_zip = update_mode in ["all", "zip"]
+    update_odoo = update_mode in ["all", "odoo"]
+    update_thirdparty = update_mode in ["all", "thirdparty"]
 
-    if update_mode in ["all", "zip"]:
+    if not manifest_path:
+        msg = "Manifest path is required when updating Odoo or third-party sources."
+        LOGGER.error(msg)
+        raise ValueError(msg)
+    manifest = GodooManifest.from_yaml_file(manifest_path)
+
+    if update_zip:
         unpack_addon_archives(
             thirdparty_zip_source, godoo_config.zip_addon_path, remove_excess=remove_unspecified_addons
         )
 
-    if update_mode in ["all", "odoo"]:
-        git_ensure_odoo_repo(
+    if update_odoo:
+        repo_spec = manifest.odoo if manifest else None
+        if not repo_spec:
+            msg = "Manifest is required to update Odoo source."
+            LOGGER.error(msg)
+            raise ValueError(msg)
+        git_ensure_repo_matches_manifest(
             target_folder=godoo_config.odoo_install_folder,
-            manifest_file=manifest_path,
+            repo_spec=repo_spec,
+            default_branch=manifest.default_branch,
             force_fetch=force_fetch,
-            add_compare_comment=add_compare_comments,
             download_archive=download_zipmode,
             pin_commit=pin_commits,
         )
+        odoo_bin = godoo_config.odoo_install_folder / "odoo-bin"
+        if odoo_bin.exists():
+            LOGGER.debug("chmod odoo-bin +executable")
+            odoo_bin.chmod(0o755)
+        else:
+            LOGGER.warning("Could not find odoo-bin in %s", godoo_config.odoo_install_folder)
 
-    if update_mode in ["all", "thirdparty"]:
-        git_repos = git_ensure_addon_repos(
+    if update_thirdparty:
+        git_ensure_thirdparty_repos(
             root_folder=godoo_config.thirdparty_addon_path,
-            git_yml_path=manifest_path,
+            manifest=manifest,
             generate_yml_compare_comments=add_compare_comments,
             download_archive=download_zipmode,
             pin_commits=pin_commits,
         )
         if remove_unspecified_addons:
-            remove_unused_folders(
+            manifest.remove_unused_addon_folders(
                 thirdparty_addon_path=godoo_config.thirdparty_addon_path,
-                thirdparty_repos=git_repos.get("thirdparty", []),
                 keep_folders=[godoo_config.zip_addon_path],
             )
+    if add_compare_comments:
+        manifest.to_yaml_file(add_compare_urls=add_compare_comments)
 
     if (conf_path := odoo_conf_path).exists():
         odoo_addon_paths = godoo_config.addon_paths

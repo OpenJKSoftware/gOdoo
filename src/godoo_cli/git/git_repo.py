@@ -36,7 +36,8 @@ def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs: dict[str, Any
     if target_folder.exists():
         LOGGER.debug("Clearing Repo folder: %s", target_folder)
         shutil.rmtree(target_folder)
-    return Repo.clone_from(repo_src, target_folder, **kwargs)
+    repo = Repo.clone_from(repo_src, target_folder, **kwargs)
+    return repo
 
 
 def git_pull_checkout_reset(
@@ -119,7 +120,7 @@ def git_ensure_ref(
     **kwargs
         get passed to git clone
     """
-    LOGGER.info("Ensuring Repo '%s' --> '%s'", repo_src, target_folder)
+    LOGGER.info("Ensuring Repo '%s' Branch: '%s' Commit: '%s' --> '%s'", repo_src, branch, commit, target_folder)
     target_folder.mkdir(exist_ok=True, parents=True)
     try:
         repo = Repo(target_folder)
@@ -141,6 +142,7 @@ def git_ensure_ref(
                 pull = str(branch)
 
         git_pull_checkout_reset(repo=repo, branch=branch, commit=commit, pull=pull)
+        repo = Repo(target_folder)  # re-instantiate to update head info after pull/checkout
 
         if current == str(repo.head.commit):
             LOGGER.debug("Repo Commit matches. Skipping: '%s' --> '%s'", repo_src, current)

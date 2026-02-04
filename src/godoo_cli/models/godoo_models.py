@@ -1,11 +1,12 @@
 """Models For general Godoo Settings."""
 
 from dataclasses import dataclass
-from functools import cached_property  # <-- Add this import
+from functools import cached_property
 from pathlib import Path
 from typing import Optional
 
 from .db_connection import DBConnection
+from .godoo_manifest import GodooManifest
 from .godoo_modules import GodooModules
 
 
@@ -31,6 +32,7 @@ class GodooConfig:
     odoo_conf_path: Optional[Path] = None
     workspace_addon_path: Optional[Path] = None
     thirdparty_addon_path: Optional[Path] = None
+    manifest_path: Optional[Path] = None
 
     multithread_worker_count: int = -1  # -1 is treated as autodetect
     languages: str = "de_DE,en_US"
@@ -42,6 +44,20 @@ class GodooConfig:
     db_name: str = ""
 
     db_filter: str = ""
+
+    @cached_property
+    def manifest(self) -> GodooManifest:
+        """Return the parsed manifest file (cached).
+
+        Raises:
+            ValueError: If manifest_path is not configured.
+        """
+        from .godoo_manifest import GodooManifest
+
+        if not self.manifest_path:
+            msg = "manifest_path not configured in GodooConfig"
+            raise ValueError(msg)
+        return GodooManifest.from_yaml_file(self.manifest_path)
 
     @cached_property
     def db_connection(self) -> DBConnection:
