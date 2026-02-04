@@ -10,7 +10,7 @@ import concurrent.futures
 import logging
 from pathlib import Path
 
-from git import Repo
+from git import Remote, Repo
 
 from ..models import GodooGitRepo, GodooManifest
 from .git_repo import git_ensure_repo
@@ -23,25 +23,61 @@ def git_ensure_repo_matches_manifest(
     force_fetch: bool = False,
     download_archive: bool = False,
     pin_commit: bool = False,
-) -> Repo:
+):
     """Clone or update a repository based on a manifest spec."""
     effective_branch = repo_spec.branch or default_branch
+    zip_mode = download_archive and not repo_spec.merge_from
+    if download_archive and repo_spec.merge_from:
+        LOGGER.info("Disabling zip download for %s because merge_from is specified.", repo_spec.url)
     repo = git_ensure_repo(
         target_folder=target_folder,
         repo_src=repo_spec.url,
         branch=effective_branch,
         commit=repo_spec.commit or "",
         pull=repo_spec.ref if force_fetch else "",
-        zip_mode=download_archive,
+        zip_mode=zip_mode,
         filter="blob:none",
         single_branch=True,
     )
-    if pin_commit and repo:
-        repo_spec.commit = repo.head.commit.hexsha
-    return repo
+    repo_spec.target_path = target_folder
+    if repo:
+        if repo_spec.merge_from:
+            _merge_sources_into_repo(repo_spec)
+        if pin_commit:
+            repo_spec.commit = repo.head.commit.hexsha
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _ensure_remote(repo: Repo, name: str, url: str) -> Remote:
+    """Ensure a remote with the given name points to the desired URL."""
+    existing = next((remote for remote in repo.remotes if remote.name == name), None)
+    if existing:
+        urls = set(existing.urls)
+        if url not in urls:
+            existing.set_url(url)
+        return existing
+    return repo.create_remote(name, url)
+
+
+def _merge_sources_into_repo(godoo_repo: GodooGitRepo) -> None:
+    """Merge additional sources into the repository as merge commits."""
+    repo = godoo_repo.repo
+
+    for merge_spec in godoo_repo.merge_from:
+        remote_name = f"merge_from_{merge_spec.url.split('/')[-1].replace('.git', '')}"
+        remote = _ensure_remote(repo, remote_name, merge_spec.url)
+        fetch_ref = merge_spec.ref
+        LOGGER.info("Merging ref %s from %s into %s", fetch_ref, merge_spec.url, godoo_repo.ref)
+        remote.fetch(fetch_ref)
+        merge_target = merge_spec.commit or f"{remote.name}/{merge_spec.branch or fetch_ref}"
+        repo.git.merge(
+            merge_target,
+            "--no-ff",
+            "--no-edit",
+            "--allow-unrelated-histories",
+        )
 
 
 def git_ensure_thirdparty_repos(

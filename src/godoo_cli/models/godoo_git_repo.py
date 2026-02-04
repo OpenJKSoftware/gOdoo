@@ -1,12 +1,53 @@
 """Model wrapping a Git Repository in the Godoo Manifest."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
+from git import Repo
 from ruamel.yaml.comments import CommentedMap
 
 from ..git.git_url import GitUrl
+
+
+@dataclass(frozen=True)
+class GitMergeSource:
+    """Specification for a merge source repository.
+
+    Attributes:
+        url: Git repository URL (HTTPS or SSH format).
+        branch: Branch name to merge from.
+        commit: Commit SHA to merge from.
+    """
+
+    url: str
+    branch: Optional[str] = None
+    commit: Optional[str] = None
+
+    @property
+    def ref(self) -> str:
+        """Effective Git ref (commit if set, else branch)."""
+        return self.commit or self.branch or ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GitMergeSource":
+        """Create merge source from a dictionary (YAML node)."""
+        return cls(
+            url=data["url"],
+            branch=data.get("branch"),
+            commit=data.get("commit"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for YAML serialization."""
+        result: dict[str, Any] = {"url": self.url}
+        if self.branch:
+            result["branch"] = self.branch
+        if self.commit:
+            result["commit"] = self.commit
+        return result
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -19,16 +60,24 @@ class GodooGitRepo:
         url: Git repository URL (HTTPS or SSH format).
         branch: Branch name. Required for Odoo repo, optional for thirdparty.
         commit: Specific commit SHA to pin. If set, skips fetch when already at this commit.
+        merge_from: Additional repositories to merge on top of this repo.
     """
 
     url: str
     branch: Optional[str] = None
     commit: Optional[str] = None
+    target_path: Optional[Path] = field(default=None, repr=False)
+    merge_from: list[GitMergeSource] = field(default_factory=list)
 
     @property
     def git_url(self) -> GitUrl:
         """Parsed GitUrl instance for this repository."""
         return GitUrl(self.url)
+
+    @property
+    def repo(self) -> Repo:
+        """Target Path on the filesystem for this repository."""
+        return Repo(self.target_path)
 
     @property
     def name(self) -> str:
@@ -84,6 +133,11 @@ class GodooGitRepo:
         else:
             repo_node.pop("commit", None)
 
+        if self.merge_from:
+            repo_node["merge_from"] = [merge.to_dict() for merge in self.merge_from]
+        else:
+            repo_node.pop("merge_from", None)
+
         return repo_node
 
     @classmethod
@@ -96,10 +150,12 @@ class GodooGitRepo:
         Returns:
             New instance populated from dict.
         """
+        merge_from_data = data.get("merge_from") or []
         return cls(
             url=data["url"],
             branch=data.get("branch"),
             commit=data.get("commit"),
+            merge_from=[GitMergeSource.from_dict(m) for m in merge_from_data],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -113,10 +169,12 @@ class GodooGitRepo:
             result["branch"] = self.branch
         if self.commit:
             result["commit"] = self.commit
+        if self.merge_from:
+            result["merge_from"] = [merge.to_dict() for merge in self.merge_from]
         return result
 
     def __eq__(self, other: object) -> bool:
-        """Equality based on URL and branch only."""
+        """Equality including merge_from sources."""
         if not isinstance(other, GodooGitRepo):
             return NotImplemented
         return (self.url, self.branch or "", self.commit or "") == (other.url, other.branch or "", other.commit or "")

@@ -20,3 +20,7 @@ thirdparty:
         https://github.com/OCA/server-tools
         # branch: 19.0 # Branch is optional here. If not specified, the default branch of the Repo will be used.
         # commit: abcdef1234567890abcdef1234567890abcdef12 # Commit is also optional. If not specified, the branch will be used and pulled on every `godoo source get`.
+    - url: https://github.com/OCA/product-attribute.git
+      # merge_from: # We can also Create local merge commits on top of the downloaded Repo.
+      #   - url: https://github.com/fd-oerp/product-attribute.git
+      #     branch: 19.0-mig-product_sequence
