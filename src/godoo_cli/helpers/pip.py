@@ -21,7 +21,7 @@ def _has_uv() -> bool:
         return True
 
 
-def _check_pip_command() -> str:
+def pip_command() -> str:
     """Check which pip command is available and return the appropriate command string.
 
     Returns:
@@ -56,7 +56,7 @@ def _check_pip_command() -> str:
 
 def pip_install(package_names: list[str]):
     """Ensure pip packages are installed if not already present."""
-    # Some packages have different names on pypi and in odoo Manifests. Key is Odoo manigest, Value is pypi
+    # Some packages have different names on pypi and in odoo Manifests. Key is Odoo manifest, Value is pypi
     odoo_wrong_pkg_names = {
         "ldap": "python-ldap",
     }
@@ -65,7 +65,7 @@ def pip_install(package_names: list[str]):
     LOGGER.debug("Ensuring Pip Packages are installed:\n%s", package_names)
 
     # Get the appropriate pip command
-    pip_cmd = _check_pip_command()
+    pip_cmd = pip_command()
 
     installed_packages = run_cmd(
         f"{pip_cmd} list --format json",

@@ -12,12 +12,33 @@ from pathlib import Path
 from types import GeneratorType
 
 from ..models import GodooModule, GodooModules
-from .pip import pip_install
+from .pip import pip_command, pip_install
+from .system import run_cmd
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _install_py_reqs_for_modules(modules: list[GodooModule], module_reg: GodooModules):
+def install_base_python_reqs(odoo_install_folder: Path):
+    """Install base Python requirements for Odoo from requirements.txt.
+
+    Parameters
+    ----------
+    odoo_install_folder : Path
+        Path to the Odoo installation folder containing requirements.txt
+
+    Returns:
+    -------
+    CompletedProcess
+    """
+    reqs_file = odoo_install_folder / "requirements.txt"
+    if reqs_file.exists():
+        LOGGER.debug("Installing base Odoo Python requirements from %s", reqs_file)
+        return run_cmd(f"{pip_command()} install -r {reqs_file}")
+    else:
+        LOGGER.warning("Odoo requirements.txt file not found at %s", reqs_file)
+
+
+def install_py_reqs_for_modules(modules: list[GodooModule], module_reg: GodooModules):
     """Install Python Requirements mentioned in odoo module manifests of given modules.
 
     Parameters
@@ -42,7 +63,7 @@ def _install_py_reqs_for_modules(modules: list[GodooModule], module_reg: GodooMo
         return pip_install(list(set(reqs)))
 
 
-def _install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: str):
+def install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: str):
     """Install Python reqs for modules mentioned in odoo-bin commandline --init or -i directives.
 
     Parameters
@@ -64,4 +85,4 @@ def _install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: str):
         module_reg = GodooModules(addon_paths)
         modules = [module_reg.get_module(m) for m in install_modules]
         modules = [m for m in modules if m]
-        return _install_py_reqs_for_modules(modules, module_reg)
+        return install_py_reqs_for_modules(modules, module_reg)

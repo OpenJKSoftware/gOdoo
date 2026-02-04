@@ -14,7 +14,7 @@ from typing import Annotated, Optional, Union
 import typer
 
 from ...cli_common import CommonCLI
-from ...helpers.modules_py import _install_py_reqs_by_odoo_cmd
+from ...helpers.modules_py import install_base_python_reqs, install_py_reqs_by_odoo_cmd
 from ...helpers.system import run_cmd
 from ...models import GodooConfig
 from ..db.query import DbBootstrapStatus, _is_bootstrapped
@@ -188,7 +188,8 @@ def bootstrap_odoo(
         cmd_string = re.sub(r"--init base,web", "", cmd_string)
 
     # Always update Pip reqs regardless of --no-update-source
-    _install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
+    install_base_python_reqs(odoo_install_folder=odoo_main_path)
+    install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
 
     LOGGER.info("Launching Bootstrap Commandline")
     ret = run_cmd(cmd_string).returncode

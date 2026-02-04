@@ -13,8 +13,9 @@ import typer
 from ..cli_common import CommonCLI
 from ..git.git_odoo_addons import git_ensure_repo_matches_manifest, git_ensure_thirdparty_repos
 from ..git.git_url import GitUrl
-from ..helpers.modules_py import _install_py_reqs_for_modules
-from ..helpers.system import download_file
+from ..helpers.modules_py import install_base_python_reqs, install_py_reqs_for_modules
+from ..helpers.pip import pip_command
+from ..helpers.system import download_file, run_cmd
 from ..models import DBConnection, GodooConfig, GodooManifest, GodooModules
 from .db.query import _get_installed_modules
 
@@ -144,7 +145,7 @@ def py_depends_by_db(
     module_list = list(module_list)
     module_reg = GodooModules(godoo_config.addon_paths)
     modules = list(module_reg.get_modules(module_list, raise_missing_names=False))
-    _install_py_reqs_for_modules(modules, module_reg)
+    install_py_reqs_for_modules(modules, module_reg)
 
 
 def get_installed_module_paths(
@@ -181,7 +182,9 @@ def get_installed_module_paths(
 def py_depends_by_modules(
     module_list: Annotated[
         list[str],
-        typer.Argument(help="Modules to check for dependencies (can use all for all available addons)"),
+        typer.Argument(
+            help="Modules to check for dependencies (can use 'all' for all available addons, 'base' for just Odoo Base requirements.txt)"
+        ),
     ],
     thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
@@ -193,11 +196,15 @@ def py_depends_by_modules(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    if len(module_list) == 1 and module_list[0] == "all":
-        module_list = []
+
+    if len(module_list) == 1:
+        if module_list[0] == "all":
+            module_list = []
+        elif module_list[0] == "base":
+            return install_base_python_reqs(odoo_install_folder=odoo_main_path)
     module_reg = GodooModules(godoo_config.addon_paths)
     modules = list(module_reg.get_modules(module_list))
-    _install_py_reqs_for_modules(modules, module_reg)
+    install_py_reqs_for_modules(modules, module_reg)
 
 
 def get_source_file(
@@ -299,6 +306,8 @@ def get_source(
             odoo_bin.chmod(0o755)
         else:
             LOGGER.warning("Could not find odoo-bin in %s", godoo_config.odoo_install_folder)
+        LOGGER.info("Installing Odoo requirements")
+        run_cmd(f"{pip_command()} install -r {godoo_config.odoo_install_folder / 'requirements.txt'}")
 
     if update_thirdparty:
         git_ensure_thirdparty_repos(
