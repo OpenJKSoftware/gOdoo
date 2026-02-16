@@ -6,6 +6,7 @@ Odoo environment. It supports both interactive and script-based operations.
 """
 
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from typing import Annotated, Optional
@@ -103,6 +104,10 @@ def odoo_shell_run_script(
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
     db_name: Annotated[str, CLI.database.db_name],
     db_user: Annotated[str, CLI.database.db_user],
+    script_args: Annotated[
+        Optional[list[str]],
+        typer.Argument(help="Arguments to pass to the script"),
+    ] = None,
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
@@ -111,6 +116,7 @@ def odoo_shell_run_script(
 
     This function executes a Python script in the Odoo shell environment,
     supporting both configuration file and direct database connection parameters.
+    Additional arguments after the script name are passed to the script as script_args list.
 
     Returns:
         int: 0 for success, non-zero for failure.
@@ -121,7 +127,7 @@ def odoo_shell_run_script(
         return CLI.returner(1)
 
     shell_cmd = f"{odoo_main_path.absolute()!s}/odoo-bin shell --no-http"
-    if odoo_conf_path.exists():
+    if odoo_conf_path and odoo_conf_path.exists():
         shell_cmd += f" -c {odoo_conf_path.absolute()!s}"
     else:
         LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
@@ -130,8 +136,28 @@ def odoo_shell_run_script(
             return CLI.returner(1)
         shell_cmd += f" --db_host={db_host} --db_port={db_port} --database={db_name} --db_user={db_user} --db_password={db_password}"
 
-    LOGGER.info("Running Script: %s", script_path)
-    run_cmd(shell_cmd, stdin=script_path.open("r"))
+    # Prepare script with arguments
+    script_content = script_path.read_text()
+
+    # If script_args provided, prepend them as a list variable
+    if script_args:
+        args_str = repr(list(script_args))  # Safely convert to Python list literal
+        script_with_args = f"script_args = {args_str}\n\n{script_content}"
+        LOGGER.info("Running Script: %s with args: %s", script_path, script_args)
+    else:
+        script_with_args = f"script_args = []\n\n{script_content}"
+        LOGGER.info("Running Script: %s", script_path)
+
+    proc = subprocess.Popen(
+        shell_cmd,
+        shell=True,
+        stdin=subprocess.PIPE,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        text=True,
+    )
+    proc.communicate(input=script_with_args)
+    return CLI.returner(proc.returncode)
 
 
 def odoo_pregenerate_assets(godoo_conf: GodooConfig):
