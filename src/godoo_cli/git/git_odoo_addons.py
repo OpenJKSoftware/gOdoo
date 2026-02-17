@@ -69,9 +69,9 @@ def _merge_sources_into_repo(godoo_repo: GodooGitRepo) -> None:
         remote_name = f"merge_from_{merge_spec.url.split('/')[-1].replace('.git', '')}"
         remote = _ensure_remote(repo, remote_name, merge_spec.url)
         fetch_ref = merge_spec.ref
-        LOGGER.info("Merging ref %s from %s into %s", fetch_ref, merge_spec.url, godoo_repo.ref)
         remote.fetch(fetch_ref)
         merge_target = merge_spec.commit or f"{remote.name}/{merge_spec.branch or fetch_ref}"
+        LOGGER.info("Merging ref %s from %s into %s", fetch_ref, merge_spec.url, merge_target)
         repo.git.merge(
             merge_target,
             "--no-ff",
