@@ -1,6 +1,6 @@
 {
     "name": "godoo Test Succ Module",
-    "version": "16.0.1.0.0",
+    "version": "19.0.1.0.0",
     "author": "Joshua Kreuder",
     "license": "AGPL-3",
     "depends": ["base"],
