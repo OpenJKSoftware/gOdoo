@@ -170,15 +170,10 @@ def odoo_pregenerate_assets(godoo_conf: GodooConfig):
         NotImplementedError: If the Odoo version is not supported.
     """
     odoo_version = odoo_bin_get_version(odoo_main_repo_path=godoo_conf.odoo_install_folder)
-    if odoo_version.major == 16:
-        pregen_command = "env['ir.qweb']._pregenerate_assets_bundles();env.cr.commit()"
-    else:
-        msg = f"Odoo Version {odoo_version.raw} not supported in gOdoo for pregenerate_assets"
-        LOGGER.error(msg)
-        raise NotImplementedError(msg)
     LOGGER.info("Pregenerating Assets for Odoo version %s", odoo_version.raw)
-    odoo_shell(
-        pipe_in_command=pregen_command,
+    # Use the pregenerate_assets script which attempts multiple internal APIs.
+    odoo_shell_run_script(
+        script_name="pregenerate_assets",
         odoo_main_path=godoo_conf.odoo_install_folder,
         odoo_conf_path=godoo_conf.odoo_conf_path,
         db_name=godoo_conf.db_name,
