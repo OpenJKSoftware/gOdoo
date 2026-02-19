@@ -38,14 +38,28 @@ def main_callback(
             help="Verbose Logging with Error stacktraces",
         ),
     ] = False,
+    log_filter: Annotated[
+        Optional[str],
+        typer.Option(
+            "--log-filter",
+            "-lf",
+            envvar="GODOO_LOG_FILTER",
+            help="Regex pattern to filter log output by logger name (e.g. 'odoo.test.suite')",
+        ),
+    ] = None,
 ):
-    """Configure the CLI's logging level.
+    """Configure the CLI's logging level and optional log filter.
 
     Args:
         verbose: If True, enables verbose logging with error stacktraces.
             Can be set via --verbose flag or GODOO_VERBOSE environment variable.
+        log_filter: Optional regex pattern to filter log records by logger name.
+            Can be set via --log-filter flag or GODOO_LOG_FILTER environment variable.
     """
-    set_logging(verbose=bool(verbose) if verbose is not None else False)
+    set_logging(
+        verbose=bool(verbose) if verbose is not None else False,
+        log_filter=log_filter,
+    )
 
 
 def main_cli():
