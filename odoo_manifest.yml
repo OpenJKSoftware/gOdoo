@@ -24,3 +24,6 @@ thirdparty:
       # merge_from: # We can also Create local merge commits on top of the downloaded Repo.
       #   - url: https://github.com/fd-oerp/product-attribute.git
       #     branch: 19.0-mig-product_sequence
+
+    # Uncomment Enterprise if you have access to the Repo
+    # - url: git@github.com:odoo/enterprise.git
