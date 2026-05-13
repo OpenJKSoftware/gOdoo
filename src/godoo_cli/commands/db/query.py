@@ -33,6 +33,12 @@ class DbBootstrapStatus(enum.Enum):
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
+BOOTSTRAP_EXIT_CODE = {
+    DbBootstrapStatus.BOOTSTRAPPED: 0,
+    DbBootstrapStatus.NO_DB: 20,
+    DbBootstrapStatus.EMPTY_DB: 21,
+}
+
 
 def query_database(
     query: Annotated[str, typer.Argument(help="SQL Query. Use '-' to read from stdin.")],
@@ -120,28 +126,28 @@ def is_bootstrapped(
     )
     bootstrap_value = _is_bootstrapped(db_connection=connection)
     LOGGER.info("Odoo Database Status: %s", bootstrap_value.value)
-    ret_mapping = {
-        DbBootstrapStatus.BOOTSTRAPPED: 0,
-        DbBootstrapStatus.NO_DB: 20,
-        DbBootstrapStatus.EMPTY_DB: 21,
-    }
-    raise typer.Exit(ret_mapping[bootstrap_value])
+    raise typer.Exit(BOOTSTRAP_EXIT_CODE[bootstrap_value])
 
 
-def _get_installed_modules(db_connection: DBConnection, to_install: bool = False) -> list[str]:
+def get_installed_modules_from_connection(
+    db_connection: DBConnection,
+    to_install: bool = False,
+) -> tuple[list[str], DbBootstrapStatus]:
     """Get list of installed modules in database (to_install includes the modules marked for installation)."""
     if (boot := _is_bootstrapped(db_connection=db_connection)) != DbBootstrapStatus.BOOTSTRAPPED:
-        return boot.value
+        return [], boot
+
     lookup_states = ["installed", "to upgrade"]
     if to_install:
         lookup_states.append("to install")
+
     with db_connection.connect() as cursor:
         cursor.execute(
             "SELECT name FROM ir_module_module WHERE state IN %s;",
             [tuple(lookup_states)],
         )
         sql_res = cursor.fetchall()
-        return [r[0] for r in sql_res]
+        return [r[0] for r in sql_res], DbBootstrapStatus.BOOTSTRAPPED
 
 
 def get_installed_modules(
@@ -167,8 +173,12 @@ def get_installed_modules(
         db_name=db_name,
         readonly=True,
     )
-    installed_modules = _get_installed_modules(db_connection=db_connection, to_install=to_install)
-    if isinstance(installed_modules, int):
-        raise typer.Exit(installed_modules)
+    installed_modules, status = get_installed_modules_from_connection(
+        db_connection=db_connection,
+        to_install=to_install,
+    )
+    if status != DbBootstrapStatus.BOOTSTRAPPED:
+        raise typer.Exit(BOOTSTRAP_EXIT_CODE[status])
+
     for module in sorted(installed_modules):
         print(module)  # pylint: disable=print-used

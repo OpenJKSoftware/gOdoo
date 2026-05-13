@@ -6,8 +6,8 @@ including running tests, loading test data, and identifying changed modules.
 
 import typer
 
-from .test_load_data import odoo_load_test_data
-from .test_run import odoo_get_changed_modules, odoo_run_tests
+from .load_data import odoo_load_test_data
+from .run import odoo_get_changed_modules, odoo_run_tests
 
 
 def test_cli_app():

@@ -92,13 +92,36 @@ def complete_script_name():
     Returns:
         List[str]: List of script names without their .py extension.
     """
-    return [p.stem for p in SHELL_SCRIPTS_PATH.glob("*.py")]
+    return sorted(p.stem for p in SHELL_SCRIPTS_PATH.glob("*.py"))
+
+
+def validate_script_name(script_name: str):
+    """Validate that script_name maps to an existing internal script."""
+    available_scripts = complete_script_name()
+    if script_name not in available_scripts:
+        available_names = ", ".join(available_scripts) if available_scripts else "none"
+        error_message = f"Unknown script '{script_name}'. Available scripts: {available_names}"
+        raise typer.BadParameter(
+            error_message,
+        )
+    return script_name
+
+
+def script_name_argument():
+    """Build the script_name argument with dynamic help and validation."""
+    available_scripts = complete_script_name()
+    available_names = ", ".join(available_scripts) if available_scripts else "none"
+    return typer.Argument(
+        help=f"Internal Script to run. Available scripts: {available_names}",
+        autocompletion=complete_script_name,
+        callback=validate_script_name,
+    )
 
 
 def odoo_shell_run_script(
     script_name: Annotated[
         str,
-        typer.Argument(help="Internal Script to run", autocompletion=complete_script_name),
+        script_name_argument(),
     ],
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],

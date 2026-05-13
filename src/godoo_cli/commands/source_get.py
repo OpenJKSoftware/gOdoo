@@ -1,9 +1,6 @@
 """Commands to clone Odoo and addon source code."""
 
-import configparser
 import logging
-import shutil
-import tempfile
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Optional
@@ -17,7 +14,8 @@ from ..helpers.modules_py import install_base_python_reqs, install_py_reqs_for_m
 from ..helpers.pip import pip_command
 from ..helpers.system import download_file, run_cmd
 from ..models import DBConnection, GodooConfig, GodooManifest, GodooModules
-from .db.query import _get_installed_modules
+from .db.query import BOOTSTRAP_EXIT_CODE, DbBootstrapStatus, get_installed_modules_from_connection
+from .source import unpack_addon_archives, update_odoo_conf_addon_paths
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
@@ -39,77 +37,6 @@ class UpdateMode(str, Enum):
     thirdparty = "thirdparty"
 
 
-def unpack_addon_archives(
-    archive_folder: Path,
-    target_addon_folder: Path,
-    remove_excess: bool = False,
-):
-    """Take archive files from archive_folder and extract them into target_addon_folder.
-
-    Parameters
-    ----------
-    archive_folder : Path
-        Where to look for zip files
-    target_addon_folder : Path
-        where to place them
-    remove_excess : bool , optional
-        remove all and then unzip, by default False
-    """
-    target_addon_folder.mkdir(exist_ok=True, parents=True)
-    if remove_excess:
-        LOGGER.debug("Clearing out unarchive folder: %s", target_addon_folder)
-        for folder in target_addon_folder.iterdir():
-            shutil.rmtree(folder)
-    LOGGER.info("Extracting archive addons to: %s", target_addon_folder)
-    for zip_file in archive_folder.glob("*.zip"):
-        LOGGER.info("Extracting addon archive: %s", zip_file)
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            shutil.unpack_archive(zip_file, td)
-            # We can have zip files with one or more modules.
-            # Either the first folder contains multiple or its a module by itself
-            # So first get the real modules form the zip root or one level down and then move them to subpaths
-            possible_paths = [td, *list(td.glob("*/"))]
-            zip_modules = list(GodooModules(possible_paths).get_modules())
-            if not zip_modules:
-                LOGGER.warning("Could not find valid modules in thirdparty zip: %s", zip_file)
-                continue
-            LOGGER.debug(
-                "Found modules in Zipfile:\n%s",
-                [str(f.path.relative_to(td)) for f in zip_modules],
-            )
-            target_folder = target_addon_folder / ("single_mods" if len(zip_modules) == 1 else zip_file.stem)
-            target_folder.mkdir(exist_ok=True)
-            for m in zip_modules:
-                module_target = target_folder / m.name
-                shutil.rmtree(module_target, ignore_errors=True)
-                shutil.move(m.path, module_target)
-
-
-def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: list[Path]):
-    """Update Odoo.Conf with Addon Paths.
-
-    Parameters
-    ----------
-    odoo_conf : Path
-        odoo.conf location
-    addon_paths : List[Path]
-        list of paths
-    """
-    if not odoo_conf.exists():
-        msg = f"Odoo.conf not found at: {odoo_conf!s}"
-        LOGGER.error(msg)
-        raise FileNotFoundError(msg)
-    config = configparser.ConfigParser()
-    config.read(odoo_conf)
-    path_strings = [str(p.absolute()) for p in addon_paths]
-    addon_path_option = ",".join(path_strings)
-    config["options"]["addons_path"] = addon_path_option
-    LOGGER.info("Writing Addon Paths to Odoo Config.")
-    LOGGER.debug(addon_path_option)
-    config.write(odoo_conf.open("w"))
-
-
 def py_depends_by_db(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
@@ -125,9 +52,9 @@ def py_depends_by_db(
     Will not raise error if module not found in source for upgrade purposes.
     """
     connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
-    module_list = _get_installed_modules(connection, to_install=True)
-    if isinstance(module_list, int):
-        return CLI.returner(module_list)
+    module_list, status = get_installed_modules_from_connection(connection, to_install=True)
+    if status != DbBootstrapStatus.BOOTSTRAPPED:
+        return CLI.returner(BOOTSTRAP_EXIT_CODE[status])
     LOGGER.info("Ensuring Py Reqiurements for Installed Modules are met")
     LOGGER.debug("Modules:\n%s", module_list)
     godoo_config = GodooConfig(
@@ -169,9 +96,9 @@ def get_installed_module_paths(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    module_list = _get_installed_modules(godoo_config.db_connection)
-    if isinstance(module_list, int):
-        return CLI.returner(module_list)
+    module_list, status = get_installed_modules_from_connection(godoo_config.db_connection)
+    if status != DbBootstrapStatus.BOOTSTRAPPED:
+        return CLI.returner(BOOTSTRAP_EXIT_CODE[status])
     LOGGER.debug("Searching Folders for:\n%s", module_list)
     module_list = list(module_list)
     modules = GodooModules(godoo_config.addon_paths).get_modules(module_list)

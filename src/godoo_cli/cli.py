@@ -102,7 +102,6 @@ def main_cli():
     app.command("bootstrap")(cmd.bootstrap_odoo)
     app.command("launch")(cmd.launch_odoo)
     app.command("launch-import")(cmd.launch_import)
-    app.command("test")(cmd.odoo_run_tests)
     app.command("config")(cmd.set_odoo_config)
     app.command("shell")(cmd.odoo_shell)
     app.command("shell-script")(cmd.odoo_shell_run_script)
