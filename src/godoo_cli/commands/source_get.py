@@ -93,6 +93,7 @@ def get_installed_module_paths(
         db_port=db_port,
         db_name=db_name,
         odoo_install_folder=odoo_main_path,
+        odoo_conf_path=Path("./odoo.conf"),
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
@@ -120,6 +121,7 @@ def py_depends_by_modules(
     """Install dependencies from __manifest__.py in specified modules."""
     godoo_config = GodooConfig(
         odoo_install_folder=odoo_main_path,
+        odoo_conf_path=Path("./odoo.conf"),
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
