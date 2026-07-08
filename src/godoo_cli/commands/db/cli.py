@@ -12,6 +12,7 @@ import typer
 from ...cli_common import CommonCLI
 from .passwords import set_passwords
 from .query import get_installed_modules, is_bootstrapped, query_database
+from .reset import reset_database_from_template
 
 CLI = CommonCLI()
 
@@ -60,5 +61,6 @@ def db_cli_app():
     app.command("query")(query_database)
     app.command("odoo-bootstrapped")(is_bootstrapped)
     app.command("installed-modules")(get_installed_modules)
+    app.command("reset-from-template")(reset_database_from_template)
 
     return app

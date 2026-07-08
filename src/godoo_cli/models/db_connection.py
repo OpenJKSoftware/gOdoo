@@ -9,7 +9,7 @@ import subprocess
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import psycopg2
 
@@ -61,7 +61,7 @@ class DBConnection:
         )
 
     @property
-    def cli_dict(self) -> dict[str, Optional[str]]:
+    def cli_dict(self) -> dict[str, Optional[Union[str, int]]]:
         """Get connection parameters as a dictionary.
 
         Returns:
@@ -105,7 +105,7 @@ class DBConnection:
             cr.close()
             connection.close()
 
-    def run_psql_shell_command(self, command: str, **kwargs: dict[str, Any]) -> subprocess.CompletedProcess:
+    def run_psql_shell_command(self, command: str, **kwargs: Any) -> subprocess.CompletedProcess:
         """Run a psql command using the provided credentials.
 
         {} in the command will get templated with the connection string.

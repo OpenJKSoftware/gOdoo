@@ -148,6 +148,12 @@ class DatabaseCLIArgs:
         help="db host port (empty for socket)",
         rich_help_panel="Database Options",
     )
+    db_template_name = Option(
+        "--db-template",
+        envvar="ODOO_DB_TEMPLATE",
+        help="optional template DB used to refresh launch/reset target (reset defaults to '<db-name>_template' when omitted)",
+        rich_help_panel="Database Options",
+    )
 
 
 @dataclass

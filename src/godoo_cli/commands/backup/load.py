@@ -6,13 +6,14 @@ supporting various dump formats and handling database creation and restoration.
 
 import logging
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
 from ...cli_common import CommonCLI
 from ...models import DBConnection
-from .util import call_rsync, create_db, drop_db
+from ..db.ops import create_database, drop_database
+from .util import call_rsync
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
@@ -21,10 +22,10 @@ CLI = CommonCLI()
 def load_pg_dump(
     dump_path: Path,
     db_name: str,
-    db_host: Optional[str] = None,
+    db_host: str = "",
     db_port: int = 0,
-    db_user: Optional[str] = None,
-    db_password: Optional[str] = None,
+    db_user: str = "",
+    db_password: str = "",
 ):
     """Drop and recreate db_name and restore dump_path into it."""
     if not dump_path.exists():
@@ -40,8 +41,8 @@ def load_pg_dump(
         password=db_password,
     )
 
-    drop_db(conn, db_name)
-    create_db(conn, db_name)
+    drop_database(connection=conn, db_name=db_name)
+    create_database(connection=conn, db_name=db_name)
 
     conn.db_name = db_name
 

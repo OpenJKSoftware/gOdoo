@@ -15,13 +15,49 @@ import typer
 
 from ...cli_common import CommonCLI
 from ...helpers.system import run_cmd
-from ...models import GodooConfig
+from ...models import DBConnection, GodooConfig
+from ..db.clone import create_database_from_template, template_source_name
 from ..rpc import import_to_odoo
 from .bootstrap import bootstrap_and_prep_launch_cmd
 
 CLI = CommonCLI()
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _refresh_launch_database_from_template(
+    db_name: str,
+    db_user: str,
+    db_template_name: str = "",
+    db_host: str = "",
+    db_port: int = 0,
+    db_password: str = "",
+) -> bool:
+    """Refresh target launch DB from template when template was specified."""
+    if not db_template_name:
+        return True
+
+    template_db_name = template_source_name(db_name, db_template_name)
+    connection = DBConnection(
+        hostname=db_host,
+        port=db_port,
+        username=db_user,
+        password=db_password,
+        db_name="postgres",
+    )
+    try:
+        create_database_from_template(
+            connection=connection,
+            template_db_name=template_db_name,
+            target_db_name=db_name,
+            recreate_target=True,
+            allow_fallback_create=False,
+            use_file_copy_strategy=True,
+        )
+    except ValueError:
+        LOGGER.exception("Could not refresh launch DB '%s' from template '%s'", db_name, template_db_name)
+        return False
+    return True
 
 
 def launch_odoo(
@@ -32,6 +68,7 @@ def launch_odoo(
     db_filter: Annotated[str, CLI.database.db_filter],
     db_name: Annotated[str, CLI.database.db_name],
     db_user: Annotated[str, CLI.database.db_user],
+    db_template_name: Annotated[str, CLI.database.db_template_name] = "",
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_password: Annotated[str, CLI.database.db_password] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
@@ -55,9 +92,23 @@ def launch_odoo(
     The function uses CLI class defaults for most parameters, which can be
     overridden through command line arguments or environment variables.
 
+    If db_template_name is provided, the launch DB is recreated from that
+    template using CREATE DATABASE ... TEMPLATE ... STRATEGY FILE_COPY before
+    launching Odoo.
+
     Returns:
         int: 0 for success, non-zero for failure.
     """
+    if not _refresh_launch_database_from_template(
+        db_name=db_name,
+        db_user=db_user,
+        db_template_name=db_template_name,
+        db_host=db_host,
+        db_port=db_port,
+        db_password=db_password,
+    ):
+        return CLI.returner(1)
+
     godoo_conf = GodooConfig(
         db_user=db_user,
         db_password=db_password,
@@ -107,6 +158,7 @@ def launch_import(
     rpc_password: Annotated[str, CLI.rpc.rpc_password],
     odoo_demo: Annotated[bool, CLI.odoo_launch.odoo_demo],
     dev_mode: Annotated[bool, CLI.odoo_launch.dev_mode],
+    db_template_name: Annotated[str, CLI.database.db_template_name] = "",
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
@@ -120,6 +172,8 @@ def launch_import(
 
     This command launches an Odoo instance and starts a separate thread to import
     data through RPC. The import process runs asynchronously while Odoo is running.
+    When db_template_name is provided, the launch DB is recreated from that
+    template before Odoo starts.
 
     Args:
         load_data_path: List of paths containing data to import.
@@ -132,6 +186,7 @@ def launch_import(
         db_port: Database port number.
         db_name: Name of the database to use.
         db_user: Database user name.
+        db_template_name: Template database name used to refresh db_name before launch.
         db_password: Database password.
         rpc_host: Host address for RPC connections.
         rpc_user: Username for RPC authentication.
@@ -147,6 +202,16 @@ def launch_import(
     Returns:
         int: 0 for success, non-zero for failure.
     """
+    if not _refresh_launch_database_from_template(
+        db_name=db_name,
+        db_user=db_user,
+        db_template_name=db_template_name,
+        db_host=db_host,
+        db_port=db_port,
+        db_password=db_password,
+    ):
+        return CLI.returner(1)
+
     godoo_conf = GodooConfig(
         db_user=db_user,
         db_password=db_password,

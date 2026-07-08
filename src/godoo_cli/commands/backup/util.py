@@ -8,8 +8,6 @@ import logging
 import subprocess
 from pathlib import Path
 
-from ...models import DBConnection
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -24,7 +22,7 @@ def call_rsync(source_folder: Path, target_folder: Path, rsync_delete: bool = Tr
     Raises:
         FileNotFoundError: If source folder doesn't exist or is empty.
     """
-    if not source_folder.exists() and not source_folder.glob("*"):
+    if not source_folder.exists() or not any(source_folder.iterdir()):
         msg = f"Cannot find filestore Backup @ {source_folder}"
         LOGGER.error(msg)
         raise FileNotFoundError(msg)
@@ -35,19 +33,3 @@ def call_rsync(source_folder: Path, target_folder: Path, rsync_delete: bool = Tr
     command = " ".join(map(str, args))
     LOGGER.debug("Running: %s", command)
     return subprocess.run(command, shell=True).returncode
-
-
-def drop_db(connection: DBConnection, db_name: str):
-    """Drop a DB in postgres."""
-    with connection.connect() as cur:
-        cur.connection.autocommit = True
-        LOGGER.info("Dropping DB: %s", db_name)
-        cur.execute(f"DROP DATABASE IF EXISTS {db_name}")
-
-
-def create_db(connection: DBConnection, db_name: str):
-    """Create DB In Postgres."""
-    with connection.connect() as cur:
-        cur.connection.autocommit = True
-        LOGGER.info("Creating DB: %s", db_name)
-        cur.execute(f"CREATE DATABASE {db_name}")

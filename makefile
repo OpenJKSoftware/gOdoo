@@ -29,5 +29,8 @@ reset-hard: # To be called from Outside the Devcontainer
 rebuild:
 	cd docker && docker compose -f docker-compose.base.yml -f docker-compose.devcontainer.yml build
 
+restore-dump-to-template: # Load dump from remote_instance_data into the devcontainer DB
+	godoo backup load remote_instance_data --db-name odoo_template
+
 lint:
 	hatch run dev:lint
