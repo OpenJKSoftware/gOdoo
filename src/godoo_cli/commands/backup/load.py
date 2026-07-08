@@ -82,14 +82,6 @@ def load_instance_data(
             envvar="GODOO_DUMP_PATH",
         ),
     ],
-    filestore_target_folder: Annotated[
-        Path,
-        typer.Argument(
-            help="Target Folder to load filestore to.",
-            file_okay=False,
-            dir_okay=True,
-        ),
-    ],
     db_name: Annotated[str, CLI.database.db_name],
     db_user: Annotated[str, CLI.database.db_user],
     db_host: Annotated[str, CLI.database.db_host] = "",
@@ -99,6 +91,15 @@ def load_instance_data(
         str,
         typer.Option(help="Optional Changeable filename of Odoo SQL Dump within source_folder"),
     ] = "odoo.dump",
+    filestore_target_folder: Annotated[
+        Path,
+        typer.Option(
+            help="Target Folder to load filestore to.",
+            file_okay=False,
+            dir_okay=True,
+            envvar="GODOO_FILESTORE_TARGET_DIR",
+        ),
+    ] = Path("/var/lib/odoo"),
 ):
     """Copy Filestore cache and load SQL Dump into Postgres for gOdoo."""
     load_pg_dump(

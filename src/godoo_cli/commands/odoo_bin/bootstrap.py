@@ -160,6 +160,7 @@ def bootstrap_odoo(
     ] = True,
     banner_text: Annotated[str, CLI.odoo_launch.banner_text] = "",
     banner_bg_color: Annotated[str, CLI.odoo_launch.banner_bg_color] = "green",
+    filestore_target_dir: Annotated[Path, CLI.odoo_paths.filestore_target_dir] = Path("/var/lib/odoo"),
 ):
     """Bootstrap an Odoo instance with specified configuration."""
     godoo_conf = GodooConfig(
@@ -175,6 +176,7 @@ def bootstrap_odoo(
         thirdparty_addon_path=thirdparty_addon_path,
         multithread_worker_count=multithread_worker_count,
         languages=languages,
+        filestore_target_dir=filestore_target_dir,
     )
 
     addon_paths = godoo_conf.addon_paths

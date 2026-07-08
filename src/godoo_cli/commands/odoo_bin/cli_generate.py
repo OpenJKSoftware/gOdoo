@@ -134,7 +134,11 @@ def _boostrap_command(
     if extra_cmd_args:
         odoo_cmd += extra_cmd_args
 
-    _add_default_argument(cmd_list=odoo_cmd, arg="--data-dir", arg_val="/var/lib/odoo")
+    _add_default_argument(
+        cmd_list=odoo_cmd,
+        arg="--data-dir",
+        arg_val=str(godoo_config.filestore_target_dir),
+    )
 
     if godoo_config.multithread_worker_count == -1:
         godoo_config.multithread_worker_count = int(os.cpu_count() or 2 / 2)

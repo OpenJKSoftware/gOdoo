@@ -84,6 +84,11 @@ class OdooPathCLIArgs:
         help="folder that contains thirdparty repos like OCA",
         rich_help_panel="Path Options",
     )
+    filestore_target_dir = Option(
+        envvar="GODOO_FILESTORE_TARGET_DIR",
+        help="target folder for Odoo filestore",
+        rich_help_panel="Path Options",
+    )
 
 
 @dataclass
