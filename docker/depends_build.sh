@@ -22,7 +22,7 @@ apt-get install -y -q --no-install-recommends \
     rsync \
     curl \
     unzip \
-    postgresql-client-17 \
+    postgresql-client-18 \
     libpq-dev \
     libldap2-dev \
     libssl-dev \

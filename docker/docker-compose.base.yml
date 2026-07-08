@@ -23,14 +23,14 @@ services:
       - "postgres_socket:/var/run/postgresql"
 
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       - TZ=${TZ:-Europe/Berlin}
       - POSTGRES_DB=postgres
       - POSTGRES_PASSWORD=${ODOO_DB_PASSWORD}
       - POSTGRES_USER=${ODOO_DB_USER}
     volumes:
-      - "db:/var/lib/postgresql/data"
+      - "db:/var/lib/postgresql"
       - "/etc/localtime:/etc/localtime:ro"
       - "../config/postgresql.conf:/etc/postgresql/postgresql.conf"
       - "postgres_socket:/var/run/postgresql"
