@@ -26,23 +26,37 @@ class OdooVersion:
 
 @dataclass
 class GodooConfig:
-    """Structure to hold Essential values for Godoo."""
+    """Structure to hold Essential values for Godoo.
 
-    odoo_install_folder: Optional[Path] = None
-    odoo_conf_path: Optional[Path] = None
-    workspace_addon_path: Optional[Path] = None
-    thirdparty_addon_path: Optional[Path] = None
+    Required fields (must be provided at instantiation):
+    - odoo_install_folder: Path to the Odoo installation
+    - odoo_conf_path: Path to odoo.conf
+    - workspace_addon_path: Path to workspace addons
+    - thirdparty_addon_path: Path to third-party addons
+
+    Optional and configurable fields have defaults.
+    """
+
+    # Required fields (no defaults)
+    odoo_install_folder: Path
+    odoo_conf_path: Path
+    workspace_addon_path: Path
+    thirdparty_addon_path: Path
+
+    # Optional fields
     manifest_path: Optional[Path] = None
 
+    # Configurable fields with defaults
+    filestore_target_dir: Path = Path("/var/lib/odoo")
     multithread_worker_count: int = -1  # -1 is treated as autodetect
     languages: str = "de_DE,en_US"
 
+    # Database connection fields with defaults
     db_user: str = ""
     db_password: str = ""
     db_host: str = ""
     db_port: int = 0
     db_name: str = ""
-
     db_filter: str = ""
 
     @cached_property
