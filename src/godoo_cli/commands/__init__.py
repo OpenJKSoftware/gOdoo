@@ -12,7 +12,7 @@ of the gOdoo CLI, including:
 
 from .backup import backup_cli_app
 from .config import set_odoo_config
-from .db import db_cli_app
+from .db import db_cli_app, reset_database_from_template, reset_odoo_state
 from .odoo_bin import (
     bootstrap_odoo,
     launch_import,
