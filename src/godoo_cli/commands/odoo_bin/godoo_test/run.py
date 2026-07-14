@@ -172,7 +172,7 @@ def odoo_run_tests(  # noqa: C901
     if isinstance(launch_cmd, str):
         if pregenerate_assets:
             odoo_pregenerate_assets(godoo_conf=godoo_conf)
-        LOGGER.info("Launching Odoo Tests")
+        LOGGER.info("Launching Odoo tests on database '%s' using config %s", db_name, odoo_conf_path)
         return CLI.returner(run_cmd(launch_cmd).returncode)
 
     return CLI.returner(launch_cmd)

@@ -26,7 +26,7 @@ def set_odoo_config(
     conf_path = Path(odoo_conf_path)
     odoo_conf = ConfigParser()
     odoo_conf.read(conf_path)
-    LOGGER.info("Setting Odoo Conf Options for Stage")
+    LOGGER.info("Setting Odoo config options in %s", conf_path)
     custom_opts = {}
     for op in options:
         if "=" not in op:

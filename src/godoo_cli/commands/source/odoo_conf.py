@@ -19,7 +19,7 @@ def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: list[Path]) -> No
     path_strings = [str(path.absolute()) for path in addon_paths]
     addon_path_option = ",".join(path_strings)
     config["options"]["addons_path"] = addon_path_option
-    LOGGER.info("Writing Addon Paths to Odoo Config.")
+    LOGGER.info("Writing addon paths to Odoo config at %s", odoo_conf)
     LOGGER.debug(addon_path_option)
     with odoo_conf.open("w") as config_file:
         config.write(config_file)

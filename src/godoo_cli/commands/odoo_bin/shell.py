@@ -73,7 +73,7 @@ def odoo_shell(
     else:
         LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
         if not all([db_host, db_port, db_name, db_user, db_password]):
-            LOGGER.error("Missing database options and Config File. Aborting.")
+            LOGGER.error("Missing database options and Odoo config at %s. Aborting.", odoo_conf_path)
             return CLI.returner(1)
         shell_cmd += f" --db_host={db_host} --db_port={db_port} --database={db_name} --db_user={db_user} --db_password={db_password}"
 
@@ -155,7 +155,7 @@ def odoo_shell_run_script(
     else:
         LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
         if not all([db_host, db_port, db_name, db_user, db_password]):
-            LOGGER.error("Missing database options and Config File. Aborting.")
+            LOGGER.error("Missing database options and Odoo config at %s. Aborting.", odoo_conf_path)
             return CLI.returner(1)
         shell_cmd += f" --db_host={db_host} --db_port={db_port} --database={db_name} --db_user={db_user} --db_password={db_password}"
 

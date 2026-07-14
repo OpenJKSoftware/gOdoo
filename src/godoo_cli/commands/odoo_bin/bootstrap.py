@@ -68,7 +68,7 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
         extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
 
     bootstraped = _is_bootstrapped(godoo_conf.db_connection)
-    LOGGER.info("Bootstrap Flag Status: '%s'", bootstraped.value)
+    LOGGER.info("Bootstrap status for database '%s': '%s'", godoo_conf.db_name, bootstraped.value)
     ret = ""
     did_bootstrap = False
     if bootstraped != DbBootstrapStatus.BOOTSTRAPPED:
@@ -107,12 +107,13 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
         LOGGER.error("404 Database not found. Aborting Launch...")
         return 404
 
-    update_odoo_conf(
-        odoo_conf=godoo_conf.odoo_conf_path,
-        odoo_main_path=godoo_conf.odoo_install_folder,
-        workspace_addon_path=godoo_conf.workspace_addon_path,
-        thirdparty_addon_path=godoo_conf.thirdparty_addon_path,
-    )
+    if godoo_conf.odoo_conf_path.exists():
+        update_odoo_conf(
+            odoo_conf=godoo_conf.odoo_conf_path,
+            odoo_main_path=godoo_conf.odoo_install_folder,
+            workspace_addon_path=godoo_conf.workspace_addon_path,
+            thirdparty_addon_path=godoo_conf.thirdparty_addon_path,
+        )
     if not did_bootstrap:
         py_depends_by_db(
             odoo_main_path=godoo_conf.odoo_install_folder,
@@ -193,7 +194,7 @@ def bootstrap_odoo(
     install_base_python_reqs(odoo_install_folder=odoo_main_path)
     install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
 
-    LOGGER.info("Launching Bootstrap Commandline")
+    LOGGER.info("Launching Odoo bootstrap on database '%s' using config %s", db_name, odoo_conf_path)
     ret = run_cmd(cmd_string).returncode
     if ret != 0:
         LOGGER.error("Odoo-Bin Returned %d", ret)

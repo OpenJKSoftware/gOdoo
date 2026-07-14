@@ -12,6 +12,25 @@ from ..db.query import DbBootstrapStatus, _is_bootstrapped
 LOGGER = logging.getLogger(__name__)
 
 
+def _odoo_config_args(godoo_config: GodooConfig, save: bool) -> list[str]:
+    """Build Odoo config and database arguments."""
+    config_args = [f"--config {godoo_config.odoo_conf_path.absolute()!s}"]
+    if not save:
+        return config_args
+
+    godoo_config.odoo_conf_path.parent.mkdir(parents=True, exist_ok=True)
+    return [
+        *config_args,
+        "--save",
+        f"--database {godoo_config.db_name}",
+        f"--db_user {godoo_config.db_user}",
+        f"--db_password {godoo_config.db_password}",
+        f"--db_host {godoo_config.db_host}" if godoo_config.db_host else "",
+        f"--db_port {godoo_config.db_port}" if godoo_config.db_port else "",
+        f"--db-filter=^{godoo_config.db_filter}$",
+    ]
+
+
 def _launch_command(
     godoo_conf: GodooConfig,
     extra_cmd_args: list[str],
@@ -39,10 +58,12 @@ def _launch_command(
 
     update_addon_string = "--update " + ",".join(upgrade_addons) if upgrade_addons else ""
 
+    config_args = _odoo_config_args(godoo_conf, save=not godoo_conf.odoo_conf_path.exists())
+
     odoo_cmd = [
         str(godoo_conf.odoo_bin_path.absolute()),
         update_addon_string,
-        f"-c {godoo_conf.odoo_conf_path.absolute()!s}",
+        *config_args,
         *extra_cmd_args,
     ]
     odoo_cmd = list(filter(None, odoo_cmd))
@@ -84,17 +105,6 @@ def _boostrap_command(
     """
     LOGGER.info("Generating Bootstrap Command")
 
-    godoo_config.odoo_conf_path.parent.mkdir(parents=True, exist_ok=True)
-
-    db_command = [
-        f"--database {godoo_config.db_name}",
-        f"--db_user {godoo_config.db_user}",
-        f"--db_password {godoo_config.db_password}",
-        f"--db_host {godoo_config.db_host}" if godoo_config.db_host else "",
-        f"--db_port {godoo_config.db_port}" if godoo_config.db_port else "",
-        f"--db-filter=^{godoo_config.db_filter}$",
-    ]
-
     LOGGER.info("Getting Addon Paths")
 
     init_modules = []
@@ -124,13 +134,12 @@ def _boostrap_command(
     base_cmds = [
         str(godoo_config.odoo_bin_path.absolute()),
         init_cmd,
-        f"--config {godoo_config.odoo_conf_path.absolute()!s}",
-        "--save",
+        *_odoo_config_args(godoo_config, save=True),
         f"--load-language {godoo_config.languages}",
         "--stop-after-init",
         f"--addons-path '{addon_paths_str}'",
     ]
-    odoo_cmd = base_cmds + db_command
+    odoo_cmd = base_cmds
     if extra_cmd_args:
         odoo_cmd += extra_cmd_args
 

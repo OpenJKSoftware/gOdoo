@@ -137,7 +137,7 @@ def launch_odoo(
         LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
         return CLI.returner(launch_cmd)
 
-    LOGGER.info("Launching Odoo")
+    LOGGER.info("Launching Odoo on database '%s' using config %s", db_name, odoo_conf_path)
     return CLI.returner(run_cmd(launch_cmd).returncode)
 
 
@@ -257,5 +257,5 @@ def launch_import(
     )
     loader_thread.start()
 
-    LOGGER.info("Launching Odoo")
+    LOGGER.info("Launching Odoo on database '%s' using config %s", db_name, odoo_conf_path)
     return CLI.returner(run_cmd(launch_cmd).returncode)
