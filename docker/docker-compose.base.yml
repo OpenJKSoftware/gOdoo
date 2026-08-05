@@ -23,7 +23,8 @@ services:
       - "postgres_socket:/var/run/postgresql"
 
   db:
-    image: postgres:18-alpine
+    image: postgres:18.4-bookworm
+    command: ["postgres", "-c", "file_copy_method=clone"]
     environment:
       - TZ=${TZ:-Europe/Berlin}
       - POSTGRES_DB=postgres

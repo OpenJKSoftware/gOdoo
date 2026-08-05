@@ -1,154 +1,128 @@
-"""Database reset command implementation."""
+"""Odoo-managed database reset commands."""
 
 import logging
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Annotated, Optional
 
 from ...cli_common import CommonCLI
-from ...models import DBConnection
-from .clone import create_database_from_template, template_source_name
-from .ops import database_exists, drop_database
+from ...helpers.odoo_command import run_odoo_command
+from ...helpers.odoo_files import require_odoo_version
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
-
-def _clear_odoo_config_file(odoo_conf_path: Path) -> bool:
-    """Delete odoo.conf file if it exists."""
-    try:
-        if odoo_conf_path.exists():
-            LOGGER.info("Removing Odoo config file: %s", odoo_conf_path)
-            odoo_conf_path.unlink()
-        else:
-            LOGGER.info("Odoo config file already absent: %s", odoo_conf_path)
-    except OSError:
-        LOGGER.exception("Could not remove Odoo config file '%s'", odoo_conf_path)
-        return False
-    return True
+CommandRunner = Callable[[Sequence[str]], int]
 
 
-def _reset_from_template_impl(
+def _run_odoo_db(command: Sequence[str]) -> int:
+    """Run an Odoo database command without invoking a shell."""
+    LOGGER.info("Running Odoo database command: %s", " ".join(command))
+    return run_odoo_command(command).returncode
+
+
+def odoo_db_command(
+    *,
+    odoo_bin_path: Path,
+    odoo_conf_path: Optional[Path],
+    data_dir: Optional[Path],
+    arguments: Sequence[str],
+) -> list[str]:
+    """Build an Odoo 19 filestore-aware database command."""
+    command = [str(odoo_bin_path), "db"]
+    if odoo_conf_path is not None:
+        command.extend(["--config", str(odoo_conf_path)])
+    if data_dir is not None:
+        command.extend(["--data-dir", str(data_dir)])
+    command.extend(arguments)
+    return command
+
+
+def reset_runtime_from_template(
+    *,
     db_name: str,
-    db_user: str,
-    db_template_name: str = "",
-    db_host: str = "",
-    db_port: int = 0,
-    db_password: str = "",
-    clear_config_on_missing_template: bool = False,
+    db_template_name: str,
+    odoo_bin_path: Path,
     odoo_conf_path: Optional[Path] = None,
+    data_dir: Optional[Path] = None,
+    runner: CommandRunner = _run_odoo_db,
+    **_: object,
 ) -> int:
-    """Core reset flow used by both root and db commands."""
-    template_db_name = template_source_name(db_name, db_template_name)
-
-    connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name="postgres",
+    """Replace a database and filestore through ``odoo-bin db duplicate``."""
+    if db_name == db_template_name:
+        LOGGER.error("Template and target database names must differ.")
+        return 2
+    command = odoo_db_command(
+        odoo_bin_path=odoo_bin_path,
+        odoo_conf_path=odoo_conf_path,
+        data_dir=data_dir,
+        arguments=["duplicate", "--force", db_template_name, db_name],
     )
+    return runner(command)
 
-    if template_db_name == db_name:
-        LOGGER.error("Template DB '%s' must differ from target DB '%s'.", template_db_name, db_name)
-        return CLI.returner(1)
 
-    if not database_exists(connection=connection, db_name=template_db_name):
-        LOGGER.warning("Template DB '%s' not found. Dropping target DB '%s' only.", template_db_name, db_name)
-        drop_database(connection=connection, db_name=db_name)
-        if (
-            clear_config_on_missing_template
-            and odoo_conf_path is not None
-            and not _clear_odoo_config_file(odoo_conf_path=odoo_conf_path)
-        ):
-            return CLI.returner(1)
-        return CLI.returner(0)
-
-    try:
-        create_database_from_template(
-            connection=connection,
-            template_db_name=template_db_name,
-            target_db_name=db_name,
-            recreate_target=True,
-            allow_fallback_create=False,
-            use_file_copy_strategy=True,
-        )
-    except ValueError:
-        LOGGER.exception("Reset DB failed for '%s' (template='%s')", db_name, template_db_name)
-        return CLI.returner(1)
-
-    LOGGER.info("Reset DB complete: %s (template=%s)", db_name, template_db_name)
-    return CLI.returner(0)
+def reset_empty_runtime(
+    *,
+    db_name: str,
+    odoo_bin_path: Path,
+    odoo_conf_path: Optional[Path] = None,
+    data_dir: Optional[Path] = None,
+    runner: CommandRunner = _run_odoo_db,
+    **_: object,
+) -> int:
+    """Drop a database and its filestore through ``odoo-bin db drop``."""
+    command = odoo_db_command(
+        odoo_bin_path=odoo_bin_path,
+        odoo_conf_path=odoo_conf_path,
+        data_dir=data_dir,
+        arguments=["drop", db_name],
+    )
+    return runner(command)
 
 
 def reset_database_from_template(
     db_name: Annotated[str, CLI.database.db_name],
-    db_user: Annotated[str, CLI.database.db_user],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    odoo_conf_path: Annotated[Optional[Path], CLI.odoo_paths.conf_path] = None,
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
     db_template_name: Annotated[str, CLI.database.db_template_name] = "",
-    db_host: Annotated[str, CLI.database.db_host] = "",
-    db_port: Annotated[int, CLI.database.db_port] = 0,
-    db_password: Annotated[str, CLI.database.db_password] = "",
 ) -> int:
-    """Reset a database from template.
-
-    Behavior:
-        - If ``db_template_name`` is provided, clone from that template.
-        - If ``db_template_name`` is omitted, clone from ``<db_name>_template``.
-        - If the template does not exist, only drop the target DB and exit success.
-        - If template and target names are equal, exit with an error to avoid
-          destructive self-targeting.
-    """
-    return _reset_from_template_impl(
-        db_name=db_name,
-        db_user=db_user,
-        db_template_name=db_template_name,
-        db_host=db_host,
-        db_port=db_port,
-        db_password=db_password,
-        clear_config_on_missing_template=False,
+    """Replace a database and filestore from an Odoo database template."""
+    require_odoo_version(odoo_main_path, ">=19")
+    return CLI.returner(
+        reset_runtime_from_template(
+            db_name=db_name,
+            db_template_name=db_template_name or f"{db_name}_template",
+            odoo_bin_path=odoo_main_path / "odoo-bin",
+            odoo_conf_path=odoo_conf_path,
+            data_dir=data_dir,
+        )
     )
 
 
 def reset_odoo_state(
     db_name: Annotated[str, CLI.database.db_name],
-    db_user: Annotated[str, CLI.database.db_user],
-    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    odoo_conf_path: Annotated[Optional[Path], CLI.odoo_paths.conf_path] = None,
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
     db_template_name: Annotated[str, CLI.database.db_template_name] = "",
-    db_host: Annotated[str, CLI.database.db_host] = "",
-    db_port: Annotated[int, CLI.database.db_port] = 0,
-    db_password: Annotated[str, CLI.database.db_password] = "",
+    empty_reset: Annotated[bool, CLI.database.empty_reset] = False,
 ) -> int:
-    """Reset Odoo runtime state.
-
-    Behavior:
-        - Delegates database work to ``reset_database_from_template``.
-        - If template DB is missing, additionally deletes odoo.conf.
-    """
-    template_db_name = template_source_name(db_name, db_template_name)
-    template_missing = False
-    if template_db_name != db_name:
-        template_missing = not database_exists(
-            connection=DBConnection(
-                hostname=db_host,
-                port=db_port,
-                username=db_user,
-                password=db_password,
-                db_name="postgres",
-            ),
-            db_name=template_db_name,
+    """Drop a runtime database or replace it from its explicit template."""
+    require_odoo_version(odoo_main_path, ">=19")
+    if empty_reset:
+        return CLI.returner(
+            reset_empty_runtime(
+                db_name=db_name,
+                odoo_bin_path=odoo_main_path / "odoo-bin",
+                odoo_conf_path=odoo_conf_path,
+                data_dir=data_dir,
+            )
         )
-
-    reset_result = reset_database_from_template(
+    return reset_database_from_template(
         db_name=db_name,
-        db_user=db_user,
+        odoo_main_path=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
+        data_dir=data_dir,
         db_template_name=db_template_name,
-        db_host=db_host,
-        db_port=db_port,
-        db_password=db_password,
     )
-    if reset_result != 0:
-        return CLI.returner(reset_result)
-
-    if template_missing and not _clear_odoo_config_file(odoo_conf_path=odoo_conf_path):
-        return CLI.returner(1)
-
-    return CLI.returner(0)

@@ -21,6 +21,7 @@ WORKDIR $WORKSPACE
 
 ENV ODOO_CONF_PATH=${WORKSPACE}/config/odoo.conf \
     ODOO_MAIN_FOLDER=/odoo/odoo \
+    ODOO_DATA_DIR=/var/lib/odoo \
     ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
     ODOO_MANIFEST=${WORKSPACE}/odoo_manifest.yml \
     ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
@@ -97,6 +98,7 @@ WORKDIR $WORKSPACE
 
 ENV ODOO_CONF_PATH=/odoo/config/odoo.conf \
     ODOO_MAIN_FOLDER=/odoo/odoo \
+    ODOO_DATA_DIR=/var/lib/odoo \
     ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
     ODOO_MANIFEST=${WORKSPACE}/odoo_manifest.yml \
     ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \

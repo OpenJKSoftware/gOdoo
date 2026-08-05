@@ -10,6 +10,8 @@ from typing import Annotated
 import typer
 
 from ...cli_common import CommonCLI
+from .archive import dump_database, load_database
+from .cow import duplicate_cow
 from .passwords import set_passwords
 from .query import get_installed_modules, is_bootstrapped, query_database
 from .reset import reset_database_from_template
@@ -61,6 +63,9 @@ def db_cli_app():
     app.command("query")(query_database)
     app.command("odoo-bootstrapped")(is_bootstrapped)
     app.command("installed-modules")(get_installed_modules)
+    app.command("dump")(dump_database)
+    app.command("load")(load_database)
     app.command("reset-from-template")(reset_database_from_template)
+    app.command("duplicate-cow")(duplicate_cow)
 
     return app
