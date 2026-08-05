@@ -13,7 +13,7 @@ import typer
 LOGGER = logging.getLogger(__name__)
 
 
-def check_dangerous_command():
+def check_dangerous_command() -> None:
     """Check if a potentially dangerous command should be executed.
 
     This function checks if the environment is marked as a development
@@ -27,4 +27,5 @@ def check_dangerous_command():
     if isdev.lower() != "true":
         msg = "This is a dangerous command. Only allowed in Dev Mode."
         LOGGER.error(msg)
-        raise typer.Exit(msg)
+        typer.echo(msg, err=True)
+        raise typer.Exit(code=1)

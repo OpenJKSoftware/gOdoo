@@ -178,6 +178,9 @@ class GodooManifest:
     def _update_raw_yaml_data(self, add_compare_urls: bool) -> CommentedMap:
         """Update existing raw YAML data with current values."""
         data = self._raw_data
+        if data is None:
+            msg = "Cannot update YAML without raw manifest data"
+            raise RuntimeError(msg)
         odoo_section = data.get("odoo")
         data["odoo"] = self.odoo.update_yaml_node(odoo_section, add_compare_urls, self.default_branch)
         if self.thirdparty:

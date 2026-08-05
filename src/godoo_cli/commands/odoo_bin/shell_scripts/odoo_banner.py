@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional, cast
 
 from odoo import api
 
@@ -59,7 +59,8 @@ def disable_record(ref: str):
     Args:
         ref: XML ID of the record to disable.
     """
-    if (rec := env.ref(ref, raise_if_not_found=False)) and rec.active:
+    rec = cast(Any, env.ref(ref, raise_if_not_found=False))
+    if rec and rec.active:
         LOGGER.info("Disabling Record: %s", rec.display_name)
         rec.active = False
 
@@ -80,9 +81,13 @@ set_banner(
     os.getenv("ODOO_BANNER_BG_COLOR"),
 )
 remove_upgrade_test_ribbon()
-if ribb := env["ir.module.module"].search([("name", "=", "web_environment_ribbon"), ("state", "=", "installed")]):
+web_environment_ribbon = cast(
+    Any,
+    env["ir.module.module"].search([("name", "=", "web_environment_ribbon"), ("state", "=", "installed")]),
+)
+if web_environment_ribbon:
     LOGGER.info("Uninstalling Web Environment Ribbon addon")
-    ribb.button_immediate_uninstall()
+    web_environment_ribbon.button_immediate_uninstall()
 
 
 env.cr.commit()

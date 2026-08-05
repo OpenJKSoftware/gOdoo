@@ -67,7 +67,7 @@ def import_to_odoo(
     )
 
     if missing_paths := [p for p in read_paths if not p.exists()]:
-        msg = f"Provided import Paths: {', '.join(missing_paths)} doesn't exist"
+        msg = f"Provided import Paths: {', '.join(str(path) for path in missing_paths)} doesn't exist"
         LOGGER.error(msg)
         raise ValueError(msg)
 
@@ -76,7 +76,7 @@ def import_to_odoo(
             odoo_api=odoo_api,
             read_path=path.absolute(),
             data_regex=file_regex,
-            product_image_regex=False if path.is_file() else product_image_regex,
+            product_image_regex="" if path.is_file() else product_image_regex,
             check_dataset_timestamp=check_data_timestamp,
             skip_existing_ids=skip_existing_ids,
         )

@@ -38,10 +38,15 @@ def set_config_parameter(
         odoo_password=rpc_password,
     )
 
-    paramteter_model = odoo_api.session.env["ir.config_parameter"]
+    odoo_env = odoo_api.session.env
+    if odoo_env is None:
+        msg = "Odoo RPC session is not authenticated."
+        LOGGER.error(msg)
+        raise RuntimeError(msg)
+    parameter_model = odoo_env["ir.config_parameter"]
 
-    param_id = paramteter_model.search([("key", "=", param_name)])
-    param = paramteter_model.browse(param_id[0]) if param_id else None
+    param_id = parameter_model.search([("key", "=", param_name)])
+    param = parameter_model.browse(param_id[0]) if param_id else None
 
     if param_value == ":unlink":
         if param:
@@ -56,4 +61,4 @@ def set_config_parameter(
         param.value = param_value
     else:
         LOGGER.info("Creating new Config Parameter: %s", param_name)
-        paramteter_model.create({"key": param_name, "value": param_value})
+        parameter_model.create({"key": param_name, "value": param_value})

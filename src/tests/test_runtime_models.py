@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from godoo_cli.models import AddonPathResolver, DatabaseSettings, GodooConfig, WorkspaceLayout
+from godoo_cli.models import (
+    AddonPathResolver,
+    DatabaseSettings,
+    GodooConfig,
+    GodooGitRepo,
+    GodooManifest,
+    WorkspaceLayout,
+)
 
 
 def _layout(tmp_path: Path) -> WorkspaceLayout:
@@ -26,7 +33,7 @@ def test_workspace_layout_derives_runtime_paths_and_is_immutable(tmp_path: Path)
     assert layout.zip_addon_path == tmp_path / "thirdparty" / "custom"
     assert layout == _layout(tmp_path)
     with pytest.raises(FrozenInstanceError):
-        layout.data_dir = tmp_path / "other-data"
+        layout.data_dir = tmp_path / "other-data"  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_database_settings_derives_cached_connection_and_is_immutable():
@@ -58,7 +65,7 @@ def test_database_settings_derives_cached_connection_and_is_immutable():
         db_filter="demo",
     )
     with pytest.raises(FrozenInstanceError):
-        settings.db_name = "other"
+        settings.db_name = "other"  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_godoo_config_exposes_focused_models_without_changing_flat_api(tmp_path: Path):
@@ -91,3 +98,11 @@ def test_addon_path_resolver_is_reusable_and_ignores_missing_roots(tmp_path: Pat
     layout = _layout(tmp_path)
 
     assert AddonPathResolver(layout).resolve() == []
+
+
+def test_manifest_raw_data_update_requires_loaded_yaml() -> None:
+    """Raw-YAML mutation has a clear error when no source document exists."""
+    manifest = GodooManifest(odoo=GodooGitRepo(url="https://example.test/odoo.git"))
+
+    with pytest.raises(RuntimeError, match="without raw manifest data"):
+        manifest._update_raw_yaml_data(add_compare_urls=False)

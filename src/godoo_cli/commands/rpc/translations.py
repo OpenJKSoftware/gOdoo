@@ -43,7 +43,7 @@ def _dump_translation_for_module(module: Any, target_path: Path):
 
 
 def _dump_translations(
-    modules: list[Any],
+    modules: Any,
     godoo_modules: list[GodooModule],
     upgrade_modules: bool = True,
 ):
@@ -126,7 +126,7 @@ def dump_translations(
         odoo_password=rpc_password,
     )
 
-    rpc_modules = rpc_get_modules(odoo_api, modules, module_names)
+    rpc_modules = rpc_get_modules(odoo_api, ",".join(modules), module_names)
     if not rpc_modules:
         LOGGER.warning("No installed Modules found for Query: '%s'", modules)
         return CLI.returner(1)

@@ -9,6 +9,7 @@ downloads for addon repositories.
 import concurrent.futures
 import logging
 from pathlib import Path
+from typing import Optional
 
 from git import Remote, Repo
 
@@ -23,7 +24,7 @@ def git_ensure_repo_matches_manifest(
     force_fetch: bool = False,
     download_archive: bool = False,
     pin_commit: bool = False,
-):
+) -> Optional[Repo]:
     """Clone or update a repository based on a manifest spec."""
     effective_branch = repo_spec.branch or default_branch
     zip_mode = download_archive and not repo_spec.merge_from
@@ -45,6 +46,7 @@ def git_ensure_repo_matches_manifest(
             _merge_sources_into_repo(repo_spec)
         if pin_commit:
             repo_spec.commit = repo.head.commit.hexsha
+    return repo
 
 
 LOGGER = logging.getLogger(__name__)
@@ -109,7 +111,7 @@ def git_ensure_thirdparty_repos(
     if generate_yml_compare_comments:
         LOGGER.debug("Compare URL comments will be handled during manifest serialization.")
     with concurrent.futures.ThreadPoolExecutor(8) as executor:
-        futures: list[tuple[str, concurrent.futures.Future[Repo]]] = []
+        futures: list[tuple[str, concurrent.futures.Future[Optional[Repo]]]] = []
 
         for prefix, repo_spec in manifest.iter_thirdparty_repos():
             folder_name = f"{prefix}_{repo_spec.name}"
@@ -128,6 +130,10 @@ def git_ensure_thirdparty_repos(
                 )
             )
 
-        clone_results: dict[str, Repo] = {folder: future.result() for folder, future in futures if folder}
+        clone_results: dict[str, Repo] = {}
+        for folder, future in futures:
+            repo = future.result()
+            if repo is not None:
+                clone_results[folder] = repo
 
     return clone_results

@@ -17,6 +17,7 @@ Flags:
 import logging
 import re
 import sys
+from typing import Any, cast
 from xml.dom import minidom
 
 from odoo import api
@@ -65,7 +66,7 @@ def render_report(report_name: str, record_ids: list[int], replace_base64: bool 
         Replace base64 content with placeholder (True by default)
     """
     try:
-        report_model = env["ir.actions.report"]
+        report_model = cast(Any, env["ir.actions.report"])
         html_content, _ = report_model._render_qweb_html(report_name, record_ids)
 
         if html_content:

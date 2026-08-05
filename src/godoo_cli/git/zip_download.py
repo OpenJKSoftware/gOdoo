@@ -17,7 +17,7 @@ from .git_url import GitUrl
 LOGGER = logging.getLogger(__name__)
 
 
-def git_download_zip(repo_url: str, target_folder: Path, branch: str, commit: str = ""):
+def git_download_zip(repo_url: str, target_folder: Path, branch: str, commit: str = "") -> None:
     """Download Repo Zip from Github.
 
     Parameters

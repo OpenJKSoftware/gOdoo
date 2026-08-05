@@ -20,7 +20,7 @@ CLI = CommonCLI()
 
 def rpc_get_modules(
     odoo_api: OdooApiWrapper, module_query: str, valid_module_names: Optional[list[str]] = None
-) -> list[Any]:
+) -> Optional[Any]:
     """Get ir.module.module records by a query search string.
 
     This function searches for Odoo modules based on a query string and
@@ -32,9 +32,14 @@ def rpc_get_modules(
         valid_module_names: Optional list of valid module names to filter results.
 
     Returns:
-        A list of module records matching the query.
+        An Odoo RPC recordset matching the query, if any.
     """
-    mod_env = odoo_api.session.env["ir.module.module"]
+    odoo_env = odoo_api.session.env
+    if odoo_env is None:
+        msg = "Odoo RPC session is not authenticated."
+        LOGGER.error(msg)
+        raise RuntimeError(msg)
+    mod_env = odoo_env["ir.module.module"]
     mod_env.update_list()
 
     base_domain = []
@@ -147,6 +152,7 @@ def uninstall_modules(
             uninstall_modules = modules.browse(uninstall_module_ids)
             LOGGER.info("Uninstalling Module: " + ", ".join([m.name for m in uninstall_modules]))
             uninstall_modules.button_immediate_uninstall()
+            return
         else:
             LOGGER.warn("Found Modules, but didn't do anything on DB.")
     else:

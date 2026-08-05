@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 from godoo_cli.commands import source_get
-from godoo_cli.models import GodooConfig
+from godoo_cli.git import git_odoo_addons
+from godoo_cli.models import GodooConfig, GodooGitRepo
 
 
 def test_sync_source_uses_argument_vector_for_requirements(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -36,3 +37,15 @@ def test_sync_source_uses_argument_vector_for_requirements(monkeypatch: pytest.M
     )
 
     assert calls == [["/pip path/python", "-m", "pip", "install", "-r", str(odoo_path / "requirements.txt")]]
+
+
+def test_manifest_repo_sync_returns_cloned_repo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A clone-mode manifest sync exposes its repository to callers."""
+    expected_repo = object()
+    repo_spec = GodooGitRepo(url="https://example.test/addons.git")
+    monkeypatch.setattr(git_odoo_addons, "git_ensure_repo", lambda **_kwargs: expected_repo)
+
+    result = git_odoo_addons.git_ensure_repo_matches_manifest(tmp_path / "addons", repo_spec)
+
+    assert result is expected_repo
+    assert repo_spec.target_path == tmp_path / "addons"
