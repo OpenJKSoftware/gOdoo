@@ -9,10 +9,10 @@ import typer
 
 from ....cli_common import CommonCLI
 from ....helpers.modules_git import get_changed_modules_and_depends
-from ....helpers.system import run_cmd
+from ....helpers.odoo_command import run_odoo_command
+from ....helpers.odoo_files import require_odoo_version
 from ....models import GodooConfig, GodooModules
 from ..bootstrap import bootstrap_and_prep_launch_cmd
-from ..shell import odoo_pregenerate_assets
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ def odoo_run_tests(  # noqa: C901
     db_filter: Annotated[str, CLI.database.db_filter],
     db_user: Annotated[str, CLI.database.db_user],
     db_name: Annotated[str, CLI.database.db_name],
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
@@ -76,7 +77,12 @@ def odoo_run_tests(  # noqa: C901
     extra_launch_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args] = None,
     extra_bootstrap_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
     languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
-    pregenerate_assets: Annotated[bool, typer.Option(help="Pregenerate assets before running tests")] = True,
+    test_tags: Annotated[
+        Optional[str], typer.Option("--test-tags", envvar="ODOO_TEST_TAGS", help="Additional Odoo test tags")
+    ] = None,
+    test_file: Annotated[
+        Optional[Path], typer.Option("--test-file", envvar="ODOO_TEST_FILE", help="Odoo test file to run")
+    ] = None,
     skip_test_modules: Annotated[
         Optional[list[str]],
         typer.Option(
@@ -89,6 +95,7 @@ def odoo_run_tests(  # noqa: C901
 
     Will set test specific odoo.conf if it needs to bootstrap. Exits after run, so no webserver is started.
     """
+    require_odoo_version(odoo_main_path, ">=19")
     test_module_names = _test_modules_special_cases(test_module_names, workspace_addon_path)
     if not test_module_names:
         LOGGER.info("No Modules to Test. Skipping.")
@@ -105,6 +112,7 @@ def odoo_run_tests(  # noqa: C901
         odoo_conf_path=odoo_conf_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
+        data_dir=data_dir,
         multithread_worker_count=0,  # Tests should always run single threaded
         languages=languages,
     )
@@ -140,22 +148,18 @@ def odoo_run_tests(  # noqa: C901
         bootstrap_args = [f"--init {module_list}"]
     bootstrap_args.append(f"--log-level {odoo_log_level}")
 
+    selected_test_tags = ",".join(filter(None, [test_module_list, test_tags or ""]))
     launch_args = [
         f"-u {module_list}",
         f"--log-level {odoo_log_level}",
-        f"--test-tags {test_module_list}",
+        f"--test-tags {selected_test_tags}",
         "--stop-after-init",
     ]
 
+    if test_file:
+        launch_args.append(f"--test-file {test_file}")
     if extra_launch_args:
         launch_args = extra_launch_args + launch_args
-
-    launch_or_bootstrap = False
-    if not pregenerate_assets:
-        # If we dont pregenerate assets, we can run the Tests directly in Bootstrap
-        # This saves one Upgrade iteration
-        launch_or_bootstrap = True
-        bootstrap_args.append(f"--test-tags {test_module_list}")
 
     if extra_bootstrap_args:
         bootstrap_args = extra_bootstrap_args + bootstrap_args
@@ -167,12 +171,10 @@ def odoo_run_tests(  # noqa: C901
         extra_launch_args=launch_args,
         extra_bootstrap_args=bootstrap_args,
         odoo_demo=False,
-        launch_or_bootstrap=launch_or_bootstrap,
+        launch_or_bootstrap=False,
     )
-    if isinstance(launch_cmd, str):
-        if pregenerate_assets:
-            odoo_pregenerate_assets(godoo_conf=godoo_conf)
+    if isinstance(launch_cmd, list):
         LOGGER.info("Launching Odoo tests on database '%s' using config %s", db_name, odoo_conf_path)
-        return CLI.returner(run_cmd(launch_cmd).returncode)
+        return CLI.returner(run_odoo_command(launch_cmd).returncode)
 
     return CLI.returner(launch_cmd)

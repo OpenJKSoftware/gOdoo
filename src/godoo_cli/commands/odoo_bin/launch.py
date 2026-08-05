@@ -6,7 +6,6 @@ the launch process with various options like development mode and worker counts.
 """
 
 import logging
-import re
 import threading
 from pathlib import Path
 from typing import Annotated, Optional
@@ -14,50 +13,59 @@ from typing import Annotated, Optional
 import typer
 
 from ...cli_common import CommonCLI
-from ...helpers.system import run_cmd
-from ...models import DBConnection, GodooConfig
-from ..db.clone import create_database_from_template, template_source_name
+from ...helpers.modules_py import install_base_python_reqs, install_py_reqs_for_modules
+from ...helpers.odoo_command import run_odoo_command
+from ...helpers.odoo_files import require_odoo_version
+from ...models import GodooConfig, GodooModules
 from ..rpc import import_to_odoo
+from ..source_get import update_odoo_conf
 from .bootstrap import bootstrap_and_prep_launch_cmd
+from .cli_generate import _launch_command
 
 CLI = CommonCLI()
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _refresh_launch_database_from_template(
-    db_name: str,
-    db_user: str,
-    db_template_name: str = "",
-    db_host: str = "",
-    db_port: int = 0,
-    db_password: str = "",
-) -> bool:
-    """Refresh target launch DB from template when template was specified."""
-    if not db_template_name:
-        return True
+def _without_reload(command: list[str]) -> list[str]:
+    """Disable Odoo autoreload while an in-process importer is running."""
+    return [
+        argument.replace(",reload", "") if index and command[index - 1] == "--dev" else argument
+        for index, argument in enumerate(command)
+    ]
 
-    template_db_name = template_source_name(db_name, db_template_name)
-    connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name="postgres",
-    )
-    try:
-        create_database_from_template(
-            connection=connection,
-            template_db_name=template_db_name,
-            target_db_name=db_name,
-            recreate_target=True,
-            allow_fallback_create=False,
-            use_file_copy_strategy=True,
+
+def prepare_runtime(godoo_conf: GodooConfig) -> None:
+    """Prepare configuration and Python dependencies without changing a database."""
+    require_odoo_version(godoo_conf.odoo_install_folder, ">=19")
+    if godoo_conf.odoo_conf_path.exists():
+        update_odoo_conf(
+            odoo_conf=godoo_conf.odoo_conf_path,
+            odoo_main_path=godoo_conf.odoo_install_folder,
+            workspace_addon_path=godoo_conf.workspace_addon_path,
+            thirdparty_addon_path=godoo_conf.thirdparty_addon_path,
         )
-    except ValueError:
-        LOGGER.exception("Could not refresh launch DB '%s' from template '%s'", db_name, template_db_name)
-        return False
-    return True
+    install_base_python_reqs(godoo_conf.odoo_install_folder)
+    module_registry = GodooModules(godoo_conf.addon_paths)
+    install_py_reqs_for_modules(list(module_registry.get_modules()), module_registry)
+
+
+def prepare_odoo(
+    odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
+    workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
+    thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
+    odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
+) -> None:
+    """Prepare configuration and Python dependencies without touching the database."""
+    godoo_conf = GodooConfig(
+        odoo_install_folder=odoo_main_path,
+        odoo_conf_path=odoo_conf_path,
+        workspace_addon_path=workspace_addon_path,
+        thirdparty_addon_path=thirdparty_addon_path,
+        data_dir=data_dir,
+    )
+    prepare_runtime(godoo_conf)
 
 
 def launch_odoo(
@@ -68,47 +76,18 @@ def launch_odoo(
     db_filter: Annotated[str, CLI.database.db_filter],
     db_name: Annotated[str, CLI.database.db_name],
     db_user: Annotated[str, CLI.database.db_user],
-    db_template_name: Annotated[str, CLI.database.db_template_name] = "",
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_password: Annotated[str, CLI.database.db_password] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     extra_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args] = None,
-    extra_bootstrap_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
     log_file_path: Annotated[Optional[Path], CLI.odoo_launch.log_file_path] = None,
-    install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
-    odoo_demo: Annotated[bool, CLI.odoo_launch.odoo_demo] = False,
     dev_mode: Annotated[bool, CLI.odoo_launch.dev_mode] = False,
     multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
     languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
 ):
-    """Launch an Odoo instance, bootstrapping if necessary.
-
-    This command handles the complete process of launching an Odoo instance:
-    1. Creates a new database if it doesn't exist
-    2. Bootstraps the database with initial data if needed
-    3. Configures the instance with specified options
-    4. Launches Odoo with the appropriate configuration
-
-    The function uses CLI class defaults for most parameters, which can be
-    overridden through command line arguments or environment variables.
-
-    If db_template_name is provided, the launch DB is recreated from that
-    template using CREATE DATABASE ... TEMPLATE ... STRATEGY FILE_COPY before
-    launching Odoo.
-
-    Returns:
-        int: 0 for success, non-zero for failure.
-    """
-    if not _refresh_launch_database_from_template(
-        db_name=db_name,
-        db_user=db_user,
-        db_template_name=db_template_name,
-        db_host=db_host,
-        db_port=db_port,
-        db_password=db_password,
-    ):
-        return CLI.returner(1)
-
+    """Launch Odoo without preparing dependencies or changing database state."""
+    require_odoo_version(odoo_main_path, ">=19")
     godoo_conf = GodooConfig(
         db_user=db_user,
         db_password=db_password,
@@ -120,25 +99,20 @@ def launch_odoo(
         odoo_conf_path=odoo_conf_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
+        data_dir=data_dir,
         multithread_worker_count=multithread_worker_count,
         languages=languages,
     )
-    launch_cmd = bootstrap_and_prep_launch_cmd(
-        godoo_conf=godoo_conf,
-        odoo_demo=odoo_demo,
-        dev_mode=dev_mode,
-        install_workspace_addons=install_workspace_modules,
-        extra_launch_args=extra_args,
-        extra_bootstrap_args=extra_bootstrap_args,
-        log_file_path=log_file_path,
-    )
-
-    if not isinstance(launch_cmd, str):
-        LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
-        return CLI.returner(launch_cmd)
+    launch_args = list(extra_args or [])
+    if log_file_path is not None:
+        log_file_path.unlink(missing_ok=True)
+        launch_args.extend(["--logfile", str(log_file_path.absolute())])
+    if dev_mode:
+        launch_args.extend(["--dev", "xml,qweb,reload"])
+    launch_cmd = _launch_command(godoo_conf, launch_args, upgrade_workspace_modules=False)
 
     LOGGER.info("Launching Odoo on database '%s' using config %s", db_name, odoo_conf_path)
-    return CLI.returner(run_cmd(launch_cmd).returncode)
+    return CLI.returner(run_odoo_command(launch_cmd).returncode)
 
 
 def launch_import(
@@ -158,7 +132,7 @@ def launch_import(
     rpc_password: Annotated[str, CLI.rpc.rpc_password],
     odoo_demo: Annotated[bool, CLI.odoo_launch.odoo_demo],
     dev_mode: Annotated[bool, CLI.odoo_launch.dev_mode],
-    db_template_name: Annotated[str, CLI.database.db_template_name] = "",
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
@@ -172,8 +146,7 @@ def launch_import(
 
     This command launches an Odoo instance and starts a separate thread to import
     data through RPC. The import process runs asynchronously while Odoo is running.
-    When db_template_name is provided, the launch DB is recreated from that
-    template before Odoo starts.
+    Import launch never resets runtime state implicitly.
 
     Args:
         load_data_path: List of paths containing data to import.
@@ -186,7 +159,7 @@ def launch_import(
         db_port: Database port number.
         db_name: Name of the database to use.
         db_user: Database user name.
-        db_template_name: Template database name used to refresh db_name before launch.
+        data_dir: Odoo data directory containing filestores and runtime data.
         db_password: Database password.
         rpc_host: Host address for RPC connections.
         rpc_user: Username for RPC authentication.
@@ -202,16 +175,7 @@ def launch_import(
     Returns:
         int: 0 for success, non-zero for failure.
     """
-    if not _refresh_launch_database_from_template(
-        db_name=db_name,
-        db_user=db_user,
-        db_template_name=db_template_name,
-        db_host=db_host,
-        db_port=db_port,
-        db_password=db_password,
-    ):
-        return CLI.returner(1)
-
+    require_odoo_version(odoo_main_path, ">=19")
     godoo_conf = GodooConfig(
         db_user=db_user,
         db_password=db_password,
@@ -223,6 +187,7 @@ def launch_import(
         odoo_conf_path=odoo_conf_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
+        data_dir=data_dir,
         multithread_worker_count=multithread_worker_count,
         languages="de_DE,en_US",
     )
@@ -237,11 +202,12 @@ def launch_import(
         log_file_path=log_file_path,
     )
 
-    if not isinstance(launch_cmd, str):
+    if not isinstance(launch_cmd, list):
         LOGGER.error("godoo Launch Failed. Bootstrap unsuccessfull. Aborting Launch...")
         return CLI.returner(launch_cmd)
 
-    launch_cmd = re.sub(r"(--dev [\w,]+)(,reload)", r"\1", launch_cmd)  # Remove reload option from CMD String
+    # The importer runs in this process and must survive source changes.
+    launch_cmd = _without_reload(launch_cmd)
 
     LOGGER.info("Starting Data Importer Thread for: '%s'", ", ".join(map(str, load_data_path)))
     loader_thread = threading.Thread(
@@ -258,4 +224,4 @@ def launch_import(
     loader_thread.start()
 
     LOGGER.info("Launching Odoo on database '%s' using config %s", db_name, odoo_conf_path)
-    return CLI.returner(run_cmd(launch_cmd).returncode)
+    return CLI.returner(run_odoo_command(launch_cmd).returncode)

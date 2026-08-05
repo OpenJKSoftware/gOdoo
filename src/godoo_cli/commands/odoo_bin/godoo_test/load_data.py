@@ -7,7 +7,8 @@ from typing import Annotated, Optional
 import typer
 
 from ....cli_common import CommonCLI
-from ....helpers.system import run_cmd
+from ....helpers.odoo_command import run_odoo_command
+from ....helpers.odoo_files import require_odoo_version
 from ....models import GodooConfig, GodooModules
 from ..bootstrap import bootstrap_and_prep_launch_cmd
 from ..shell import odoo_shell
@@ -36,6 +37,7 @@ def odoo_load_test_data(
     db_filter: Annotated[str, CLI.database.db_filter],
     db_name: Annotated[str, CLI.database.db_name],
     db_user: Annotated[str, CLI.database.db_user],
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
@@ -49,6 +51,7 @@ def odoo_load_test_data(
     Makes sure Odoo is bootstrapped with the given modules and then
     calls `tests.data.generate_test_data(env)` for each module.
     """
+    require_odoo_version(odoo_main_path, ">=19")
     godoo_conf = GodooConfig(
         db_user=db_user,
         db_password=db_password,
@@ -60,6 +63,7 @@ def odoo_load_test_data(
         odoo_conf_path=odoo_conf_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
+        data_dir=data_dir,
         multithread_worker_count=multithread_worker_count,
     )
     godoo_test_modules = list(GodooModules(godoo_conf.addon_paths).get_modules(test_modules))
@@ -101,9 +105,9 @@ def odoo_load_test_data(
         odoo_demo=False,
         launch_or_bootstrap=True,
     )
-    if isinstance(launch_cmd, str):
+    if isinstance(launch_cmd, list):
         LOGGER.info("Ensuring modules are intalled")
-        launch_cmd = run_cmd(launch_cmd, shell=True).returncode
+        launch_cmd = run_odoo_command(launch_cmd).returncode
 
     if launch_cmd != 0:
         LOGGER.error("Failed to Launch or Bootstrap Odoo")
@@ -113,7 +117,12 @@ def odoo_load_test_data(
     for module in godoo_test_modules:
         load_cmd = f"from odoo.addons.{module.name}.tests.data import generate_test_data; generate_test_data(env);env.cr.commit()"
         LOGGER.info("Calling Test Data Generator for Module: %s", module)
-        ret = odoo_shell(pipe_in_command=load_cmd, odoo_main_path=odoo_main_path, odoo_conf_path=odoo_conf_path)
+        ret = odoo_shell(
+            pipe_in_command=load_cmd,
+            odoo_main_path=odoo_main_path,
+            odoo_conf_path=odoo_conf_path,
+            data_dir=data_dir,
+        )
         if ret != 0:
             LOGGER.error("Failed to generate test data for module: %s", module)
             return CLI.returner(ret)

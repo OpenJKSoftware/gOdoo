@@ -7,7 +7,6 @@ the Odoo environment with necessary modules and configurations.
 
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Annotated, Optional, Union
 
@@ -15,7 +14,8 @@ import typer
 
 from ...cli_common import CommonCLI
 from ...helpers.modules_py import install_base_python_reqs, install_py_reqs_by_odoo_cmd
-from ...helpers.system import run_cmd
+from ...helpers.odoo_command import run_odoo_command
+from ...helpers.odoo_files import require_odoo_version
 from ...models import GodooConfig
 from ..db.query import DbBootstrapStatus, _is_bootstrapped
 from ..source_get import py_depends_by_db, update_odoo_conf
@@ -36,7 +36,7 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
     log_file_path: Optional[Path] = None,
     install_workspace_addons: bool = True,
     launch_or_bootstrap: bool = False,
-) -> Union[int, str]:
+) -> Union[int, list[str]]:
     """Bootstrap an Odoo instance if needed and prepare the launch command.
 
     This function handles the complete process of preparing an Odoo instance for launch:
@@ -58,14 +58,14 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
 
     Returns:
         Union[int, str]: Either a non-zero error code if bootstrap failed,
-            or the launch command string if successful.
+            or the launch argument vector if successful.
     """
     LOGGER.info("Starting godoo Init Script")
 
     extra_odoo_args = []
     if log_file_path is not None:
         log_file_path.unlink(missing_ok=True)
-        extra_odoo_args.append("--logfile " + str(log_file_path.absolute()))
+        extra_odoo_args.extend(["--logfile", str(log_file_path.absolute())])
 
     bootstraped = _is_bootstrapped(godoo_conf.db_connection)
     LOGGER.info("Bootstrap status for database '%s': '%s'", godoo_conf.db_name, bootstraped.value)
@@ -88,6 +88,7 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
             install_workspace_modules=install_workspace_addons,
             multithread_worker_count=godoo_conf.multithread_worker_count,
             languages=godoo_conf.languages,
+            data_dir=godoo_conf.data_dir,
         )
         bootstraped = ret == 0
         if not bootstraped or launch_or_bootstrap:
@@ -123,18 +124,74 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
         )
 
     if dev_mode:
-        extra_odoo_args.append("--dev xml,qweb,reload")
+        extra_odoo_args.extend(["--dev", "xml,qweb,reload"])
         if odoo_version.major == 16:
             extra_odoo_args[-1] += ",werkzeug"
 
     if godoo_conf.multithread_worker_count == 0:
-        extra_odoo_args.append("--workers 0")
+        extra_odoo_args.extend(["--workers", "0"])
 
     return _launch_command(
         godoo_conf=godoo_conf,
         extra_cmd_args=extra_odoo_args,
         upgrade_workspace_modules=install_workspace_addons,
     )
+
+
+def bootstrap_runtime(
+    godoo_conf: GodooConfig,
+    *,
+    extra_cmd_args: Optional[list[str]] = None,
+    install_workspace_modules: bool = True,
+    install_base_modules: bool = True,
+    banner_text: str = "",
+    banner_bg_color: str = "green",
+) -> int:
+    """Bootstrap one runtime through Odoo's native initialization command."""
+    require_odoo_version(godoo_conf.odoo_install_folder, ">=19")
+    addon_paths = godoo_conf.addon_paths
+    command = _boostrap_command(
+        godoo_config=godoo_conf,
+        addon_paths=addon_paths,
+        extra_cmd_args=extra_cmd_args,
+        install_workspace_modules=install_workspace_modules,
+    )
+    if not install_base_modules:
+        try:
+            init_index = command.index("--init")
+        except ValueError:
+            pass
+        else:
+            if command[init_index + 1] == "base,web":
+                del command[init_index : init_index + 2]
+
+    install_base_python_reqs(odoo_install_folder=godoo_conf.odoo_install_folder)
+    install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=command)
+
+    LOGGER.info(
+        "Launching Odoo bootstrap on database '%s' using config %s",
+        godoo_conf.db_name,
+        godoo_conf.odoo_conf_path,
+    )
+    ret = run_odoo_command(command).returncode
+    if ret != 0:
+        LOGGER.error("Odoo-Bin Returned %d", ret)
+        return ret
+    if banner_text:
+        os.environ["ODOO_BANNER_TEXT"] = banner_text
+        os.environ["ODOO_BANNER_BG_COLOR"] = banner_bg_color
+        odoo_shell_run_script(
+            script_name="odoo_banner",
+            odoo_main_path=godoo_conf.odoo_install_folder,
+            odoo_conf_path=godoo_conf.odoo_conf_path,
+            db_name=godoo_conf.db_name,
+            db_user=godoo_conf.db_user,
+            db_host=godoo_conf.db_host,
+            db_port=godoo_conf.db_port,
+            db_password=godoo_conf.db_password,
+            data_dir=godoo_conf.data_dir,
+        )
+    return ret
 
 
 def bootstrap_odoo(
@@ -161,7 +218,7 @@ def bootstrap_odoo(
     ] = True,
     banner_text: Annotated[str, CLI.odoo_launch.banner_text] = "",
     banner_bg_color: Annotated[str, CLI.odoo_launch.banner_bg_color] = "green",
-    filestore_target_dir: Annotated[Path, CLI.odoo_paths.filestore_target_dir] = Path("/var/lib/odoo"),
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
 ):
     """Bootstrap an Odoo instance with specified configuration."""
     godoo_conf = GodooConfig(
@@ -177,39 +234,15 @@ def bootstrap_odoo(
         thirdparty_addon_path=thirdparty_addon_path,
         multithread_worker_count=multithread_worker_count,
         languages=languages,
-        filestore_target_dir=filestore_target_dir,
+        data_dir=data_dir,
     )
-
-    addon_paths = godoo_conf.addon_paths
-    cmd_string = _boostrap_command(
-        godoo_config=godoo_conf,
-        addon_paths=addon_paths,
-        extra_cmd_args=extra_cmd_args,
-        install_workspace_modules=install_workspace_modules,
-    )
-    if not install_base_modules:
-        cmd_string = re.sub(r"--init base,web", "", cmd_string)
-
-    # Always update Pip reqs regardless of --no-update-source
-    install_base_python_reqs(odoo_install_folder=odoo_main_path)
-    install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=cmd_string)
-
-    LOGGER.info("Launching Odoo bootstrap on database '%s' using config %s", db_name, odoo_conf_path)
-    ret = run_cmd(cmd_string).returncode
-    if ret != 0:
-        LOGGER.error("Odoo-Bin Returned %d", ret)
-        return CLI.returner(ret)
-    if banner_text:
-        os.environ["ODOO_BANNER_TEXT"] = banner_text
-        os.environ["ODOO_BANNER_BG_COLOR"] = banner_bg_color
-        odoo_shell_run_script(
-            script_name="odoo_banner",
-            odoo_main_path=odoo_main_path,
-            odoo_conf_path=odoo_conf_path,
-            db_name=db_name,
-            db_user=db_user,
-            db_host=db_host,
-            db_port=db_port,
-            db_password=db_password,
+    return CLI.returner(
+        bootstrap_runtime(
+            godoo_conf,
+            extra_cmd_args=extra_cmd_args,
+            install_workspace_modules=install_workspace_modules,
+            install_base_modules=install_base_modules,
+            banner_text=banner_text,
+            banner_bg_color=banner_bg_color,
         )
-    return CLI.returner(ret)
+    )

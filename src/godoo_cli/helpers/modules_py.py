@@ -7,11 +7,11 @@ available for Odoo modules to function properly.
 """
 
 import logging
-import re
 from pathlib import Path
 from types import GeneratorType
 
 from ..models import GodooModule, GodooModules
+from .odoo_command import OdooCommand, odoo_command_argv
 from .pip import pip_command, pip_install
 from .system import run_cmd
 
@@ -63,7 +63,7 @@ def install_py_reqs_for_modules(modules: list[GodooModule], module_reg: GodooMod
         return pip_install(list(set(reqs)))
 
 
-def install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: str):
+def install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: OdooCommand):
     """Install Python reqs for modules mentioned in odoo-bin commandline --init or -i directives.
 
     Parameters
@@ -71,15 +71,19 @@ def install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: str):
     addon_paths : List[Path]
         odoo-bin addons-path
     odoo_bin_cmd : str
-        odoo-bin commandline
+    odoo-bin command line or argument vector
 
     Returns:
     -------
     CompletedProcess
     """
-    install_modules = []
-    for m in re.finditer(r'(--init|-i|--load) "?([^ \n]+)"?', odoo_bin_cmd):
-        install_modules += m.group(2).split(",")
+    argv = odoo_command_argv(odoo_bin_cmd)
+    install_modules = [
+        module
+        for option, modules in zip(argv, argv[1:])
+        if option in ("--init", "-i", "--load")
+        for module in modules.split(",")
+    ]
     if install_modules:
         LOGGER.debug("Found Modules to install in odoo-bin command: %s", install_modules)
         module_reg = GodooModules(addon_paths)

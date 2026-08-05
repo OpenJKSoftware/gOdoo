@@ -6,7 +6,6 @@ Odoo environment. It supports both interactive and script-based operations.
 """
 
 import logging
-import subprocess
 import sys
 from pathlib import Path
 from typing import Annotated, Optional
@@ -14,9 +13,8 @@ from typing import Annotated, Optional
 import typer
 
 from ...cli_common import CommonCLI
-from ...helpers.odoo_files import odoo_bin_get_version
-from ...helpers.system import run_cmd
-from ...models import GodooConfig
+from ...helpers.odoo_command import run_odoo_command
+from ...helpers.odoo_files import require_odoo_version
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
@@ -29,19 +27,22 @@ def odoo_shell_uninstall_modules(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
 ):
-    """Uninstall specified modules from Odoo via shell.
-
-    This function uses the Odoo shell to uninstall modules that are currently
-    installed or in a state that allows uninstallation.
+    """Uninstall specified modules through Odoo's module command.
 
     Returns:
         int: 0 for success, non-zero for failure.
     """
-    module_list_str = str(list(module_list))
-    uninstall_cmd = f"env['ir.module.module'].search([('name','in',{module_list_str})]).filtered(lambda m: m.state not in ['uninstallable','uninstalled']).button_immediate_uninstall()"
-    uninstall_shell = f'echo "{uninstall_cmd}" | {odoo_main_path.absolute()!s}/odoo-bin shell -c {odoo_conf_path.absolute()!s} --no-http'
-    LOGGER.info("Launching Uninstaller: '%s'", uninstall_shell)
-    ret = run_cmd(uninstall_shell).returncode
+    require_odoo_version(odoo_main_path, ">=19")
+    uninstall_cmd = [
+        str(odoo_main_path.absolute() / "odoo-bin"),
+        "module",
+        "uninstall",
+        "--config",
+        str(odoo_conf_path.absolute()),
+        *module_list,
+    ]
+    LOGGER.info("Uninstalling modules: %s", ", ".join(module_list))
+    ret = run_odoo_command(uninstall_cmd).returncode
     return CLI.returner(ret)
 
 
@@ -53,6 +54,7 @@ def odoo_shell(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
     pipe_in_command: Annotated[
         str,
         typer.Argument(help="Python command, that will be piped into odoo-bin shell"),
@@ -67,22 +69,35 @@ def odoo_shell(
     Returns:
         int: 0 for success, non-zero for failure.
     """
-    shell_cmd = f"{odoo_main_path.absolute()!s}/odoo-bin shell --no-http"
-    if odoo_conf_path.exists():
-        shell_cmd += f" -c {odoo_conf_path.absolute()!s}"
+    require_odoo_version(odoo_main_path, ">=19")
+    shell_cmd = [
+        str(odoo_main_path.absolute() / "odoo-bin"),
+        "shell",
+        "--no-http",
+        "--data-dir",
+        str(data_dir.absolute()),
+    ]
+    if odoo_conf_path and odoo_conf_path.exists():
+        shell_cmd.extend(["--config", str(odoo_conf_path.absolute())])
     else:
         LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
         if not all([db_host, db_port, db_name, db_user, db_password]):
             LOGGER.error("Missing database options and Odoo config at %s. Aborting.", odoo_conf_path)
             return CLI.returner(1)
-        shell_cmd += f" --db_host={db_host} --db_port={db_port} --database={db_name} --db_user={db_user} --db_password={db_password}"
+        shell_cmd.extend(
+            [
+                f"--db_host={db_host}",
+                f"--db_port={db_port}",
+                f"--database={db_name}",
+                f"--db_user={db_user}",
+                f"--db_password={db_password}",
+            ]
+        )
 
     if pipe_in_command:
-        pipe_in_command = pipe_in_command.replace('"', '\\"')  # Escape Double Quotes
-        shell_cmd = f'echo "{pipe_in_command}" |' + shell_cmd
-        ret = run_cmd(shell_cmd)
+        ret = run_odoo_command(shell_cmd, input=pipe_in_command, text=True)
     else:
-        ret = run_cmd(shell_cmd, stdin=sys.stdin)
+        ret = run_odoo_command(shell_cmd, stdin=sys.stdin)
     return CLI.returner(ret.returncode)
 
 
@@ -134,6 +149,7 @@ def odoo_shell_run_script(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
 ):
     """Run a predefined script using the Odoo shell.
 
@@ -144,20 +160,35 @@ def odoo_shell_run_script(
     Returns:
         int: 0 for success, non-zero for failure.
     """
+    require_odoo_version(odoo_main_path, ">=19")
     script_path = SHELL_SCRIPTS_PATH / f"{script_name}.py"
     if not script_path.exists():
         LOGGER.error("Script '%s' not found in %s", script_name, SHELL_SCRIPTS_PATH)
         return CLI.returner(1)
 
-    shell_cmd = f"{odoo_main_path.absolute()!s}/odoo-bin shell --no-http"
+    shell_cmd = [
+        str(odoo_main_path.absolute() / "odoo-bin"),
+        "shell",
+        "--no-http",
+        "--data-dir",
+        str(data_dir.absolute()),
+    ]
     if odoo_conf_path and odoo_conf_path.exists():
-        shell_cmd += f" -c {odoo_conf_path.absolute()!s}"
+        shell_cmd.extend(["--config", str(odoo_conf_path.absolute())])
     else:
         LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
         if not all([db_host, db_port, db_name, db_user, db_password]):
             LOGGER.error("Missing database options and Odoo config at %s. Aborting.", odoo_conf_path)
             return CLI.returner(1)
-        shell_cmd += f" --db_host={db_host} --db_port={db_port} --database={db_name} --db_user={db_user} --db_password={db_password}"
+        shell_cmd.extend(
+            [
+                f"--db_host={db_host}",
+                f"--db_port={db_port}",
+                f"--database={db_name}",
+                f"--db_user={db_user}",
+                f"--db_password={db_password}",
+            ]
+        )
 
     # Prepare script with arguments
     script_content = script_path.read_text()
@@ -171,37 +202,5 @@ def odoo_shell_run_script(
         script_with_args = f"script_args = []\n\n{script_content}"
         LOGGER.info("Running Script: %s", script_path)
 
-    proc = subprocess.Popen(
-        shell_cmd,
-        shell=True,
-        stdin=subprocess.PIPE,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-        text=True,
-    )
-    proc.communicate(input=script_with_args)
+    proc = run_odoo_command(shell_cmd, input=script_with_args, text=True)
     return CLI.returner(proc.returncode)
-
-
-def odoo_pregenerate_assets(godoo_conf: GodooConfig):
-    """Use Odoo shell to pregenerate asset bundles.
-
-    This function ensures that asset bundles are present in the filestore
-    by pregenerating them through the Odoo shell.
-
-    Raises:
-        NotImplementedError: If the Odoo version is not supported.
-    """
-    odoo_version = odoo_bin_get_version(odoo_main_repo_path=godoo_conf.odoo_install_folder)
-    LOGGER.info("Pregenerating Assets for Odoo version %s", odoo_version.raw)
-    # Use the pregenerate_assets script which attempts multiple internal APIs.
-    odoo_shell_run_script(
-        script_name="pregenerate_assets",
-        odoo_main_path=godoo_conf.odoo_install_folder,
-        odoo_conf_path=godoo_conf.odoo_conf_path,
-        db_name=godoo_conf.db_name,
-        db_user=godoo_conf.db_user,
-        db_host=godoo_conf.db_host,
-        db_port=godoo_conf.db_port,
-        db_password=godoo_conf.db_password,
-    )

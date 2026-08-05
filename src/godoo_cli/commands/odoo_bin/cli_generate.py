@@ -1,10 +1,10 @@
-"""Methods to generate odoo-bin Commands as Strings."""
+"""Methods to generate argv lists for ``odoo-bin`` invocations."""
 
 import logging
 import os
-import re
+import shlex
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from ...models import GodooConfig, GodooModules
 from ..db.query import DbBootstrapStatus, _is_bootstrapped
@@ -14,7 +14,12 @@ LOGGER = logging.getLogger(__name__)
 
 def _odoo_config_args(godoo_config: GodooConfig, save: bool) -> list[str]:
     """Build Odoo config and database arguments."""
-    config_args = [f"--config {godoo_config.odoo_conf_path.absolute()!s}"]
+    config_args = [
+        "--config",
+        str(godoo_config.odoo_conf_path.absolute()),
+        "--data-dir",
+        str(godoo_config.data_dir.absolute()),
+    ]
     if not save:
         return config_args
 
@@ -22,64 +27,56 @@ def _odoo_config_args(godoo_config: GodooConfig, save: bool) -> list[str]:
     return [
         *config_args,
         "--save",
-        f"--database {godoo_config.db_name}",
-        f"--db_user {godoo_config.db_user}",
-        f"--db_password {godoo_config.db_password}",
-        f"--db_host {godoo_config.db_host}" if godoo_config.db_host else "",
-        f"--db_port {godoo_config.db_port}" if godoo_config.db_port else "",
+        "--database",
+        godoo_config.db_name,
+        "--db_user",
+        godoo_config.db_user,
+        "--db_password",
+        godoo_config.db_password,
+        *(["--db_host", godoo_config.db_host] if godoo_config.db_host else []),
+        *(["--db_port", str(godoo_config.db_port)] if godoo_config.db_port else []),
         f"--db-filter=^{godoo_config.db_filter}$",
     ]
+
+
+def _extra_args_argv(extra_cmd_args: list[str]) -> list[str]:
+    """Normalize legacy option chunks while preserving already-separated values.
+
+    Historically Typer supplied option chunks such as ``"--update sale"``.
+    Internal callers may now also provide canonical argv pairs, where a value
+    (including one with spaces) follows its option as a separate list item.
+    """
+    argv: list[str] = []
+    for chunk in extra_cmd_args:
+        argv.extend(shlex.split(chunk) if chunk.startswith("-") else [chunk])
+    return argv
 
 
 def _launch_command(
     godoo_conf: GodooConfig,
     extra_cmd_args: list[str],
     upgrade_workspace_modules: bool = True,
-) -> str:
-    """Build the Odoo launch command with all necessary arguments.
-
-    This function constructs the command line string used to launch Odoo,
-    including handling module upgrades and configuration paths.
-
-    Args:
-        godoo_conf: GodooConfig object with Odoo configuration details.
-        extra_cmd_args: Additional command line arguments to pass to odoo-bin.
-        upgrade_workspace_modules: If True, automatically upgrade all modules in workspace.
-
-    Returns:
-        str: The complete command string to launch Odoo.
-    """
+) -> list[str]:
+    """Build an Odoo launch argument vector."""
+    extra_args = _extra_args_argv(extra_cmd_args)
+    has_explicit_update = any(
+        arg == option or arg.startswith(f"{option}=") for arg in extra_args for option in ("-u", "--update")
+    )
     upgrade_addons = []
-    if not any(arg in ("-u", "--update") for arg in extra_cmd_args) or upgrade_workspace_modules:
+    if upgrade_workspace_modules and not has_explicit_update:
         all_modules = GodooModules(godoo_conf.workspace_addon_path).get_modules()
         upgrade_addons = [
             module.name for module in all_modules if module.version.split(".")[0] == godoo_conf.odoo_version.major
         ]
 
-    update_addon_string = "--update " + ",".join(upgrade_addons) if upgrade_addons else ""
-
+    update_args = ["--update", ",".join(upgrade_addons)] if upgrade_addons else []
     config_args = _odoo_config_args(godoo_conf, save=not godoo_conf.odoo_conf_path.exists())
-
-    odoo_cmd = [
+    return [
         str(godoo_conf.odoo_bin_path.absolute()),
-        update_addon_string,
+        *update_args,
         *config_args,
-        *extra_cmd_args,
+        *extra_args,
     ]
-    odoo_cmd = list(filter(None, odoo_cmd))
-    return " ".join(odoo_cmd)
-
-
-def _add_default_argument(cmd_list: list[str], arg: str, arg_val: Any):
-    """Add a default argument to the command list if not already present.
-
-    Args:
-        cmd_list: List of command arguments.
-        arg: Argument name to add.
-        arg_val: Value for the argument.
-    """
-    if not any(arg in s for s in cmd_list):
-        cmd_list.append(f'{arg}="{arg_val}"')
 
 
 def _boostrap_command(
@@ -87,77 +84,49 @@ def _boostrap_command(
     addon_paths: list[Path],
     extra_cmd_args: Optional[list[str]] = None,
     install_workspace_modules: bool = True,
-) -> str:
-    """Generate bootstrap command for Odoo initialization.
-
-    This function constructs the Odoo bootstrap command with all necessary parameters
-    including database configuration, addon paths, and worker settings.
-
-    Args:
-        godoo_config: GodooConfig object with Odoo configuration details.
-        addon_paths: List of paths for odoo-bin --addons-path.
-        workspace_addon_path: Path to addons in dev repo.
-        extra_cmd_args: Extra args to pass to odoo-bin.
-        install_workspace_modules: Whether to install all modules found in workspace_path.
-
-    Returns:
-        The complete odoo-bin command string.
-    """
+) -> list[str]:
+    """Generate an argv vector for Odoo initialization."""
     LOGGER.info("Generating Bootstrap Command")
+    extra_args = _extra_args_argv(extra_cmd_args or [])
+    has_module_action = any(
+        arg in ("-i", "--init", "-u", "--update") or arg.startswith(("--init=", "--update=")) for arg in extra_args
+    )
 
-    LOGGER.info("Getting Addon Paths")
-
-    init_modules = []
-
-    extra_cmd_args_str = " ".join(extra_cmd_args or [])
-    if install_workspace_modules and not re.search(r"(-i|--init|-u|--update) ", extra_cmd_args_str):
+    init_modules: list[str] = []
+    if install_workspace_modules and not has_module_action:
         LOGGER.debug("Auto-detecting workspace modules for Bootstrapping")
         workspace_modules = GodooModules([godoo_config.workspace_addon_path])
         if workspace_addons := workspace_modules.get_modules():
             init_modules = [
-                f.name for f in workspace_addons if f.version.split(".")[0] == godoo_config.odoo_version.major
+                module.name
+                for module in workspace_addons
+                if module.version.split(".")[0] == godoo_config.odoo_version.major
             ]
         init_modules = init_modules or ["base", "web"]
 
-    # if we are in a situation, where we call godoo bootstrap on a database that already has data,
-    # we should not pass --init but --update
-    init_cmd = ""
+    init_args: list[str] = []
     if init_modules:
-        if _is_bootstrapped(godoo_config.db_connection) == DbBootstrapStatus.BOOTSTRAPPED:
-            init_cmd = "--update " + ",".join(init_modules)
-        else:
-            init_cmd = "--init " + ",".join(init_modules)
+        action = (
+            "--update" if _is_bootstrapped(godoo_config.db_connection) == DbBootstrapStatus.BOOTSTRAPPED else "--init"
+        )
+        init_args = [action, ",".join(init_modules)]
 
-    addon_paths_str_list = [str(p.absolute()) for p in addon_paths if p and p.exists()]
-    addon_paths_str = ", ".join(addon_paths_str_list)
-
-    base_cmds = [
+    addon_paths_arg = ",".join(str(path.absolute()) for path in addon_paths if path and path.exists())
+    odoo_cmd = [
         str(godoo_config.odoo_bin_path.absolute()),
-        init_cmd,
+        *init_args,
         *_odoo_config_args(godoo_config, save=True),
-        f"--load-language {godoo_config.languages}",
+        "--load-language",
+        godoo_config.languages,
         "--stop-after-init",
-        f"--addons-path '{addon_paths_str}'",
+        "--addons-path",
+        addon_paths_arg,
+        *extra_args,
     ]
-    odoo_cmd = base_cmds
-    if extra_cmd_args:
-        odoo_cmd += extra_cmd_args
 
-    _add_default_argument(
-        cmd_list=odoo_cmd,
-        arg="--data-dir",
-        arg_val=str(godoo_config.filestore_target_dir),
-    )
-
-    if godoo_config.multithread_worker_count == -1:
-        godoo_config.multithread_worker_count = int(os.cpu_count() or 2 / 2)
-
-    if godoo_config.multithread_worker_count > 0:
-        odoo_cmd += [
-            "--proxy-mode",
-            f"--workers {int(godoo_config.multithread_worker_count)}",
-        ]
-
-    odoo_cmd = list(filter(None, odoo_cmd))
-    cmd_str = " ".join(odoo_cmd)
-    return cmd_str
+    worker_count = godoo_config.multithread_worker_count
+    if worker_count == -1:
+        worker_count = int((os.cpu_count() or 2) / 2)
+    if worker_count > 0:
+        odoo_cmd.extend(["--proxy-mode", "--workers", str(worker_count)])
+    return odoo_cmd
