@@ -95,7 +95,8 @@ def _is_bootstrapped(db_connection: DBConnection) -> DbBootstrapStatus:
     try:
         with db_connection.connect() as cursor:
             cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public');")
-            if not cursor.fetchone()[0]:
+            row = cursor.fetchone()
+            if row is None or not row[0]:
                 LOGGER.debug("Database '%s' is empty", db_connection.db_name)
                 return DbBootstrapStatus.EMPTY_DB
             LOGGER.debug("Database '%s' is not empty", db_connection.db_name)

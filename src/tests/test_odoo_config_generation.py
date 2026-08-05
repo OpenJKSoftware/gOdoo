@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 from godoo_cli.commands.db.query import DbBootstrapStatus
@@ -132,17 +133,25 @@ def test_addon_paths_are_stable_and_allow_missing_thirdparty_custom(tmp_path: Pa
 
 def test_prep_launch_skips_update_for_missing_config(tmp_path: Path):
     conf_path = tmp_path / "odoo-test.conf"
-    godoo_conf = SimpleNamespace(
-        db_connection=SimpleNamespace(cli_dict={}),
-        db_name="godoo_test",
-        db_filter="godoo_test",
-        odoo_install_folder=tmp_path / "odoo",
-        odoo_conf_path=conf_path,
-        workspace_addon_path=tmp_path / "addons",
-        thirdparty_addon_path=tmp_path / "thirdparty",
-        multithread_worker_count=0,
-        languages="en_US",
-        odoo_version=SimpleNamespace(major=16),
+    godoo_conf = cast(
+        GodooConfig,
+        SimpleNamespace(
+            db_connection=SimpleNamespace(cli_dict={}),
+            db_name="godoo_test",
+            db_user="odoo",
+            db_host="postgres",
+            db_port=5432,
+            db_password="secret",
+            db_filter="godoo_test",
+            odoo_install_folder=tmp_path / "odoo",
+            odoo_conf_path=conf_path,
+            workspace_addon_path=tmp_path / "addons",
+            thirdparty_addon_path=tmp_path / "thirdparty",
+            data_dir=tmp_path / "data",
+            multithread_worker_count=0,
+            languages="en_US",
+            odoo_version=SimpleNamespace(major=16),
+        ),
     )
 
     with (

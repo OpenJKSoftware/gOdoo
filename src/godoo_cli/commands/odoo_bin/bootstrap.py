@@ -78,7 +78,11 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
         if not odoo_demo:
             _extra_bootstrap_args += ["--without-demo all"]
         ret = bootstrap_odoo(
-            **godoo_conf.db_connection.cli_dict,
+            db_name=godoo_conf.db_name,
+            db_user=godoo_conf.db_user,
+            db_host=godoo_conf.db_host,
+            db_port=godoo_conf.db_port,
+            db_password=godoo_conf.db_password,
             db_filter=godoo_conf.db_filter,
             odoo_main_path=godoo_conf.odoo_install_folder,
             workspace_addon_path=godoo_conf.workspace_addon_path,
@@ -120,7 +124,11 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
             odoo_main_path=godoo_conf.odoo_install_folder,
             workspace_addon_path=godoo_conf.workspace_addon_path,
             thirdparty_addon_path=godoo_conf.thirdparty_addon_path,
-            **godoo_conf.db_connection.cli_dict,
+            db_name=godoo_conf.db_name,
+            db_user=godoo_conf.db_user,
+            db_host=godoo_conf.db_host,
+            db_port=godoo_conf.db_port,
+            db_password=godoo_conf.db_password,
         )
 
     if dev_mode:

@@ -1,6 +1,7 @@
 """High-level, testable gOdoo runtime lifecycle commands."""
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -64,19 +65,21 @@ def _ensure_config(
     install_workspace_modules: bool,
 ) -> bool:
     """Run the lifecycle service with CLI source-sync policy."""
-    source_synchronizer = None
+    source_synchronizer: Optional[Callable[[], None]] = None
     if sync_sources:
         if manifest_path is None or thirdparty_zip_source is None:
             message = "--sync-sources requires ODOO_MANIFEST and ODOO_THIRDPARTY_ZIP_LOCATION."
             raise typer.BadParameter(message)
 
-        def source_synchronizer() -> None:
+        def synchronize_source() -> None:
             sync_source(
                 config,
                 manifest_path=manifest_path,
                 thirdparty_zip_source=thirdparty_zip_source,
                 remove_unspecified_addons=True,
             )
+
+        source_synchronizer = synchronize_source
 
     return ensure_runtime(
         config,

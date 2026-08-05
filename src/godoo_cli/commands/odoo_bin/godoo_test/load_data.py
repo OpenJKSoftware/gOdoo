@@ -41,8 +41,8 @@ def odoo_load_test_data(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
-    extra_launch_args: Annotated[Optional[str], CLI.odoo_launch.extra_cmd_args] = None,
-    extra_bootstrap_args: Annotated[Optional[str], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    extra_launch_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args] = None,
+    extra_bootstrap_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
     odoo_log_level: Annotated[str, typer.Option(help="Log level")] = "test",
     multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
 ):
