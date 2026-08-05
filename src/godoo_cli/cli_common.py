@@ -84,9 +84,10 @@ class OdooPathCLIArgs:
         help="folder that contains thirdparty repos like OCA",
         rich_help_panel="Path Options",
     )
-    filestore_target_dir = Option(
-        envvar="GODOO_FILESTORE_TARGET_DIR",
-        help="target folder for Odoo filestore",
+    data_dir = Option(
+        "--data-dir",
+        envvar="ODOO_DATA_DIR",
+        help="Odoo data directory, including filestores",
         rich_help_panel="Path Options",
     )
 
@@ -156,8 +157,13 @@ class DatabaseCLIArgs:
     db_template_name = Option(
         "--db-template",
         envvar="ODOO_DB_TEMPLATE",
-        help="optional template DB used to refresh launch/reset target (reset defaults to '<db-name>_template' when omitted)",
+        help="template database for an explicit reset",
         rich_help_panel="Database Options",
+    )
+    empty_reset = Option(
+        "--empty",
+        help="drop only selected runtime state; do not use a template",
+        rich_help_panel="Lifecycle Options",
     )
 
 

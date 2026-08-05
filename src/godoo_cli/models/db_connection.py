@@ -44,11 +44,10 @@ class DBConnection:
     def get_connection(self):
         """Get a database connection."""
         LOGGER.debug(
-            "Connecting to DB: '%s:%s' U='%s' P='%s' D='%s'",
+            "Connecting to DB: '%s:%s' U='%s' D='%s'",
             self.hostname,
             self.port,
             self.username,
-            self.password,
             self.db_name,
         )
         return psycopg2.connect(
