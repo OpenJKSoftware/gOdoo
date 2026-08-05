@@ -91,15 +91,42 @@ docker-compose up
    - If not open the workspace in Local Vscode. In the Command pallete search for `Reopen in container`
 4. From **within the container** start Odoo using one of the following commands:
    - You can enable godoo tab-completion by `godoo --install-completion`
-   - `make` -> Loads Odoo + Workspace Addons
-   - `make bare` -> Loads Odoo with ony `web` installed.
+   - `make` / `make dev` -> Prepares the runtime, initializes a missing DB, then starts Odoo with workspace addons and demo data.
+   - `make bare` -> Prepares, initializes, and starts Odoo without installing workspace modules.
+   - `make prepare` -> Synchronizes declared source repositories and prepares configuration and Python dependencies; it does not touch the database or start Odoo.
+   - `make bootstrap` -> Prepares and initializes a missing database; it does not start Odoo.
+   - `make launch` (or `make quick`) -> Starts an existing runtime in development mode. It never initializes or upgrades a database.
+   - `make offline` -> Runs the full lifecycle without synchronizing source repositories.
    - `make kill` -> Search for `odoo-bin` processes and kill them
-   - `make reset` -> Drops DB, deletes config file and datafolder
+   - `godoo reset --empty` -> Drops the configured DB and its filestore
    - The full init script is available via "`godoo`". (See --help for Options)
 5. Open Odoo `https://$COMPOSE_PROJECT_NAME.docker.localhost`\
    For example `COMPOSE_PROJECT_NAME=godoo` --> [https://godoo.docker.localhost](https://godoo.docker.localhost)
 6. Login with `admin:admin`
 7. Profit!
+
+gOdoo supports **Odoo 19 and newer**. `godoo dev` owns the DevContainer
+lifecycle: it optionally synchronizes source, prepares configuration and
+dependencies, asks Odoo to initialize only a missing runtime, runs the explicit
+DevContainer post-bootstrap hooks, and launches Odoo. `godoo launch` only
+starts an existing runtime. `scripts/launchodoo.sh` is a thin container adapter
+with `--prepare-only`, `--bootstrap-only`, and `--launch-only` modes. Staging
+password, `report.url`, and migration changes run only after a newly initialized
+database.
+
+Run tests with `godoo test run all` or `godoo test run changes:origin/main`.
+Tests remain single-threaded and use Odoo's `--test-tags`, `--test-file`, and
+`--stop-after-init` options.
+
+For database lifecycle operations, Odoo 19 remains the source of truth.
+`godoo reset --db-template <db>_template` replaces the runtime database and
+filestore from a template; `godoo reset --empty` removes both. For a durable
+baseline, use `godoo db dump`/`godoo db load --force` with an archive outside
+the disposable Compose volumes. Dump/load needs temporary free space in
+addition to the live data and archive. The default PostgreSQL 18 stack enables
+`file_copy_method = clone`; `godoo db duplicate-cow` is explicit, requires
+strict reflink support for both volumes, and never falls back to a full copy.
+See [the CoW workflow](docs/cow.md).
 
 ### Access to Odoo and Thirdparty addon Source
 
@@ -115,11 +142,11 @@ When you screwed up so bad its time to just start Over godoo has you covered:
 
 There are 3 Options to reset the Dev Env.
 
-1. From **Outside** the Container run `make reset` in the project root to delete docker volumes and restart the
+1. From **Outside** the Container run `make reset-container` in the project root to delete docker volumes and restart the
    container. (Vscode will prompt to reconnect if still open)
-2. From **Outside** the Container run `make reset-hard` in the project root to force rebuild the main Odoo container and
-   then do the same as `make reset`
-3. From **Inside** the Container run `make reset` to drop the DB and delete filestore and config file, which is way
+2. From **Outside** the Container run `make reset-container-hard` in the project root to force rebuild the main Odoo container and
+   then do the same as `make reset-container`
+3. From **Inside** the Container run `godoo reset --empty` to drop the configured DB and filestore, which is way
    quicker than the other options.
 
 ### Manual Reset
@@ -134,7 +161,7 @@ There are 3 Options to reset the Dev Env.
 ### VsCode Debugging
 
 Debugging doesn't reliably work with
-[Odoo Multiprocess](https://www.odoo.com/documentation/14.0/developer/misc/other/cmdline.html#multiprocessing) mode
+[Odoo Multiprocess](https://www.odoo.com/documentation/19.0/developer/reference/cli.html#multiprocessing) mode
 enabled. \
 The container ships with a Vscode Debug profile, that sets `--workers 0` to allow for Debugging Breakpoints. See [.vscode/launch.json](./.vscode/launch.json)
 

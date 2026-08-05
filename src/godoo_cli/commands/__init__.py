@@ -10,9 +10,9 @@ of the gOdoo CLI, including:
 - Test execution
 """
 
-from .backup import backup_cli_app
 from .config import set_odoo_config
-from .db import db_cli_app, reset_database_from_template, reset_odoo_state
+from .db import db_cli_app, dump_database, duplicate_cow, load_database, reset_database_from_template, reset_odoo_state
+from .lifecycle import dev_odoo, ensure_odoo_runtime
 from .odoo_bin import (
     bootstrap_odoo,
     launch_import,
@@ -22,6 +22,7 @@ from .odoo_bin import (
     odoo_shell,
     odoo_shell_run_script,
     odoo_shell_uninstall_modules,
+    prepare_odoo,
     test_cli_app,
 )
 from .rpc import rpc_cli_app

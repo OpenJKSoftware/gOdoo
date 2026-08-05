@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from logging import getLogger
@@ -51,7 +52,7 @@ def pip_command() -> str:
         LOGGER.exception(msg)
         raise RuntimeError(msg) from e
     else:
-        return f"{sys.executable} -m pip"
+        return shlex.join([sys.executable, "-m", "pip"])
 
 
 def pip_install(package_names: list[str]):

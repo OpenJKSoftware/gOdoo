@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import threading
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -119,11 +120,10 @@ def _install_fd_filter(pattern: re.Pattern) -> None:
     atexit.register(_cleanup)
 
 
-def run_cmd(command: str, **kwargs: dict[str, Any]) -> subprocess.CompletedProcess:
-    """Runs command via subprocess.run."""
-    LOGGER.debug("Running shell:\n%s", command)
-    if not kwargs.get("shell"):
-        kwargs["shell"] = True
+def run_cmd(command: Union[str, Sequence[str]], **kwargs: Any) -> subprocess.CompletedProcess:
+    """Run a command, preserving legacy shell strings and safe argument vectors."""
+    shell = kwargs.setdefault("shell", isinstance(command, str))
+    LOGGER.debug("Running %s command:\n%s", "shell" if shell else "argv", command)
     proc = subprocess.run(command, **kwargs)
     LOGGER.debug("Return Code: %s", proc.returncode)
     return proc

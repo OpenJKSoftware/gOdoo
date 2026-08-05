@@ -1,6 +1,7 @@
 """Commands to clone Odoo and addon source code."""
 
 import logging
+import shlex
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Optional
@@ -35,6 +36,81 @@ class UpdateMode(str, Enum):
     zip = "zip"
     odoo = "odoo"
     thirdparty = "thirdparty"
+
+
+def sync_source(
+    godoo_config: GodooConfig,
+    *,
+    manifest_path: Path,
+    thirdparty_zip_source: Path,
+    update_mode: UpdateMode = UpdateMode.all,
+    download_zipmode: bool = False,
+    add_compare_comments: bool = False,
+    pin_commits: bool = False,
+    remove_unspecified_addons: bool = False,
+    force_fetch: bool = False,
+) -> None:
+    """Synchronize workspace source repositories from an Odoo manifest.
+
+    This non-CLI function can be composed by lifecycle orchestration directly,
+    rather than spawning a second ``godoo`` process.
+    """
+    LOGGER.info("Updating source repositories")
+    update_zip = update_mode in (UpdateMode.all, UpdateMode.zip)
+    update_odoo = update_mode in (UpdateMode.all, UpdateMode.odoo)
+    update_thirdparty = update_mode in (UpdateMode.all, UpdateMode.thirdparty)
+    manifest = GodooManifest.from_yaml_file(manifest_path)
+
+    if update_zip:
+        unpack_addon_archives(
+            thirdparty_zip_source,
+            godoo_config.zip_addon_path,
+            remove_excess=remove_unspecified_addons,
+        )
+
+    if update_odoo:
+        git_ensure_repo_matches_manifest(
+            target_folder=godoo_config.odoo_install_folder,
+            repo_spec=manifest.odoo,
+            default_branch=manifest.default_branch,
+            force_fetch=force_fetch,
+            download_archive=download_zipmode,
+            pin_commit=pin_commits,
+        )
+        odoo_bin = godoo_config.odoo_bin_path
+        if odoo_bin.exists():
+            LOGGER.debug("chmod odoo-bin +executable")
+            odoo_bin.chmod(0o755)
+        else:
+            LOGGER.warning("Could not find odoo-bin in %s", godoo_config.odoo_install_folder)
+        LOGGER.info("Installing Odoo requirements")
+        run_cmd(
+            [
+                *shlex.split(pip_command()),
+                "install",
+                "-r",
+                str(godoo_config.odoo_install_folder / "requirements.txt"),
+            ]
+        )
+
+    if update_thirdparty:
+        git_ensure_thirdparty_repos(
+            root_folder=godoo_config.thirdparty_addon_path,
+            manifest=manifest,
+            generate_yml_compare_comments=add_compare_comments,
+            download_archive=download_zipmode,
+            pin_commits=pin_commits,
+        )
+        if remove_unspecified_addons:
+            manifest.remove_unused_addon_folders(
+                thirdparty_addon_path=godoo_config.thirdparty_addon_path,
+                keep_folders=[godoo_config.zip_addon_path],
+            )
+    if add_compare_comments:
+        manifest.to_yaml_file(add_compare_urls=True)
+
+    if godoo_config.odoo_conf_path.exists():
+        update_odoo_conf_addon_paths(odoo_conf=godoo_config.odoo_conf_path, addon_paths=godoo_config.addon_paths)
 
 
 def py_depends_by_db(
@@ -193,70 +269,28 @@ def get_source(
     ] = False,
 ):
     """Download/unzip Odoo source and thirdparty addons."""
-    LOGGER.info("Updating Source Repos")
+    LOGGER.info("Synchronizing source through the reusable service")
     godoo_config = GodooConfig(
         odoo_install_folder=odoo_main_path,
         odoo_conf_path=odoo_conf_path,
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
     )
-    update_zip = update_mode in ["all", "zip"]
-    update_odoo = update_mode in ["all", "odoo"]
-    update_thirdparty = update_mode in ["all", "thirdparty"]
-
     if not manifest_path:
         msg = "Manifest path is required when updating Odoo or third-party sources."
         LOGGER.error(msg)
         raise ValueError(msg)
-    manifest = GodooManifest.from_yaml_file(manifest_path)
-
-    if update_zip:
-        unpack_addon_archives(
-            thirdparty_zip_source, godoo_config.zip_addon_path, remove_excess=remove_unspecified_addons
-        )
-
-    if update_odoo:
-        repo_spec = manifest.odoo if manifest else None
-        if not repo_spec:
-            msg = "Manifest is required to update Odoo source."
-            LOGGER.error(msg)
-            raise ValueError(msg)
-        git_ensure_repo_matches_manifest(
-            target_folder=godoo_config.odoo_install_folder,
-            repo_spec=repo_spec,
-            default_branch=manifest.default_branch,
-            force_fetch=force_fetch,
-            download_archive=download_zipmode,
-            pin_commit=pin_commits,
-        )
-        odoo_bin = godoo_config.odoo_install_folder / "odoo-bin"
-        if odoo_bin.exists():
-            LOGGER.debug("chmod odoo-bin +executable")
-            odoo_bin.chmod(0o755)
-        else:
-            LOGGER.warning("Could not find odoo-bin in %s", godoo_config.odoo_install_folder)
-        LOGGER.info("Installing Odoo requirements")
-        run_cmd(f"{pip_command()} install -r {godoo_config.odoo_install_folder / 'requirements.txt'}")
-
-    if update_thirdparty:
-        git_ensure_thirdparty_repos(
-            root_folder=godoo_config.thirdparty_addon_path,
-            manifest=manifest,
-            generate_yml_compare_comments=add_compare_comments,
-            download_archive=download_zipmode,
-            pin_commits=pin_commits,
-        )
-        if remove_unspecified_addons:
-            manifest.remove_unused_addon_folders(
-                thirdparty_addon_path=godoo_config.thirdparty_addon_path,
-                keep_folders=[godoo_config.zip_addon_path],
-            )
-    if add_compare_comments:
-        manifest.to_yaml_file(add_compare_urls=add_compare_comments)
-
-    if (conf_path := odoo_conf_path).exists():
-        odoo_addon_paths = godoo_config.addon_paths
-        update_odoo_conf_addon_paths(odoo_conf=conf_path, addon_paths=odoo_addon_paths)
+    sync_source(
+        godoo_config,
+        manifest_path=manifest_path,
+        thirdparty_zip_source=thirdparty_zip_source,
+        update_mode=update_mode,
+        download_zipmode=download_zipmode,
+        add_compare_comments=add_compare_comments,
+        pin_commits=pin_commits,
+        remove_unspecified_addons=remove_unspecified_addons,
+        force_fetch=force_fetch,
+    )
 
 
 def update_odoo_conf(

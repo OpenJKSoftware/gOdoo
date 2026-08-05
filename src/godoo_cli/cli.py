@@ -94,11 +94,13 @@ def main_cli():
         typer_instance=cmd.source_cli_app(),
         name="source",
     )
-    app.add_typer(typer_instance=cmd.backup_cli_app(), name="backup")
     app.add_typer(typer_instance=cmd.test_cli_app(), name="test")
 
     # Normal Subcommands
     app.command("version")(print_versions)
+    app.command("dev")(cmd.dev_odoo)
+    app.command("ensure-runtime")(cmd.ensure_odoo_runtime)
+    app.command("prepare")(cmd.prepare_odoo)
     app.command("bootstrap")(cmd.bootstrap_odoo)
     app.command("launch")(cmd.launch_odoo)
     app.command("launch-import")(cmd.launch_import)

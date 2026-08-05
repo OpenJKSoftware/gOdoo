@@ -69,37 +69,14 @@ reset_docker () {
 }
 
 reset_native () {
-    echo "==> Resetting Native"
-    [ -z "$ODOO_DB_HOST" ] && echo "=x Env Var ODOO_DB_HOST missing" && exit 1
-    [ -z "$ODOO_DB_PASSWORD" ] && echo "=x Env Var ODOO_DB_PASSWORD missing" && exit 1
-    [ -z "$ODOO_DB_USER" ] && echo "=x Env Var ODOO_DB_USER missing" && exit 1
-    [ -z "$ODOO_MAIN_DB" ] && echo "=x Env Var ODOO_MAIN_DB missing" && exit 1
+    echo "==> Resetting Odoo runtime through the Odoo 19 CLI"
+    godoo reset --empty
 
-    set -e
-
-    # Common PostgreSQL connection parameters
-    DB_PORT_PARAM=${ODOO_DB_PORT:+""-p $ODOO_DB_PORT""}
-    DB_COMMON_ARGS="-h $ODOO_DB_HOST -U $ODOO_DB_USER $DB_PORT_PARAM"
-
-    echo "==> Dropping DB if exist"
-    PGPASSWORD=$ODOO_DB_PASSWORD dropdb $DB_COMMON_ARGS $ODOO_MAIN_DB --if-exists
-
-    echo "==> Recreating DB"
-    PGPASSWORD=$ODOO_DB_PASSWORD createdb $DB_COMMON_ARGS $ODOO_MAIN_DB --owner=$ODOO_DB_USER
-
-    echo "==> Deleting Valib"
-    if [ ! -n $RESET_KEEP_VARLIB ]; then
-        sudo rm -rf /var/lib/odoo/*
-    fi
-
-    remove_odoo_config
-
-    if [ "$RESET_ALL" = "true"  ] && [ ! -z $ODOO_THIRDPARTY_LOCATION ]; then
+    if [ "$RESET_ALL" = "true" ] && [ -n "$ODOO_THIRDPARTY_LOCATION" ]; then
         echo "==> Clearing Thirdparty Volume"
-        rm -rf $ODOO_THIRDPARTY_LOCATION/*
-        rm -rf $PROJ_FOLDER/remote_instance_data/upgrade_extract
+        rm -rf "$ODOO_THIRDPARTY_LOCATION"/*
+        rm -rf "$PROJ_FOLDER/remote_instance_data/upgrade_extract"
     fi
-
 }
 
 
