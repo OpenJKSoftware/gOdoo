@@ -55,6 +55,14 @@ def odoo_shell(
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
     data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
+    addon_paths: Annotated[
+        Optional[list[Path]],
+        typer.Option(
+            "--addon-path",
+            envvar="ODOO_ADDON_PATHS",
+            help="Addon path(s) to use when no Odoo config file exists; repeat for multiple paths.",
+        ),
+    ] = None,
     pipe_in_command: Annotated[
         str,
         typer.Argument(help="Python command, that will be piped into odoo-bin shell"),
@@ -81,18 +89,18 @@ def odoo_shell(
         shell_cmd.extend(["--config", str(odoo_conf_path.absolute())])
     else:
         LOGGER.warning("No Odoo Config File found at %s", odoo_conf_path)
-        if not all([db_host, db_port, db_name, db_user, db_password]):
-            LOGGER.error("Missing database options and Odoo config at %s. Aborting.", odoo_conf_path)
+        if not db_name or not db_user:
+            LOGGER.error("Missing database name or user and Odoo config at %s. Aborting.", odoo_conf_path)
             return CLI.returner(1)
-        shell_cmd.extend(
-            [
-                f"--db_host={db_host}",
-                f"--db_port={db_port}",
-                f"--database={db_name}",
-                f"--db_user={db_user}",
-                f"--db_password={db_password}",
-            ]
-        )
+        shell_cmd.extend([f"--database={db_name}", f"--db_user={db_user}"])
+        if db_host:
+            shell_cmd.append(f"--db_host={db_host}")
+        if db_port:
+            shell_cmd.append(f"--db_port={db_port}")
+        if db_password:
+            shell_cmd.append(f"--db_password={db_password}")
+        if addon_paths:
+            shell_cmd.extend(["--addons-path", ",".join(str(path.absolute()) for path in addon_paths)])
 
     if pipe_in_command:
         ret = run_odoo_command(shell_cmd, input=pipe_in_command, text=True)

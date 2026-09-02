@@ -7,6 +7,7 @@ the launch process with various options like development mode and worker counts.
 
 import logging
 import threading
+from configparser import ConfigParser
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -18,7 +19,7 @@ from ...helpers.odoo_command import run_odoo_command
 from ...helpers.odoo_files import require_odoo_version
 from ...models import GodooConfig, GodooModules
 from ..rpc import import_to_odoo
-from ..source_get import update_odoo_conf
+from ..source_get import sync_source, update_odoo_conf
 from .bootstrap import bootstrap_and_prep_launch_cmd
 from .cli_generate import _launch_command
 
@@ -35,7 +36,33 @@ def _without_reload(command: list[str]) -> list[str]:
     ]
 
 
-def prepare_runtime(godoo_conf: GodooConfig) -> None:
+def _persist_runtime_config(godoo_conf: GodooConfig, x_sendfile: Optional[bool]) -> None:
+    """Create missing runtime configuration and persist explicit proxy policy."""
+    parser = ConfigParser(interpolation=None)
+    parser.read(godoo_conf.odoo_conf_path)
+    if "options" not in parser:
+        parser.add_section("options")
+    options = parser["options"]
+    if x_sendfile is not None:
+        options["x_sendfile"] = str(x_sendfile)
+    options.setdefault("data_dir", str(godoo_conf.data_dir.absolute()))
+    options.setdefault("addons_path", ",".join(str(path.absolute()) for path in godoo_conf.addon_paths))
+    for key, value in (
+        ("db_name", godoo_conf.db_name),
+        ("db_user", godoo_conf.db_user),
+        ("db_password", godoo_conf.db_password),
+        ("db_host", godoo_conf.db_host),
+        ("db_port", str(godoo_conf.db_port) if godoo_conf.db_port else ""),
+        ("dbfilter", f"^{godoo_conf.db_filter}$" if godoo_conf.db_filter else ""),
+    ):
+        if value:
+            options.setdefault(key, value)
+    godoo_conf.odoo_conf_path.parent.mkdir(parents=True, exist_ok=True)
+    with godoo_conf.odoo_conf_path.open("w", encoding="utf-8") as config_file:
+        parser.write(config_file)
+
+
+def prepare_runtime(godoo_conf: GodooConfig, *, x_sendfile: Optional[bool] = None) -> None:
     """Prepare configuration and Python dependencies without changing a database."""
     require_odoo_version(godoo_conf.odoo_install_folder, ">=19")
     if godoo_conf.odoo_conf_path.exists():
@@ -48,6 +75,8 @@ def prepare_runtime(godoo_conf: GodooConfig) -> None:
     install_base_python_reqs(godoo_conf.odoo_install_folder)
     module_registry = GodooModules(godoo_conf.addon_paths)
     install_py_reqs_for_modules(list(module_registry.get_modules()), module_registry)
+    if not godoo_conf.odoo_conf_path.exists() or x_sendfile is not None:
+        _persist_runtime_config(godoo_conf, x_sendfile)
 
 
 def prepare_odoo(
@@ -56,6 +85,22 @@ def prepare_odoo(
     thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
     data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
+    db_filter: Annotated[str, CLI.database.db_filter] = "",
+    db_name: Annotated[str, CLI.database.db_name] = "",
+    db_user: Annotated[str, CLI.database.db_user] = "",
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    x_sendfile: Annotated[
+        Optional[bool], typer.Option("--x-sendfile/--no-x-sendfile", envvar="GODOO_X_SENDFILE")
+    ] = None,
+    sync_sources: Annotated[
+        bool, typer.Option("--sync-sources/--no-sync-sources", envvar="GODOO_PREPARE_SYNC_SOURCES")
+    ] = False,
+    manifest_path: Annotated[Optional[Path], CLI.source.mainfest_path] = None,
+    thirdparty_zip_source: Annotated[
+        Optional[Path], typer.Option(envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Third-party addon archive directory")
+    ] = None,
 ) -> None:
     """Prepare configuration and Python dependencies without touching the database."""
     godoo_conf = GodooConfig(
@@ -64,8 +109,24 @@ def prepare_odoo(
         workspace_addon_path=workspace_addon_path,
         thirdparty_addon_path=thirdparty_addon_path,
         data_dir=data_dir,
+        db_filter=db_filter,
+        db_name=db_name,
+        db_user=db_user,
+        db_host=db_host,
+        db_port=db_port,
+        db_password=db_password,
     )
-    prepare_runtime(godoo_conf)
+    if sync_sources:
+        if manifest_path is None or thirdparty_zip_source is None:
+            message = "--sync-sources requires ODOO_MANIFEST and ODOO_THIRDPARTY_ZIP_LOCATION."
+            raise typer.BadParameter(message)
+        sync_source(
+            godoo_conf,
+            manifest_path=manifest_path,
+            thirdparty_zip_source=thirdparty_zip_source,
+            remove_unspecified_addons=True,
+        )
+    prepare_runtime(godoo_conf, x_sendfile=x_sendfile)
 
 
 def launch_odoo(
@@ -83,10 +144,18 @@ def launch_odoo(
     extra_args: Annotated[Optional[list[str]], CLI.odoo_launch.extra_cmd_args] = None,
     log_file_path: Annotated[Optional[Path], CLI.odoo_launch.log_file_path] = None,
     dev_mode: Annotated[bool, CLI.odoo_launch.dev_mode] = False,
+    install_workspace_modules: Annotated[
+        bool,
+        typer.Option(
+            "--install-workspace-modules/--no-install-workspace-modules",
+            help="Compatibility option; runtime launch never installs or updates modules.",
+        ),
+    ] = True,
     multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
     languages: Annotated[str, CLI.odoo_launch.languages] = "de_DE,en_US",
 ):
     """Launch Odoo without preparing dependencies or changing database state."""
+    del install_workspace_modules
     require_odoo_version(odoo_main_path, ">=19")
     godoo_conf = GodooConfig(
         db_user=db_user,

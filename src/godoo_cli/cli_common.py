@@ -46,6 +46,7 @@ class OdooLaunchArgs:
         "--dev-mode",
         help="Passes '[bold cyan]--dev xml,qweb,reload[/bold cyan]' to odoo",
         rich_help_panel="Odoo",
+        envvar="GODOO_DEV_MODE",
     )
     log_file_path = Option(dir_okay=False, writable=True, help="Logfile Path", rich_help_panel="Odoo")
     banner_text = Argument(

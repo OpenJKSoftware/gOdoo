@@ -1,9 +1,15 @@
+from configparser import ConfigParser
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+import typer
+from typer.testing import CliRunner
+
 from godoo_cli.commands.odoo_bin.godoo_test.run import odoo_run_tests
 from godoo_cli.commands.odoo_bin.launch import launch_import, launch_odoo, prepare_odoo
+from godoo_cli.commands.odoo_bin.shell import odoo_shell
 from godoo_cli.helpers.odoo_command import odoo_command_argv, run_odoo_command
 
 
@@ -37,11 +43,22 @@ def test_launch_is_non_destructive_and_does_not_prepare_or_upgrade_workspace(tmp
             db_name="runtime",
             db_user="odoo",
             data_dir=tmp_path / "data",
+            install_workspace_modules=False,
         )
 
     assert result == 0
     assert build.call_args.kwargs["upgrade_workspace_modules"] is False
     run_command.assert_called_once_with(["odoo-bin", "server"])
+
+
+def test_launch_dev_mode_is_environment_backed():
+    app = typer.Typer()
+    app.command()(launch_odoo)
+
+    result = CliRunner().invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "GODOO_DEV_MODE" in result.output
 
 
 def test_prepare_updates_dependencies_without_launching(tmp_path: Path):
@@ -58,6 +75,135 @@ def test_prepare_updates_dependencies_without_launching(tmp_path: Path):
     update_conf.assert_not_called()
     install_base.assert_called_once_with(paths["odoo_main_path"])
     install_modules.assert_called_once()
+    assert paths["odoo_conf_path"].is_file()
+
+
+def test_prepare_synchronizes_sources_before_runtime_preparation(tmp_path: Path):
+    paths = _command_paths(tmp_path)
+    manifest = tmp_path / "odoo_manifest.yml"
+    archives = tmp_path / "archives"
+    calls: list[str] = []
+
+    with (
+        patch(
+            "godoo_cli.commands.odoo_bin.launch.sync_source", side_effect=lambda *_args, **_kwargs: calls.append("sync")
+        ) as synchronize,
+        patch(
+            "godoo_cli.commands.odoo_bin.launch.prepare_runtime",
+            side_effect=lambda *_args, **_kwargs: calls.append("prepare"),
+        ),
+    ):
+        prepare_odoo(
+            **paths,
+            data_dir=tmp_path / "data",
+            sync_sources=True,
+            manifest_path=manifest,
+            thirdparty_zip_source=archives,
+        )
+
+    synchronize.assert_called_once()
+    assert synchronize.call_args.kwargs["manifest_path"] == manifest
+    assert synchronize.call_args.kwargs["thirdparty_zip_source"] == archives
+    assert synchronize.call_args.kwargs["remove_unspecified_addons"] is True
+    assert calls == ["sync", "prepare"]
+
+
+def test_prepare_rejects_incomplete_source_sync_configuration(tmp_path: Path):
+    with pytest.raises(typer.BadParameter, match="requires ODOO_MANIFEST"):
+        prepare_odoo(
+            **_command_paths(tmp_path),
+            data_dir=tmp_path / "data",
+            sync_sources=True,
+        )
+
+
+def test_prepare_persists_explicit_x_sendfile_policy(tmp_path: Path):
+    paths = _command_paths(tmp_path)
+    with (
+        patch("godoo_cli.commands.odoo_bin.launch.require_odoo_version"),
+        patch("godoo_cli.commands.odoo_bin.launch.install_base_python_reqs"),
+        patch("godoo_cli.commands.odoo_bin.launch.install_py_reqs_for_modules"),
+    ):
+        prepare_odoo(
+            **paths,
+            data_dir=tmp_path / "data",
+            db_filter="runtime",
+            db_name="runtime",
+            db_user="odoo",
+            x_sendfile=True,
+        )
+
+    parser = ConfigParser()
+    parser.read(paths["odoo_conf_path"])
+    assert parser["options"]["x_sendfile"] == "True"
+    assert parser["options"]["db_name"] == "runtime"
+    assert parser["options"]["dbfilter"] == "^runtime$"
+
+
+def test_shell_passes_addon_paths_when_config_is_missing(tmp_path: Path):
+    paths = _command_paths(tmp_path)
+    addon_path = tmp_path / "custom-addons"
+    addon_path.mkdir()
+    with (
+        patch("godoo_cli.commands.odoo_bin.shell.require_odoo_version"),
+        patch(
+            "godoo_cli.commands.odoo_bin.shell.run_odoo_command",
+            return_value=SimpleNamespace(returncode=0),
+        ) as run_command,
+    ):
+        result = odoo_shell(
+            odoo_main_path=paths["odoo_main_path"],
+            odoo_conf_path=paths["odoo_conf_path"],
+            db_name="runtime",
+            db_user="odoo",
+            db_password="secret",
+            db_host="postgres",
+            db_port=5432,
+            data_dir=tmp_path / "data",
+            addon_paths=[addon_path],
+            pipe_in_command="env['x']",
+        )
+
+    assert result == 0
+    command = run_command.call_args.args[0]
+    assert command[command.index("--addons-path") + 1] == str(addon_path.absolute())
+
+
+def test_shell_supports_local_socket_auth_without_optional_connection_flags(tmp_path: Path):
+    paths = _command_paths(tmp_path)
+    with (
+        patch("godoo_cli.commands.odoo_bin.shell.require_odoo_version"),
+        patch(
+            "godoo_cli.commands.odoo_bin.shell.run_odoo_command",
+            return_value=SimpleNamespace(returncode=0),
+        ) as run_command,
+    ):
+        result = odoo_shell(
+            odoo_main_path=paths["odoo_main_path"],
+            odoo_conf_path=paths["odoo_conf_path"],
+            db_name="runtime",
+            db_user="odoo",
+            db_host="",
+            db_port=0,
+            db_password="",
+            pipe_in_command="env['x']",
+        )
+
+    assert result == 0
+    command = run_command.call_args.args[0]
+    assert "--database=runtime" in command
+    assert "--db_user=odoo" in command
+    assert not any(argument.startswith(("--db_host", "--db_port", "--db_password")) for argument in command)
+
+
+def test_shell_addon_path_option_is_repeatable_and_env_backed():
+    app = typer.Typer()
+    app.command()(odoo_shell)
+    result = CliRunner().invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "--addon-path" in result.output
+    assert "ODOO_ADDON_PATHS" in result.output
 
 
 def test_launch_import_disables_odoo_reload_mode(tmp_path: Path):
