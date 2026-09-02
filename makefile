@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := dev
 
-.PHONY: dev prepare bootstrap launch quick offline bare kill reset-container reset-container-hard reset reset-hard rebuild restore-dump-to-template lint
+.PHONY: dev prepare bootstrap launch quick offline bare kill reset-container reset-container-hard reset reset-hard rebuild restore-dump-to-template lint test-odoo-integration
 
 dev: # Prepare, bootstrap a missing database, then launch with development mode.
 	ODOO_BIN_BOOTSTRAP_ARGS='--odoo-demo' scripts/launchodoo.sh --dev-mode
@@ -44,3 +44,6 @@ restore-dump-to-template: # Load an Odoo-native ZIP archive into the template DB
 
 lint:
 	hatch run dev:lint
+
+test-odoo-integration: # Run isolated lifecycle/reset tests against real Odoo and PostgreSQL.
+	hatch run dev:test-odoo-integration

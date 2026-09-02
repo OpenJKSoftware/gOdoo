@@ -94,6 +94,10 @@ lint = [
 # Testing commands
 test = "pytest"
 
+# Opt-in tests that execute the real Odoo and PostgreSQL binaries available in
+# the gOdoo container. These tests create and remove isolated runtime state.
+test-odoo-integration = "GODOO_RUN_ODOO_INTEGRATION=1 pytest -m odoo_integration --no-cov src/tests/test_odoo_integration.py"
+
 # CI commands
 ci = [
   "lint",
@@ -235,4 +239,7 @@ addopts = [
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
+]
+markers = [
+    "odoo_integration: executes real Odoo/PostgreSQL lifecycle operations in a gOdoo container",
 ]
