@@ -2,6 +2,7 @@
 
 import pytest
 import typer
+from click import unstyle
 from typer.testing import CliRunner
 
 from godoo_cli import commands as cmd
@@ -81,20 +82,21 @@ def test_runtime_launch_help_keeps_the_start_only_contract():
 
 def test_runtime_init_help_exposes_canonical_and_deprecated_controls():
     result = CliRunner().invoke(main_cli(), ["runtime", "init", "--help"], terminal_width=220)
+    output = unstyle(result.output)
 
     assert result.exit_code == 0
-    assert "--seed" in result.output
-    assert "GODOO_RUNTIME_SEED" in result.output
-    assert "--seed-archive" in result.output
-    assert "GODOO_SEED_ARCHIVE" in result.output
+    assert "--seed" in output
+    assert "GODOO_RUNTIME_SEED" in output
+    assert "--seed-archive" in output
+    assert "GODOO_SEED_ARCHIVE" in output
     # Rich elides long option and environment names at the fixed help width.
-    assert "--pre-launch-hooks-" in result.output
-    assert "GODOO_PRE_LAUNCH_HOO" in result.output
-    assert "--after-bootstrap-" in result.output
-    assert "--after-restore-dir" in result.output
-    assert "--after-reconcile-" in result.output
+    assert "--pre-launch-hooks-" in output
+    assert "GODOO_PRE_LAUNCH_HOO" in output
+    assert "--after-bootstrap-" in output
+    assert "--after-restore-dir" in output
+    assert "--after-reconcile-" in output
     for option in ("--upgrade-path", "--pre-upgrade-script", "--log-handler", "--x-sendfile"):
-        assert option in result.output
+        assert option in output
 
 
 def test_legacy_backup_dump_alias_remains_registered():

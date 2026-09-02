@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
+from click import unstyle
 from typer.testing import CliRunner
 
 from godoo_cli.commands.odoo_bin.godoo_test.run import odoo_run_tests
@@ -200,10 +201,11 @@ def test_shell_addon_path_option_is_repeatable_and_env_backed():
     app = typer.Typer()
     app.command()(odoo_shell)
     result = CliRunner().invoke(app, ["--help"])
+    output = unstyle(result.output)
 
     assert result.exit_code == 0
-    assert "--addon-path" in result.output
-    assert "ODOO_ADDON_PATHS" in result.output
+    assert "--addon-path" in output
+    assert "ODOO_ADDON_PATHS" in output
 
 
 def test_launch_import_disables_odoo_reload_mode(tmp_path: Path):
