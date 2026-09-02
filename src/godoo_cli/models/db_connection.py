@@ -8,7 +8,7 @@ import logging
 import subprocess
 from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Optional, Union
 
 import psycopg2
@@ -40,6 +40,15 @@ class DBConnection:
     db_name: str
     conn_timeout = 10
     readonly: bool = False
+
+    def with_db(self, db_name: str, *, readonly: Optional[bool] = None) -> "DBConnection":
+        """Return equivalent connection settings for another database.
+
+        This returns connection *settings*, not a live PostgreSQL connection.
+        It keeps the configured server and credentials when a maintenance
+        database must be contacted instead of the runtime database.
+        """
+        return replace(self, db_name=db_name, readonly=self.readonly if readonly is None else readonly)
 
     def get_connection(self):
         """Get a database connection."""

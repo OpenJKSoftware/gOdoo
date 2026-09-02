@@ -23,11 +23,13 @@ class DbBootstrapStatus(enum.Enum):
     - BOOTSTRAPPED: Database is fully bootstrapped
     - NO_DB: Database does not exist
     - EMPTY_DB: Database exists but is empty
+    - INVALID_DB: Database contains tables but is not a usable Odoo runtime
     """
 
     BOOTSTRAPPED = "bootstrapped"
     NO_DB = "db missing"
     EMPTY_DB = "db empty"
+    INVALID_DB = "db invalid"
 
 
 LOGGER = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ BOOTSTRAP_EXIT_CODE = {
     DbBootstrapStatus.BOOTSTRAPPED: 0,
     DbBootstrapStatus.NO_DB: 20,
     DbBootstrapStatus.EMPTY_DB: 21,
+    DbBootstrapStatus.INVALID_DB: 22,
 }
 
 
@@ -94,14 +97,38 @@ def _is_bootstrapped(db_connection: DBConnection) -> DbBootstrapStatus:
     """Check if postgres contains database db_name and if this database has any tables present."""
     try:
         with db_connection.connect() as cursor:
-            cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public');")
+            cursor.execute(
+                "SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public'), "
+                "to_regclass('public.ir_module_module') IS NOT NULL;"
+            )
             row = cursor.fetchone()
             if row is None or not row[0]:
                 LOGGER.debug("Database '%s' is empty", db_connection.db_name)
                 return DbBootstrapStatus.EMPTY_DB
+            if not row[1]:
+                LOGGER.error("Database '%s' contains tables but no Odoo module registry", db_connection.db_name)
+                return DbBootstrapStatus.INVALID_DB
+            cursor.execute("SELECT state FROM ir_module_module WHERE name = 'base';")
+            base = cursor.fetchone()
+            if base is None or base[0] not in {"installed", "to upgrade"}:
+                LOGGER.error("Database '%s' has no usable installed base module", db_connection.db_name)
+                return DbBootstrapStatus.INVALID_DB
             LOGGER.debug("Database '%s' is not empty", db_connection.db_name)
             return DbBootstrapStatus.BOOTSTRAPPED
-    except OperationalError:
+    except OperationalError as target_error:
+        # An OperationalError can mean a missing database, but also bad
+        # credentials, an unavailable server, or an interrupted connection.
+        # Only classify it as missing after PostgreSQL itself confirms that.
+        maintenance_connection = db_connection.with_db("postgres", readonly=True)
+        try:
+            with maintenance_connection.connect() as cursor:
+                cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s);", [db_connection.db_name])
+                row = cursor.fetchone()
+        except OperationalError as maintenance_error:
+            LOGGER.exception("Could not determine whether database '%s' exists", db_connection.db_name)
+            raise target_error from maintenance_error
+        if row is None or row[0]:
+            raise target_error
         LOGGER.debug("Database '%s' does not exist", db_connection.db_name)
         return DbBootstrapStatus.NO_DB
 
