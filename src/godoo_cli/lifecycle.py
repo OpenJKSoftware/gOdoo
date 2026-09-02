@@ -48,6 +48,7 @@ def ensure_runtime(
     extra_bootstrap_args: Optional[list[str]] = None,
     install_workspace_modules: bool = True,
     install_base_modules: bool = True,
+    prepare_bootstrap_dependencies: bool = True,
 ) -> bool:
     """Ensure a prepared Odoo runtime exists, returning whether it was created.
 
@@ -77,6 +78,7 @@ def ensure_runtime(
         extra_cmd_args=bootstrap_args,
         install_workspace_modules=install_workspace_modules,
         install_base_modules=install_base_modules,
+        prepare_dependencies=prepare_bootstrap_dependencies,
     )
     if return_code:
         raise LifecycleBootstrapError(godoo_config.db_name, return_code)

@@ -152,6 +152,7 @@ def bootstrap_runtime(
     extra_cmd_args: Optional[list[str]] = None,
     install_workspace_modules: bool = True,
     install_base_modules: bool = True,
+    prepare_dependencies: bool = True,
     banner_text: str = "",
     banner_bg_color: str = "green",
 ) -> int:
@@ -173,8 +174,9 @@ def bootstrap_runtime(
             if command[init_index + 1] == "base,web":
                 del command[init_index : init_index + 2]
 
-    install_base_python_reqs(odoo_install_folder=godoo_conf.odoo_install_folder)
-    install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=command)
+    if prepare_dependencies:
+        install_base_python_reqs(odoo_install_folder=godoo_conf.odoo_install_folder)
+        install_py_reqs_by_odoo_cmd(addon_paths=addon_paths, odoo_bin_cmd=command)
 
     LOGGER.info(
         "Launching Odoo bootstrap on database '%s' using config %s",
