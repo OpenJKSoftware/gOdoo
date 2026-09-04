@@ -1,9 +1,4 @@
-"""Git URL handling and manipulation module.
-
-This module provides functionality for parsing and manipulating Git URLs,
-supporting various Git hosting services and URL formats. It handles
-operations like generating raw file URLs and archive download links.
-"""
+"""Parse Git URLs and derive hosting-service URLs."""
 
 import re
 from enum import Enum
@@ -14,25 +9,18 @@ LOGGER = getLogger(__name__)
 
 
 class GitRemoteType(Enum):
-    """Enumeration of supported Git remote hosting services.
-
-    This enum defines the Git hosting services that are supported for
-    URL parsing and manipulation operations.
-    """
+    """Identify a supported Git hosting service."""
 
     gitlab = "gitlab"
     github = "github"
 
 
 class GitUrl:
-    """Class to Structurize Git URLs.
-
-    Works with SSH and HTTP(s) URLs
-    Can generate Compare Urls
+    """Parse local, HTTP(S), and SSH repository locations.
 
     Attributes:
-        url: The original Git repository URL.
-        url_type: The URL scheme (http, https, or ssh).
+        url: The original repository location.
+        url_type: The location scheme: file, HTTP, HTTPS, or SSH.
         domain: The domain name of the Git service.
         path: The repository path.
         user: The username for SSH URLs.
@@ -49,10 +37,10 @@ class GitUrl:
     name: str
 
     def __init__(self, url: str) -> None:
-        """Initialize a GitUrl instance with the provided Git repository URL.
+        """Parse a repository location.
 
         Args:
-            url: A Git repository URL (http, https, or ssh format).
+            url: A local path, file URL, HTTP(S) URL, or SSH URL.
 
         Raises:
             ValueError: If the URL format is invalid or unsupported.
@@ -97,28 +85,11 @@ class GitUrl:
         self.name = self.path.split("/")[-1]
 
     def _clean_http_url(self) -> str:
-        """Return HTTPs URL without .git suffix.
-
-        Returns:
-        -------
-        str
-            Https:// url
-        """
+        """Return an HTTPS repository URL without its ``.git`` suffix."""
         return f"https://{self.domain}/{self.path}"
 
     def _git_type(self) -> GitRemoteType:
-        """Get git Remote type.
-
-        Returns:
-        -------
-        Literal
-            "github", "gitlab"
-
-        Raises:
-        ------
-        ValueError
-            If Type cannot be determined.
-        """
+        """Return the supported Git hosting service."""
         if "gitlab" in self.domain:
             return GitRemoteType.gitlab
         if "github" in self.domain:
@@ -128,20 +99,7 @@ class GitUrl:
         raise ValueError(msg)
 
     def get_compare_url(self, from_compare: str, to_compare: str) -> str:
-        """Get Compare url between two Refs.
-
-        Parameters
-        ----------
-        from_compare : str
-            from compare ref
-        to_compare : str
-            to compare ref
-
-        Returns:
-        -------
-        str
-            Compare Url Like: https://github.com/odoo/odoo/compare/<commitSHA>...<branchName>
-        """
+        """Build a compare URL between two refs."""
         remote_type = self._git_type()
         if from_compare == to_compare:
             return ""  # Nothing to Compare here
@@ -151,23 +109,7 @@ class GitUrl:
         return ""
 
     def get_archive_url(self, ref: str) -> str:
-        """Get Download Url for Zip file.
-
-        Parameters
-        ----------
-        ref : str
-            Repository reference (branch, commit, or tag) to download
-
-        Returns:
-        -------
-        str
-            Url from which to download a zip file
-
-        Raises:
-        ------
-        ValueError
-            if ref is not specified
-        """
+        """Build a ZIP archive URL for a ref."""
         if not ref:
             msg = "Missing either download ref (e.g. branch or commit) to generate Archive URL."
             LOGGER.error(msg)
@@ -181,20 +123,7 @@ class GitUrl:
         return ""
 
     def get_file_raw_url(self, ref: str, file_path: str) -> str:
-        """Gets the URL Pointing to the Raw file contents on the Remote.
-
-        Parameters
-        ----------
-        ref : str
-            Branch, Commit, Tag ,...
-        file_path : str
-            Relative file path in Repository
-
-        Returns:
-        -------
-        str
-            URL Pointing to the Raw file contents on the Remote
-        """
+        """Build a raw-file URL for a ref and repository path."""
         http_url = self._clean_http_url()
         remote_type = self._git_type()
         if remote_type == GitRemoteType.github:

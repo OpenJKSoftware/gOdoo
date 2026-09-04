@@ -1,4 +1,4 @@
-"""Functions, related to Module handling in a git Repository context."""
+"""Resolve changed Odoo modules from Git history."""
 
 from logging import getLogger
 from pathlib import Path
@@ -14,20 +14,7 @@ def get_changed_modules(
     addon_path: Path,
     diff_ref: str,
 ) -> list[GodooModule]:
-    """Get Paths of changed modules since git diff.
-
-    Parameters
-    ----------
-    addon_path : Path
-        Folder in git repo where to look for changes
-    diff_ref : str
-        Branch or diffable ref for git
-
-    Returns:
-    -------
-    List[godooModule]
-        List of Modules where something has changed since git diff
-    """
+    """Return modules changed from a Git reference."""
     addon_path = addon_path.absolute()
     repo = Repo(addon_path, search_parent_directories=True)
     git_root = Path(repo.git.rev_parse("--show-toplevel"))
@@ -57,7 +44,7 @@ def get_changed_modules(
 
 
 def get_changed_modules_and_depends(diff_ref: str, addon_path: Path) -> list[GodooModule]:
-    """Get Modules that have changed compared to diff_ref and all modules that depend on them."""
+    """Return changed modules and every module that depends on them."""
     changed_modules = get_changed_modules(addon_path=addon_path, diff_ref=diff_ref)
     if not changed_modules:
         return []

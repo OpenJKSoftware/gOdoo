@@ -1,4 +1,4 @@
-"""Script to shrink the database by removing attachments and product images."""
+"""Shrink a development database by removing attachments and product images."""
 
 from logging import getLogger
 
@@ -23,7 +23,7 @@ LOGGER.info("Size: %dMB", round(sum([a.file_size for a in att]) / 1024 / 1024, 2
 
 
 def chunks(lst: list, n: int):
-    """Chunk an iterable into chunks of size n."""
+    """Yield lists containing at most ``n`` values."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
 

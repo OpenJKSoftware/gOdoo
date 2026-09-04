@@ -46,11 +46,7 @@ def odoo_load_test_data(
     odoo_log_level: Annotated[str, typer.Option(help="Log level")] = "test",
     multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
 ):
-    """Loads test data from test/data.py of given modules into Odoo DB.
-
-    Makes sure Odoo is bootstrapped with the given modules and then
-    calls `tests.data.generate_test_data(env)` for each module.
-    """
+    """Load each module's ``tests.data.generate_test_data`` fixture into Odoo."""
     require_odoo_version(odoo_main_path, ">=19")
     godoo_conf = GodooConfig(
         db_user=db_user,

@@ -13,11 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def runtime_cli_app() -> typer.Typer:
-    """Create the canonical Odoo runtime lifecycle command group.
-
-    Lifecycle commands reuse their established top-level implementations. The
-    legacy top-level commands remain registered as compatibility aliases.
-    """
+    """Build the canonical runtime command group and its legacy aliases."""
     app = typer.Typer(
         no_args_is_help=True,
         help="Manage an Odoo runtime: its lifecycle, database, and matching filestore.",

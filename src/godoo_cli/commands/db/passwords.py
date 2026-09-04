@@ -1,8 +1,4 @@
-"""Database password management module.
-
-This module provides functionality for managing Odoo database passwords,
-including setting and retrieving admin passwords.
-"""
+"""Manage Odoo user passwords."""
 
 import logging
 from typing import Annotated
@@ -19,18 +15,7 @@ CLI = CommonCLI()
 
 
 def _hash_odoo_password(password: str) -> str:
-    """Hash Password for Odoo.
-
-    Parameters
-    ----------
-    password : str
-        Password to hash
-
-    Returns:
-    -------
-    str
-        Hashed Password
-    """
+    """Hash a password in Odoo's expected format."""
     return CryptContext(schemes=["pbkdf2_sha512", "md5_crypt"]).encrypt(password)
 
 
@@ -42,7 +27,7 @@ def set_passwords(
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
 ):
-    """Set Login Password for all Users."""
+    """Set the login password for every Odoo user."""
     check_dangerous_command()
 
     connection = DBConnection(

@@ -15,7 +15,7 @@ def unpack_addon_archives(
     target_addon_folder: Path,
     remove_excess: bool = False,
 ) -> None:
-    """Extract zip archives from archive_folder into target_addon_folder."""
+    """Extract addon ZIP archives into the target directory."""
     target_addon_folder.mkdir(exist_ok=True, parents=True)
     if remove_excess:
         LOGGER.debug("Clearing out unarchive folder: %s", target_addon_folder)

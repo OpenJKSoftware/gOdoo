@@ -1,4 +1,4 @@
-"""Module to provide GIT interaction."""
+"""Clone repositories and select their requested Git refs."""
 
 import logging
 import shutil
@@ -14,22 +14,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs: Any) -> Repo:
-    """Clears targetfolder and does a clean clone_from.
-
-    Parameters
-    ----------
-    repo_src : str
-        Clone url
-    target_folder : Path
-        Download folder
-    branch : str
-        branch to clone
-
-    Returns:
-    -------
-    _type_re
-        _description_
-    """
+    """Replace a target directory with a fresh clone."""
     LOGGER.debug("Cloning Repo: %s, to '%s', Kwargs: '%s'", repo_src, target_folder, kwargs)
     if not isinstance(target_folder, Path):
         target_folder = Path(target_folder)
@@ -43,22 +28,13 @@ def _git_clean_clone(repo_src: str, target_folder: Path, **kwargs: Any) -> Repo:
 def git_pull_checkout_reset(
     repo: Repo, branch: str = "master", commit: str = "", pull: str = "", reset_hard: bool = True
 ):
-    """Ensure git repo is on specific branch and commit.
+    """Move a repository to the requested ref, discarding tracked changes by default.
 
-    Will unshallow if necessary.
+    A pull that cannot fast-forward because histories diverged replaces the
+    checkout with a fresh clone. Other Git failures are propagated.
 
-    Parameters
-    ----------
-    repo : Repo
-        Git Repo
-    branch : str, optional
-        branch to checkout, by default "master"
-    commit : str, optional
-        specific commitSHA to checkout, by default ""
-    pull : str, optional
-        specific target to pull. Usually used in conjunction with branch.
-    reset_hard : bool, optional
-        will call reset --hard before checkout to ensure clean git repo, by default True
+    Raises:
+        GitCommandError: If the pull fails for a reason that cannot be repaired by recloning.
     """
     if reset_hard:
         repo.git.reset("--hard", "HEAD")
@@ -103,23 +79,7 @@ def git_ensure_ref(
     pull: str = "",
     **kwargs: Any,
 ) -> Repo:
-    """Clone a git repo and ensure its HEAD is set to branch and commit.
-
-    Parameters
-    ----------
-    target_folder : Path
-        "target folder name"
-    repo_src : str
-        "repo source url"
-    commit : str, optional
-        commit on which to set the head
-    pull : str, optional
-        specific target to pull. Usually used in conjunction with branch.
-    branch : str, optional
-        branch on which to set head, by default 'master'
-    **kwargs
-        get passed to git clone
-    """
+    """Clone a repository and select the requested ref."""
     LOGGER.info("Ensuring Repo '%s' Branch: '%s' Commit: '%s' --> '%s'", repo_src, branch, commit, target_folder)
     target_folder.mkdir(exist_ok=True, parents=True)
     try:
@@ -170,26 +130,7 @@ def git_ensure_repo(
     zip_mode: bool = False,
     **kwargs: Any,
 ) -> Optional[Repo]:
-    """Ensures git remote contents are in folder.
-
-    Parameters
-    ----------
-    target_folder : Path
-        Folder to clone/download into
-    repo_src : str
-        Git Remote Url
-    branch : str, optional
-        target branch, by default "master"
-    commit : str, optional
-        target ref, by default ""
-    pull : str, optional
-        ref to pull, by default ""
-    zip_mode : bool, optional
-        whether to download a zip (fast but no commit history) or clone and fetch
-        (fully working git clone), by default False
-    **kwargs
-        Additional arguments passed to git clone
-    """
+    """Materialize a repository as a clone or archive."""
     if isinstance(target_folder, str):
         target_folder = Path(target_folder)
 

@@ -1,9 +1,4 @@
-"""Typed dataclasses for odoo_manifest.yml schema.
-
-This module provides a typed representation of the manifest file that defines
-Odoo and third-party addon repositories. It centralizes YAML handling and
-provides a single source of truth for the manifest schema.
-"""
+"""Model and preserve the ``odoo_manifest.yml`` schema."""
 
 import logging
 import shutil
@@ -21,11 +16,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _yaml_roundtrip_loader() -> YAML:
-    """Create a YAML loader that preserves comments and formatting.
-
-    Returns:
-        Configured ruamel.yaml instance for roundtrip loading/saving.
-    """
+    """Create a round-trip YAML loader that preserves comments and formatting."""
     yaml = YAML()
     yaml.preserve_quotes = True
     yaml.default_flow_style = False
@@ -34,17 +25,7 @@ def _yaml_roundtrip_loader() -> YAML:
 
 @dataclass
 class GodooManifest:
-    """Typed representation of odoo_manifest.yml.
-
-    This class provides a structured interface to the manifest file,
-    replacing raw dict access with typed properties and methods.
-
-    Attributes:
-        odoo: Main Odoo repository specification.
-        thirdparty: Third-party addon repositories, keyed by prefix (e.g., 'OCA').
-        _source_path: Path to the source YAML file (for save operations).
-        _raw_data: Raw YAML data to preserve comments on save.
-    """
+    """Preserve typed manifest data and its round-trip YAML representation."""
 
     odoo: GodooGitRepo
     thirdparty: dict[str, list[GodooGitRepo]] = field(default_factory=dict)
@@ -53,15 +34,11 @@ class GodooManifest:
 
     @property
     def default_branch(self) -> str:
-        """Default branch from Odoo repo (used for thirdparty repos without explicit branch)."""
+        """Return the branch inherited by third-party repositories."""
         return self.odoo.branch or "master"
 
     def iter_thirdparty_repos(self) -> Iterator[tuple[str, GodooGitRepo]]:
-        """Iterate over all third-party repositories with their prefixes.
-
-        Yields:
-            Tuple of (prefix, repo_spec) for each third-party repository.
-        """
+        """Yield each third-party repository with its manifest prefix."""
         for prefix, repos in self.thirdparty.items():
             for repo in repos:
                 yield prefix, repo
@@ -99,17 +76,15 @@ class GodooManifest:
 
     @classmethod
     def from_yaml_file(cls, path: Path) -> "GodooManifest":
-        """Load manifest from a YAML file.
-
-        Args:
-            path: Path to the manifest YAML file.
+        """Load and validate a manifest file.
 
         Returns:
-            Parsed manifest instance.
+            The parsed manifest with its round-trip YAML state attached.
 
         Raises:
-            FileNotFoundError: If the manifest file doesn't exist.
-            KeyError: If required 'odoo' section is missing.
+            FileNotFoundError: If the manifest path does not exist.
+            ValueError: If the manifest is empty or invalid.
+            KeyError: If the required ``odoo`` section is missing.
         """
         if not path.exists():
             msg = f"Manifest file not found: {path}"

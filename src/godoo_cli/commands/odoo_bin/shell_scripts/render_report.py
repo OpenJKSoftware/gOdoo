@@ -1,18 +1,4 @@
-"""Render an Odoo report to HTML and print to stdout.
-
-This script renders a QWeb report for given record IDs and outputs the HTML.
-It is executed in the Odoo shell environment via:
-
-    godoo shell-script render_report <report_name> <record_id> [<record_id> ...]
-
-Example:
-    godoo shell-script render_report sale.report_saleorder 1
-    godoo shell-script render_report sale.report_saleorder 1 2 3
-
-Flags:
-    --keep-base64  Keep base64 content instead of replacing with placeholder
-
-"""
+"""Render an Odoo report as HTML."""
 
 import logging
 import re
@@ -31,21 +17,7 @@ script_args: list[str] = script_args  #  pyright: ignore # NOQA
 
 
 def replace_base64_with_placeholder(html_string: str) -> str:
-    """Replace base64 content with a placeholder.
-
-    Replaces long base64 strings (data URIs, embedded images, etc.) with
-    a placeholder to make output more readable.
-
-    Parameters
-    ----------
-    html_string : str
-        HTML string potentially containing base64 content
-
-    Returns:
-    -------
-    str
-        HTML string with base64 content replaced by placeholder
-    """
+    """Replace embedded base64 data with a readable placeholder."""
     # Match data URIs with base64 content and replace with placeholder
     # Matches patterns like: data:image/png;base64,... or similar
     pattern = r"data:[^/]+/[^;]+;base64,[A-Za-z0-9+/]+={0,2}"
@@ -54,17 +26,7 @@ def replace_base64_with_placeholder(html_string: str) -> str:
 
 
 def render_report(report_name: str, record_ids: list[int], replace_base64: bool = True):
-    """Render an Odoo report to HTML.
-
-    Parameters
-    ----------
-    report_name : str
-        Name of the report to render (e.g., 'sale.report_saleorder')
-    record_ids : list[int]
-        List of record IDs to render
-    replace_base64 : bool, optional
-        Replace base64 content with placeholder (True by default)
-    """
+    """Render the selected Odoo report records as HTML."""
     try:
         report_model = cast(Any, env["ir.actions.report"])
         html_content, _ = report_model._render_qweb_html(report_name, record_ids)

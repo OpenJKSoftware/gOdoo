@@ -56,6 +56,13 @@ def ensure_runtime(
     caller controls its manifest/update policy.  Odoo remains authoritative for
     bootstrap/database creation: only a missing or empty database is passed to
     its native initialization command.
+
+    Returns:
+        Whether this operation bootstrapped a new runtime.
+
+    Raises:
+        ValueError: If the existing database is not a usable Odoo runtime.
+        LifecycleBootstrapError: If Odoo fails to initialize the database.
     """
     if source_synchronizer:
         LOGGER.info("Synchronizing source before preparing runtime")

@@ -1,4 +1,4 @@
-"""Helper functions for pip operations."""
+"""Install Python packages through uv or pip."""
 
 import json
 import os
@@ -23,18 +23,7 @@ def _has_uv() -> bool:
 
 
 def pip_command() -> str:
-    """Check which pip command is available and return the appropriate command string.
-
-    Returns:
-    -------
-    str
-        The command to use for pip operations ('python -m pip' or 'uv pip')
-
-    Raises:
-    ------
-    RuntimeError
-        If no supported pip command is available
-    """
+    """Return the available pip-compatible command."""
     # Check if uv is available
     if _has_uv() and os.getenv("VIRTUAL_ENV"):
         return "uv pip"

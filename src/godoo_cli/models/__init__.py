@@ -1,4 +1,4 @@
-"""Godoo Abstraction Models."""
+"""Expose gOdoo configuration and source models."""
 
 from .db_connection import DBConnection
 from .godoo_git_repo import GitMergeSource, GodooGitRepo

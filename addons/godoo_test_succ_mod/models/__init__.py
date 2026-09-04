@@ -1,4 +1,4 @@
-"""Models for the Test Succ Mod."""
+"""Expose models for the successful-test addon."""
 
 from logging import getLogger
 

@@ -1,8 +1,4 @@
-"""Test CLI interface module.
-
-This module provides the command-line interface for test operations,
-including running tests, loading test data, and identifying changed modules.
-"""
+"""Define Odoo test commands."""
 
 import typer
 
@@ -11,15 +7,7 @@ from .run import odoo_get_changed_modules, odoo_run_tests
 
 
 def test_cli_app():
-    """Create and configure the test CLI application.
-
-    This function sets up the command-line interface for test operations,
-    including commands for running tests, loading test data, and identifying
-    changed modules.
-
-    Returns:
-        typer.Typer: The configured CLI application instance.
-    """
+    """Build the Odoo test command group."""
     app = typer.Typer(
         no_args_is_help=True,
         help="Functions related to Odoo testing",

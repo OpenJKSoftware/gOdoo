@@ -1,4 +1,4 @@
-"""Model wrapping a Git Repository in the Godoo Manifest."""
+"""Model Git repositories declared in ``odoo_manifest.yml``."""
 
 import logging
 from dataclasses import dataclass, field
@@ -13,13 +13,7 @@ from ..git.git_url import GitUrl
 
 @dataclass(frozen=True)
 class GitMergeSource:
-    """Specification for a merge source repository.
-
-    Attributes:
-        url: Git repository URL (HTTPS or SSH format).
-        branch: Branch name to merge from.
-        commit: Commit SHA to merge from.
-    """
+    """Describe a repository merged into a primary source."""
 
     url: str
     branch: Optional[str] = None
@@ -27,12 +21,12 @@ class GitMergeSource:
 
     @property
     def ref(self) -> str:
-        """Effective Git ref (commit if set, else branch)."""
+        """Return the commit pin or branch selected for this source."""
         return self.commit or self.branch or ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GitMergeSource":
-        """Create merge source from a dictionary (YAML node)."""
+        """Create a merge source from YAML data."""
         return cls(
             url=data["url"],
             branch=data.get("branch"),
@@ -40,7 +34,7 @@ class GitMergeSource:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for YAML serialization."""
+        """Return nonempty values for YAML serialization."""
         result: dict[str, Any] = {"url": self.url}
         if self.branch:
             result["branch"] = self.branch
@@ -54,14 +48,7 @@ LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class GodooGitRepo:
-    """Specification for a Git repository (Odoo or third-party addon).
-
-    Attributes:
-        url: Git repository URL (HTTPS or SSH format).
-        branch: Branch name. Required for Odoo repo, optional for thirdparty.
-        commit: Specific commit SHA to pin. If set, skips fetch when already at this commit.
-        merge_from: Additional repositories to merge on top of this repo.
-    """
+    """Describe a manifest repository and its optional merge sources."""
 
     url: str
     branch: Optional[str] = None
@@ -71,33 +58,26 @@ class GodooGitRepo:
 
     @property
     def git_url(self) -> GitUrl:
-        """Parsed GitUrl instance for this repository."""
+        """Return the parsed repository location."""
         return GitUrl(self.url)
 
     @property
     def repo(self) -> Repo:
-        """Target Path on the filesystem for this repository."""
+        """Open the repository at its target path."""
         return Repo(self.target_path)
 
     @property
     def name(self) -> str:
-        """Repository name derived from URL."""
+        """Return the repository name derived from its URL."""
         return self.git_url.name
 
     @property
     def ref(self) -> str:
-        """Effective Git ref (commit if set, else branch)."""
+        """Return the commit pin or branch selected for this repository."""
         return self.commit or self.branch or ""
 
     def get_compare_url(self, to_ref: str) -> str:
-        """Generate a compare URL from current commit to another ref.
-
-        Args:
-            to_ref: Target ref (branch/commit) to compare against.
-
-        Returns:
-            GitHub/GitLab compare URL, or empty string if not applicable.
-        """
+        """Return a compare URL, or an empty string when no commit is pinned."""
         if not self.commit:
             return ""
         return self.git_url.get_compare_url(self.commit, to_ref)
@@ -142,14 +122,7 @@ class GodooGitRepo:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GodooGitRepo":
-        """Create RepoSpec from a dictionary (YAML node).
-
-        Args:
-            data: Dictionary with 'url', optional 'branch', optional 'commit'.
-
-        Returns:
-            New instance populated from dict.
-        """
+        """Create a repository specification from YAML data."""
         merge_from_data = data.get("merge_from") or []
         return cls(
             url=data["url"],
@@ -159,11 +132,7 @@ class GodooGitRepo:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for YAML serialization.
-
-        Returns:
-            Dictionary with non-None values only.
-        """
+        """Return nonempty values for YAML serialization."""
         result: dict[str, Any] = {"url": self.url}
         if self.branch:
             result["branch"] = self.branch
@@ -174,11 +143,11 @@ class GodooGitRepo:
         return result
 
     def __eq__(self, other: object) -> bool:
-        """Equality including merge_from sources."""
+        """Compare the primary repository location and selected ref."""
         if not isinstance(other, GodooGitRepo):
             return NotImplemented
         return (self.url, self.branch or "", self.commit or "") == (other.url, other.branch or "", other.commit or "")
 
     def __hash__(self) -> int:
-        """Hash based on URL and branch to allow set/dict usage."""
+        """Hash the primary repository location and selected ref."""
         return hash((self.url, self.branch or "", self.commit or ""))

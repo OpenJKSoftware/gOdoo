@@ -1,9 +1,4 @@
-"""Configuration management module for Odoo.
-
-This module provides functionality to manage Odoo configuration files,
-particularly odoo.conf. It allows setting configuration options through
-command-line arguments.
-"""
+"""Manage Odoo configuration files."""
 
 import logging
 from configparser import ConfigParser
@@ -22,7 +17,7 @@ def set_odoo_config(
     options: Annotated[list[str], typer.Argument(help="odoo.conf options by key=value")],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
 ):
-    """Set odoo.conf values."""
+    """Set values in ``odoo.conf``."""
     conf_path = Path(odoo_conf_path)
     odoo_conf = ConfigParser()
     odoo_conf.read(conf_path)

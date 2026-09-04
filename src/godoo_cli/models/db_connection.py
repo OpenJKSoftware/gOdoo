@@ -1,8 +1,4 @@
-"""Database Connection and Management.
-
-This module provides functionality for managing database connections and
-executing database queries using the psycopg2 library.
-"""
+"""Manage PostgreSQL connections and queries."""
 
 import logging
 import subprocess
@@ -20,18 +16,7 @@ LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class DBConnection:
-    """Database connection configuration and management class.
-
-    This class handles database connection details and provides methods
-    for executing database commands and managing connections.
-
-    Attributes:
-        hostname: Database server hostname.
-        port: Database server port.
-        username: Database username.
-        password: Database password.
-        db_name: Name of the database.
-    """
+    """Store connection settings and run PostgreSQL operations."""
 
     hostname: str
     port: int
@@ -51,7 +36,7 @@ class DBConnection:
         return replace(self, db_name=db_name, readonly=self.readonly if readonly is None else readonly)
 
     def get_connection(self):
-        """Get a database connection."""
+        """Open a PostgreSQL connection."""
         LOGGER.debug(
             "Connecting to DB: '%s:%s' U='%s' D='%s'",
             self.hostname,
@@ -70,11 +55,7 @@ class DBConnection:
 
     @property
     def cli_dict(self) -> dict[str, Optional[Union[str, int]]]:
-        """Get connection parameters as a dictionary.
-
-        Returns:
-            Dict[str, Optional[str]]: Dictionary of connection parameters.
-        """
+        """Return CLI-compatible connection options."""
         return {
             "db_host": self.hostname,
             "db_port": self.port,
@@ -85,18 +66,7 @@ class DBConnection:
 
     @contextmanager
     def connect(self) -> Generator[psycopg2.extensions.cursor, None, None]:
-        """Create a database connection and cursor.
-
-        This context manager creates a database connection and cursor,
-        handling transaction management and resource cleanup.
-
-        Yields:
-            psycopg2.cursor: A database cursor for executing queries.
-
-        Raises:
-            Exception: Any database-related exception that occurs during
-                connection or query execution.
-        """
+        """Yield a cursor, committing writable work or rolling it back on failure."""
         connection = self.get_connection()
         cr = connection.cursor()
         try:
@@ -117,6 +87,9 @@ class DBConnection:
         """Run a psql command using the provided credentials.
 
         {} in the command will get templated with the connection string.
+
+        Returns:
+            The completed psql process.
         """
         LOGGER.debug("Running PSQL Command: %s", command)
         arg_list = []

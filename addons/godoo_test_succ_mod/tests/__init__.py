@@ -1,3 +1,3 @@
-"""Test Suite for the Test Succ Mod. (All tests are successful)."""
+"""Expose the successful-test addon suite."""
 
 from . import test_succ

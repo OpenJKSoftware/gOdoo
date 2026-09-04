@@ -1,15 +1,4 @@
-"""Common CLI functionality and configuration classes.
-
-This module provides shared functionality for the gOdoo CLI, including:
-- Path configuration for Odoo and addon directories
-- Database connection settings
-- RPC configuration
-- Launch parameters and options
-- Source code management settings
-
-The classes in this module serve as configuration containers and are used
-throughout the CLI to maintain consistent settings and defaults.
-"""
+"""Define shared CLI options and environment defaults."""
 
 from dataclasses import dataclass
 
@@ -19,7 +8,7 @@ from typer_common_functions import typer_retuner, typer_unpacker
 
 @dataclass
 class OdooLaunchArgs:
-    """Common Args for Odoo Launch Process."""
+    """Define shared Odoo process options."""
 
     extra_cmd_args = Option(help="extra agruments to pass to odoo-bin", envvar="ODOO_BIN_ARGS", rich_help_panel="Odoo")
     extra_cmd_args_bootstrap = Option(
@@ -61,7 +50,7 @@ class OdooLaunchArgs:
 
 @dataclass
 class OdooPathCLIArgs:
-    """Common Args for Odoo Paths."""
+    """Define shared Odoo path options."""
 
     bin_path = Option(
         envvar="ODOO_MAIN_FOLDER",
@@ -95,7 +84,7 @@ class OdooPathCLIArgs:
 
 @dataclass
 class RpcCLIArgs:
-    """Common Args for Odoo RPC."""
+    """Define shared Odoo RPC options."""
 
     rpc_host = Option(
         envvar="ODOO_RPC_HOST",
@@ -123,7 +112,7 @@ class RpcCLIArgs:
 
 @dataclass
 class DatabaseCLIArgs:
-    """Common Args for Odoo Database."""
+    """Define shared PostgreSQL options."""
 
     db_filter = Option(
         envvar="ODOO_DB_FILTER",
@@ -170,7 +159,7 @@ class DatabaseCLIArgs:
 
 @dataclass
 class SourceGetArgs:
-    """Common Args for Source Code Management."""
+    """Define shared source-management options."""
 
     mainfest_path = Option(
         envvar="ODOO_MANIFEST",
@@ -186,10 +175,7 @@ class SourceGetArgs:
 
 
 class CommonCLI:
-    """Common CLI Class.
-
-    Helps provide Default arguments for Typer
-    """
+    """Collect reusable Typer option definitions."""
 
     def __init__(self) -> None:
         """Initialize CommonCLI with default arguments."""

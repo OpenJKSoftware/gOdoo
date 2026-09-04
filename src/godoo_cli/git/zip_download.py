@@ -1,9 +1,4 @@
-"""Git repository archive download module.
-
-This module provides functionality for downloading Git repositories as ZIP archives,
-offering a faster alternative to full Git cloning when history is not needed.
-It supports various Git hosting services and handles extraction and cleanup.
-"""
+"""Download and extract Git repository archives."""
 
 import logging
 import shutil
@@ -18,24 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def git_download_zip(repo_url: str, target_folder: Path, branch: str, commit: str = "") -> None:
-    """Download Repo Zip from Github.
-
-    Parameters
-    ----------
-    repo_url : str
-        Github Repo Url
-    target_folder : Path
-        Download Target
-    branch : str
-        BRanch to download
-    commit : str, optional
-        Specific Commit to download, by default ""
-
-    Raises:
-    ------
-    FileNotFoundError
-        If Download failed
-    """
+    """Download and extract a repository ZIP archive."""
     git_url = GitUrl(repo_url)
     download_url = git_url.get_archive_url(ref=commit or branch)
     with tempfile.TemporaryDirectory() as tdir:

@@ -42,7 +42,7 @@ def odoo_get_changed_modules(
     diff_ref: Annotated[str, typer.Argument(help="Git Ref/Branch to compare against")],
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
 ):
-    """Get modules that have changed compared to diff_ref."""
+    """Return modules changed from the selected Git ref."""
     changed_modules = get_changed_modules_and_depends(diff_ref=diff_ref, addon_path=workspace_addon_path)
     if not changed_modules:
         return
@@ -91,10 +91,7 @@ def odoo_run_tests(  # noqa: C901
         ),
     ] = None,
 ):
-    """Bootstrap or launch Odoo in testing mode.
-
-    Will set test specific odoo.conf if it needs to bootstrap. Exits after run, so no webserver is started.
-    """
+    """Run Odoo tests to completion without starting the web server."""
     require_odoo_version(odoo_main_path, ">=19")
     test_module_names = _test_modules_special_cases(test_module_names, workspace_addon_path)
     if not test_module_names:

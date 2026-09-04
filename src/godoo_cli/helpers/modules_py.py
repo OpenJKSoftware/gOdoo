@@ -1,10 +1,4 @@
-"""Python dependency management for Odoo modules.
-
-This module provides functionality for managing Python dependencies required by
-Odoo modules, including detecting dependencies from module manifests and
-installing them using pip. It ensures that all required Python packages are
-available for Odoo modules to function properly.
-"""
+"""Resolve Python dependencies declared by Odoo modules."""
 
 import logging
 from pathlib import Path
@@ -19,17 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def install_base_python_reqs(odoo_install_folder: Path):
-    """Install base Python requirements for Odoo from requirements.txt.
-
-    Parameters
-    ----------
-    odoo_install_folder : Path
-        Path to the Odoo installation folder containing requirements.txt
-
-    Returns:
-    -------
-    CompletedProcess
-    """
+    """Install Odoo's base Python requirements."""
     reqs_file = odoo_install_folder / "requirements.txt"
     if reqs_file.exists():
         LOGGER.debug("Installing base Odoo Python requirements from %s", reqs_file)
@@ -39,19 +23,7 @@ def install_base_python_reqs(odoo_install_folder: Path):
 
 
 def install_py_reqs_for_modules(modules: list[GodooModule], module_reg: GodooModules):
-    """Install Python Requirements mentioned in odoo module manifests of given modules.
-
-    Parameters
-    ----------
-    modules : List[godooModules]
-        List of modules in wiich to check __manifest__.py for python requirements
-    module_reg : godooModules
-        Module Registry for Dependency Search
-
-    Returns:
-    -------
-    CompletedProcess
-    """
+    """Install Python dependencies declared by the given modules."""
     reqs: list[str] = []
     if isinstance(modules, GeneratorType):
         modules = list(modules)
@@ -64,19 +36,7 @@ def install_py_reqs_for_modules(modules: list[GodooModule], module_reg: GodooMod
 
 
 def install_py_reqs_by_odoo_cmd(addon_paths: list[Path], odoo_bin_cmd: OdooCommand):
-    """Install Python reqs for modules mentioned in odoo-bin commandline --init or -i directives.
-
-    Parameters
-    ----------
-    addon_paths : List[Path]
-        odoo-bin addons-path
-    odoo_bin_cmd : str
-    odoo-bin command line or argument vector
-
-    Returns:
-    -------
-    CompletedProcess
-    """
+    """Install dependencies for modules selected in an Odoo command."""
     argv = odoo_command_argv(odoo_bin_cmd)
     install_modules = [
         module

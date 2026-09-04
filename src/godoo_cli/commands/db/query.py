@@ -1,8 +1,4 @@
-"""Database query functionality module.
-
-This module provides functionality for querying Odoo databases,
-including checking bootstrap status and retrieving installed modules.
-"""
+"""Query Odoo database state."""
 
 import enum
 import logging
@@ -17,14 +13,7 @@ from ...models import DBConnection
 
 
 class DbBootstrapStatus(enum.Enum):
-    """Database bootstrap status enumeration.
-
-    This enum represents the possible states of database bootstrapping:
-    - BOOTSTRAPPED: Database is fully bootstrapped
-    - NO_DB: Database does not exist
-    - EMPTY_DB: Database exists but is empty
-    - INVALID_DB: Database contains tables but is not a usable Odoo runtime
-    """
+    """Describe whether a database can be used as an Odoo runtime."""
 
     BOOTSTRAPPED = "bootstrapped"
     NO_DB = "db missing"
@@ -52,10 +41,7 @@ def query_database(
     db_password: Annotated[str, CLI.database.db_password] = "",
     readonly: Annotated[bool, typer.Option(help="Run query in readonly mode", show_default=True)] = True,
 ):
-    """Run a Query against the database.
-
-    Queries, with return values will be printed to stdout between "START QUERY_OUTPUT" and "END QUERY_OUTPUT".
-    """
+    """Run SQL and delimit returned rows for machine-readable output."""
     # read stdin if query is not provided
     if query == "-":
         stdin = typer.get_text_stream("stdin")
@@ -94,7 +80,7 @@ def query_database(
 
 
 def _is_bootstrapped(db_connection: DBConnection) -> DbBootstrapStatus:
-    """Check if postgres contains database db_name and if this database has any tables present."""
+    """Classify a database as missing, empty, bootstrapped, or invalid."""
     try:
         with db_connection.connect() as cursor:
             cursor.execute(
@@ -140,10 +126,7 @@ def is_bootstrapped(
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
 ):
-    """Check if the database is empty.
-
-    Return code = 1 if database does not exist, 2 if database is empty, 0 if database is not empty.
-    """
+    """Report the database state through its stable bootstrap exit code."""
     connection = DBConnection(
         hostname=db_host,
         port=db_port,
@@ -161,7 +144,7 @@ def get_installed_modules_from_connection(
     db_connection: DBConnection,
     to_install: bool = False,
 ) -> tuple[list[str], DbBootstrapStatus]:
-    """Get list of installed modules in database (to_install includes the modules marked for installation)."""
+    """Return installed modules and optionally those pending installation."""
     if (boot := _is_bootstrapped(db_connection=db_connection)) != DbBootstrapStatus.BOOTSTRAPPED:
         return [], boot
 
@@ -192,7 +175,7 @@ def get_installed_modules(
         ),
     ] = False,
 ):
-    """Returns modules marked as installed by Odoo in the database."""
+    """Print modules marked as installed by Odoo."""
     db_connection = DBConnection(
         hostname=db_host,
         port=db_port,

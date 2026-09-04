@@ -42,6 +42,18 @@ Purpose: keep only repo-specific guidance that is easy for agents to miss.
 
 - Preserve worker/thread behavior in test command paths unless intentionally changing test semantics.
 
+## Docstrings
+
+- Use a one-sentence docstring when the signature already explains the interface.
+- Add prose for behavior the signature cannot show, especially side effects, destructive operations, lifecycle
+  guarantees, transactions, concurrency, and coupled options.
+- Use Google-style `Args:`, `Returns:`, `Yields:`, and `Raises:` sections only when they add useful semantics. Do not
+  repeat types or defaults from the signature.
+- When a docstring uses `Args:`, document every parameter. Multiline docstrings must document returned or yielded values
+  and directly raised exceptions.
+- For Typer commands, keep command behavior in the function docstring and parameter help in `Annotated` option or
+  argument metadata.
+
 ## Fast Navigation
 
 - Main CLI entry and wiring: `src/godoo_cli/cli.py`

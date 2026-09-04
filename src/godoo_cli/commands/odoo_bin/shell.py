@@ -1,9 +1,4 @@
-"""Odoo shell interaction module.
-
-This module provides functionality for interacting with the Odoo shell,
-including running Python scripts and executing shell commands in the
-Odoo environment. It supports both interactive and script-based operations.
-"""
+"""Run interactive or scripted Odoo shell sessions."""
 
 import logging
 import sys
@@ -27,11 +22,7 @@ def odoo_shell_uninstall_modules(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
 ):
-    """Uninstall specified modules through Odoo's module command.
-
-    Returns:
-        int: 0 for success, non-zero for failure.
-    """
+    """Uninstall modules through Odoo's native module command."""
     require_odoo_version(odoo_main_path, ">=19")
     uninstall_cmd = [
         str(odoo_main_path.absolute() / "odoo-bin"),
@@ -68,15 +59,7 @@ def odoo_shell(
         typer.Argument(help="Python command, that will be piped into odoo-bin shell"),
     ] = "",
 ):
-    """Start an interactive Odoo shell session.
-
-    This function launches an Odoo shell session, either using configuration from
-    odoo.conf or direct database connection parameters. It supports both interactive
-    mode and command piping.
-
-    Returns:
-        int: 0 for success, non-zero for failure.
-    """
+    """Run an interactive Odoo shell or pipe Python code into it."""
     require_odoo_version(odoo_main_path, ">=19")
     shell_cmd = [
         str(odoo_main_path.absolute() / "odoo-bin"),
@@ -110,11 +93,7 @@ def odoo_shell(
 
 
 def complete_script_name():
-    """Get a list of available script names for autocompletion.
-
-    Returns:
-        List[str]: List of script names without their .py extension.
-    """
+    """Return internal script names for shell completion."""
     return sorted(p.stem for p in SHELL_SCRIPTS_PATH.glob("*.py"))
 
 
@@ -159,15 +138,7 @@ def odoo_shell_run_script(
     db_password: Annotated[str, CLI.database.db_password] = "",
     data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
 ):
-    """Run a predefined script using the Odoo shell.
-
-    This function executes a Python script in the Odoo shell environment,
-    supporting both configuration file and direct database connection parameters.
-    Additional arguments after the script name are passed to the script as script_args list.
-
-    Returns:
-        int: 0 for success, non-zero for failure.
-    """
+    """Run an internal script in Odoo shell and forward its arguments."""
     require_odoo_version(odoo_main_path, ">=19")
     script_path = SHELL_SCRIPTS_PATH / f"{script_name}.py"
     if not script_path.exists():

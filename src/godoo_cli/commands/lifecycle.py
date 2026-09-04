@@ -76,6 +76,7 @@ def _ensure_config(
             raise typer.BadParameter(message)
 
         def synchronize_source() -> None:
+            """Synchronize sources before preparing the runtime."""
             sync_source(
                 config,
                 manifest_path=manifest_path,
@@ -220,9 +221,11 @@ def _run_devcontainer_hooks(
     }
 
     def run_shell(code: str) -> int:
+        """Run code in an Odoo shell session."""
         return odoo_shell(pipe_in_command=code, **shell_arguments)
 
     def set_all_passwords() -> int:
+        """Set the development password for every user."""
         set_passwords(
             new_password="admin",
             db_name=config.db_name,
@@ -554,9 +557,11 @@ def deployment_init_odoo_runtime(
     runtime_seed = _selected_seed(seed, seed_archive)
 
     def already_prepared(_conf: GodooConfig) -> None:
+        """Skip preparation already completed by init."""
         return None
 
     def ensure(conf: GodooConfig) -> bool:
+        """Bootstrap the runtime without repeating preparation."""
         return ensure_runtime(
             conf,
             preparer=already_prepared,
@@ -568,6 +573,7 @@ def deployment_init_odoo_runtime(
         )
 
     def seed_runtime(conf: GodooConfig) -> None:
+        """Load the selected native or legacy seed."""
         assert runtime_seed is not None
         if runtime_seed.is_dir():
             load_legacy_runtime_dump(

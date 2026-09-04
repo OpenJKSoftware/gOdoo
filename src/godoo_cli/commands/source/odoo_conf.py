@@ -8,7 +8,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def update_odoo_conf_addon_paths(odoo_conf: Path, addon_paths: list[Path]) -> None:
-    """Update odoo.conf addons_path with the provided addon folders."""
+    """Write the provided addon directories to ``odoo.conf``."""
     if not odoo_conf.exists():
         msg = f"Odoo.conf not found at: {odoo_conf!s}"
         LOGGER.error(msg)

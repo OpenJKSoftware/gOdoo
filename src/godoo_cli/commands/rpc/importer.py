@@ -1,9 +1,4 @@
-"""Data import functionality for Odoo via RPC.
-
-This module provides tools for importing data into a running Odoo instance
-using Remote Procedure Call (RPC) methods. It supports importing data from
-various file formats and sources.
-"""
+"""Import data into Odoo through RPC."""
 
 import logging
 from pathlib import Path
@@ -53,12 +48,7 @@ def import_to_odoo(
         ),
     ] = False,
 ):
-    """Import data into a running Odoo instance.
-
-    This function allows importing data from various file paths into an Odoo
-    database using RPC. It supports specifying a target model and additional
-    import context.
-    """
+    """Import data files into an Odoo model through RPC."""
     odoo_api = wait_for_odoo(
         odoo_host=rpc_host,
         odoo_db=rpc_database,

@@ -23,14 +23,7 @@ CLI = CommonCLI()
 
 
 class UpdateMode(str, Enum):
-    """Update mode enumeration for source code management.
-
-    This enum defines the available update modes for source code:
-    - all: Update all sources (Odoo, third-party, and zip archives)
-    - zip: Update only zip archives
-    - odoo: Update only the Odoo source code
-    - thirdparty: Update only third-party addons
-    """
+    """Select which legacy source groups to update."""
 
     all = "all"
     zip = "zip"
@@ -123,10 +116,7 @@ def py_depends_by_db(
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
 ):
-    """Install Python dependencies for all installed modules in DB.
-
-    Will not raise error if module not found in source for upgrade purposes.
-    """
+    """Install dependencies for installed modules, ignoring modules absent from source."""
     connection = DBConnection(hostname=db_host, port=db_port, username=db_user, password=db_password, db_name=db_name)
     module_list, status = get_installed_modules_from_connection(connection, to_install=True)
     if status != DbBootstrapStatus.BOOTSTRAPPED:
@@ -161,7 +151,7 @@ def get_installed_module_paths(
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
 ):
-    """Get Paths of all installed modules in DB."""
+    """Return source paths for installed database modules."""
     godoo_config = GodooConfig(
         db_user=db_user,
         db_password=db_password,
@@ -194,7 +184,7 @@ def py_depends_by_modules(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
 ):
-    """Install dependencies from __manifest__.py in specified modules."""
+    """Install dependencies declared by the selected module manifests."""
     godoo_config = GodooConfig(
         odoo_install_folder=odoo_main_path,
         odoo_conf_path=Path("./odoo.conf"),
@@ -219,7 +209,7 @@ def get_source_file(
     repo_url: Annotated[str, typer.Option(help="git repo url, for specific repo (skip manifest_yml)")] = "",
     file_ref: Annotated[str, typer.Option(help="When not using manifest. File Branch, Commit, Tag...")] = "",
 ):
-    """Get Raw file from manifest git remotes or specific git remote."""
+    """Download a raw file from a manifest repository or explicit remote."""
     if not repo_url and not manifest_path:
         msg = "Need to provide either manifest_yml or repo_url"
         LOGGER.error(msg)
@@ -268,7 +258,7 @@ def get_source(
         ),
     ] = False,
 ):
-    """Download/unzip Odoo source and thirdparty addons."""
+    """Download Odoo and third-party addon sources."""
     LOGGER.info("Synchronizing source through the reusable service")
     godoo_config = GodooConfig(
         odoo_install_folder=odoo_main_path,
@@ -299,7 +289,7 @@ def update_odoo_conf(
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
     thirdparty_addon_path: Annotated[Path, CLI.odoo_paths.thirdparty_addon_path],
 ):
-    """Update Odoo.conf with Addon Paths."""
+    """Update ``odoo.conf`` with the resolved addon paths."""
     godoo_conf = GodooConfig(
         odoo_install_folder=odoo_main_path,
         odoo_conf_path=odoo_conf,
@@ -310,15 +300,7 @@ def update_odoo_conf(
 
 
 def source_cli_app():
-    """Create and configure the source CLI application.
-
-    This function sets up the command-line interface for source code management,
-    including commands for getting and updating source code, managing addon paths,
-    and handling dependencies.
-
-    Returns:
-        typer.Typer: The configured CLI application instance.
-    """
+    """Build the legacy source command group."""
     app = typer.Typer(
         no_args_is_help=True,
         help="Functions concerning with Odoo Source code",

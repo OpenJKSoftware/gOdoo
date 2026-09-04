@@ -1,3 +1,3 @@
-"""Test Succ Mod. (Module with all successful tests)."""
+"""Provide an Odoo module whose tests succeed."""
 
 from . import models

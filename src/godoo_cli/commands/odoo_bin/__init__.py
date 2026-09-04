@@ -1,4 +1,4 @@
-"""CLI command to Bootstrap or launch Odoo using odoo-bin."""
+"""Expose commands that bootstrap or launch Odoo through ``odoo-bin``."""
 
 from .bootstrap import bootstrap_odoo
 from .godoo_test import odoo_get_changed_modules, odoo_load_test_data, odoo_run_tests, test_cli_app

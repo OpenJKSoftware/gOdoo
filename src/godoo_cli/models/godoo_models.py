@@ -1,4 +1,4 @@
-"""Models For general Godoo Settings."""
+"""Define shared gOdoo runtime and workspace settings."""
 
 import logging
 from dataclasses import dataclass, field
@@ -17,7 +17,7 @@ LOGGER = logging.getLogger(__name__)
 
 @dataclass(order=True)
 class OdooVersion:
-    """Structure to hold Odoo version."""
+    """Store a parsed Odoo version."""
 
     text: str = field(compare=False)
     major: int
@@ -125,16 +125,7 @@ class AddonPathResolver:
 
 @dataclass(frozen=True)
 class GodooConfig:
-    """Structure to hold Essential values for Godoo.
-
-    Required fields (must be provided at instantiation):
-    - odoo_install_folder: Path to the Odoo installation
-    - odoo_conf_path: Path to odoo.conf
-    - workspace_addon_path: Path to workspace addons
-    - thirdparty_addon_path: Path to third-party addons
-
-    Optional and configurable fields have defaults.
-    """
+    """Collect paths and settings for one gOdoo runtime."""
 
     # Required fields (no defaults)
     odoo_install_folder: Path
@@ -198,22 +189,22 @@ class GodooConfig:
 
     @cached_property
     def db_connection(self) -> DBConnection:
-        """Return a DBConnection object based on the configuration (cached)."""
+        """Return the cached database adapter for this configuration."""
         return self.database_settings.db_connection
 
     @property
     def zip_addon_path(self) -> Path:
-        """Return the path to the zip addons folder."""
+        """Return the archived-addon directory."""
         return self.workspace_layout.zip_addon_path
 
     @property
     def odoo_bin_path(self) -> Path:
-        """Return the path to the odoo-bin file."""
+        """Return the ``odoo-bin`` path."""
         return self.workspace_layout.odoo_bin_path
 
     @cached_property
     def odoo_version(self) -> OdooVersion:
-        """Return the Odoo version (cached)."""
+        """Return the cached Odoo version."""
         from ..helpers.odoo_files import odoo_bin_get_version
 
         return odoo_bin_get_version(self.odoo_install_folder)

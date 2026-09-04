@@ -33,6 +33,9 @@ def run_devcontainer_post_bootstrap_hooks(
     The hook runner deliberately receives actions instead of database or shell
     dependencies. Lifecycle orchestration decides *when* hooks are applicable;
     this profile module defines only the project-specific work to perform.
+
+    Returns:
+        The first failing action status, or zero when every action succeeds.
     """
     if result := _run("set report.url", set_report_url):
         return result

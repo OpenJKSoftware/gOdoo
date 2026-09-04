@@ -1,9 +1,4 @@
-"""CLI helper functions module.
-
-This module provides utility functions for command-line interface operations,
-including user interaction and command validation. It helps ensure safe
-execution of potentially dangerous operations.
-"""
+"""Provide CLI validation and interaction helpers."""
 
 import logging
 import os

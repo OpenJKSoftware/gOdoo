@@ -1,9 +1,4 @@
-"""Translation management functionality for Odoo via RPC.
-
-This module provides tools for managing translations in a running Odoo
-instance through Remote Procedure Call (RPC) methods, including loading,
-exporting, and updating translations.
-"""
+"""Manage Odoo translations through RPC."""
 
 import logging
 from base64 import b64decode
@@ -22,15 +17,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _dump_translation_for_module(module: Any, target_path: Path):
-    """Dump translation of a module into POT file.
-
-    Parameters
-    ----------
-    module : _type_
-        rpc record of module to export
-    target_path : Path
-        target pot path
-    """
+    """Export one module's translations to a POT file."""
     trans_exp_mod = module.env["base.language.export"]
 
     LOGGER.info("Exporting: %s --> %s", module.name, str(target_path))
@@ -47,17 +34,7 @@ def _dump_translations(
     godoo_modules: list[GodooModule],
     upgrade_modules: bool = True,
 ):
-    """Dump translations of given Modules into their addon folders.
-
-    Parameters
-    ----------
-    modules : rpc modules
-        Api Models of modules
-    godoo_modules : list[godooModule]
-        godoo_module instances of modules
-    upgrade_modules : bool, optional
-        Whether to upgrade modules before dumping, by default True
-    """
+    """Export module translations into their addon directories."""
     if upgrade_modules:
         LOGGER.info("Upgrading Modules: '%s'", ", ".join([m.name for m in modules]))
         modules.button_immediate_upgrade()
@@ -74,20 +51,7 @@ def _dump_translations(
 
 
 def complete_workspace_addon_names(ctx: typer.Context, incomplete: str):
-    """Autocomplete handler that searches modules in Workspace_addon_path.
-
-    Parameters
-    ----------
-    ctx : typer.Context
-        Contains calling parameters
-    incomplete : str
-        Incomplete current entry
-
-    Yields:
-    ------
-    str
-        folder name
-    """
+    """Yield workspace addon names matching the input."""
     workspace_folder = ctx.params.get("workspace_addon_path")
     if not workspace_folder:
         return
@@ -114,7 +78,7 @@ def dump_translations(
     rpc_password: Annotated[str, CLI.rpc.rpc_password],
     upgrade_modules: Annotated[bool, typer.Option(help="Upgrade modules before exporting")] = True,
 ):
-    """Dump translations of module to <module_folder>/i18n/<module_name>.pot."""
+    """Export module translations to each addon's ``i18n`` directory."""
     godoo_modules = list(GodooModules(workspace_addon_path).get_modules(modules))
     module_names = [m.name for m in godoo_modules]
     LOGGER.debug("Found modules: %s", module_names)

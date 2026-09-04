@@ -1,9 +1,4 @@
-"""Filestore-aware runtime storage commands.
-
-The commands in this module intentionally treat an Odoo database and its
-filestore as one runtime.  Odoo's own ``db`` CLI continues to perform native
-archive, load, duplicate, and drop operations.
-"""
+"""Manage an Odoo database and filestore as one runtime."""
 
 import logging
 from collections.abc import Callable, Sequence

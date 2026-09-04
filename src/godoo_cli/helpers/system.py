@@ -1,4 +1,4 @@
-"""Helper functions around the host system."""
+"""Provide process, logging, file, and terminal helpers."""
 
 import atexit
 import contextlib
@@ -50,6 +50,7 @@ def _filter_thread_main(pattern: re.Pattern, r_fd: int, orig_fd: int) -> None:
     in_traceback = False
 
     def should_emit(line_bytes: bytes) -> bool:
+        """Return whether a captured line should be forwarded."""
         nonlocal in_traceback
         if in_traceback:
             # Tracebacks are delimited by an empty line; emit it, then leave traceback mode.
@@ -130,7 +131,7 @@ def run_cmd(command: Union[str, Sequence[str]], **kwargs: Any) -> subprocess.Com
 
 
 def ensure_dotenv(varname: str) -> str:
-    """Load environment variable and raise error if not set."""
+    """Return a required environment variable or reject the command."""
     var = os.getenv(varname)
     if var is None:
         msg = f"Env Variable: {varname} is not set"
@@ -183,7 +184,7 @@ def set_logging(verbose: bool = False, log_filter: Optional[str] = None) -> None
 
 
 def download_file(url: str, save_path: Path, chunk_size: int = 128) -> None:
-    """Download file from URL to specified path."""
+    """Download a URL to the requested path."""
     LOGGER.debug("Downloading File: '%s' to '%s'", url, save_path)
     r = requests.get(url, stream=True)
     with open(save_path, "wb") as fd:
@@ -192,10 +193,10 @@ def download_file(url: str, save_path: Path, chunk_size: int = 128) -> None:
 
 
 def file_or_folder_size_mb(path: Path) -> float:
-    """Get size of file or all files in folder summed in MB."""
+    """Return a file or directory tree size in megabytes."""
 
     def file_size_mb(file: Path) -> float:
-        """Get size of file in MB."""
+        """Return a file size in megabytes."""
         return file.stat().st_size / (1024 * 1024)
 
     if path.is_file():
@@ -211,17 +212,7 @@ def path_has_content(path: Path):
 
 
 def typer_ask_overwrite_path(paths: Union[list[Path], Path]) -> bool:
-    """Checks if the provided Paths do already exist.
-
-    Ignores 0 size files and empty folders.
-    Prints table of Paths with size and Changedate.
-    Prompts user to continue or abort typer.
-
-    Returns:
-    ---------
-    False, when we shall not overwrite files.
-    True, when there are no files to override or we should override
-    """
+    """Ask before overwriting non-empty paths."""
     if isinstance(paths, Path):
         paths = [paths]
 
@@ -247,12 +238,7 @@ def typer_ask_overwrite_path(paths: Union[list[Path], Path]) -> bool:
 
 
 def sizeof_fmt(num: float, suffix: str = "B"):
-    """Format number of bytes to human readable format.
-
-    Args:
-        num (int): Number of bytes.
-        suffix (str, optional): Suffix to append. Defaults to "B".
-    """
+    """Format a byte count with a human-readable binary unit."""
     for unit in ("", "K", "M", "G", "T", "P", "E", "Z"):
         if abs(num) < 1024.0:
             return f"{num:3.1f}{unit}{suffix}"

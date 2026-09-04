@@ -1,1 +1,1 @@
-"""Provides various helper functions for Odoo."""
+"""Expose shared Odoo helpers."""

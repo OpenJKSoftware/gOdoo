@@ -21,6 +21,12 @@ def run_odoo_command(command: OdooCommand, **kwargs: Any) -> subprocess.Complete
 
     Keyword arguments are forwarded to :func:`subprocess.run`, which allows
     callers to provide stdin or script content without a shell pipeline.
+
+    Returns:
+        The completed Odoo process.
+
+    Raises:
+        ValueError: If shell execution is requested.
     """
     if "shell" in kwargs:
         message = "Odoo commands must not be run through a shell"

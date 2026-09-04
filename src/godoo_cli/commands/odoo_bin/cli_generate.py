@@ -1,4 +1,4 @@
-"""Methods to generate argv lists for ``odoo-bin`` invocations."""
+"""Build argument vectors for ``odoo-bin`` invocations."""
 
 import logging
 import os
@@ -45,6 +45,9 @@ def _extra_args_argv(extra_cmd_args: list[str]) -> list[str]:
     Historically Typer supplied option chunks such as ``"--update sale"``.
     Internal callers may now also provide canonical argv pairs, where a value
     (including one with spaces) follows its option as a separate list item.
+
+    Returns:
+        A flat argument vector suitable for direct process execution.
     """
     argv: list[str] = []
     for chunk in extra_cmd_args:

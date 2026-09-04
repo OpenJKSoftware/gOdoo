@@ -1,4 +1,4 @@
-"""Install Web Ribbon addon and set Text and color. To be Piped into Odoo Shell."""
+"""Configure development ribbons from an Odoo shell session."""
 
 import logging
 import os
@@ -12,15 +12,7 @@ env: api.Environment = env  # Just to silence pyright # pyright: ignore # NOQA
 
 
 def set_banner(banner_text: Optional[str] = "Development", banner_background_color: Optional[str] = ""):
-    """Set Odoo top left Banner.
-
-    Parameters
-    ----------
-    banner_text : str, optional
-        Text to display on banner, by default ""
-    banner_background_color : str, optional
-        rbg("","","",""), by default ""
-    """
+    """Set the top-left Odoo banner text and CSS background color."""
     if not banner_background_color:
         banner_background_color = "rgb(255,0,0)"
 
@@ -54,11 +46,7 @@ def set_banner(banner_text: Optional[str] = "Development", banner_background_col
 
 
 def disable_record(ref: str):
-    """Disable a record in the Odoo database by its XML ID.
-
-    Args:
-        ref: XML ID of the record to disable.
-    """
+    """Disable a record by its XML ID when that record exists."""
     rec = cast(Any, env.ref(ref, raise_if_not_found=False))
     if rec and rec.active:
         LOGGER.info("Disabling Record: %s", rec.display_name)
@@ -66,11 +54,7 @@ def disable_record(ref: str):
 
 
 def remove_upgrade_test_ribbon():
-    """Remove upgrade test ribbons and banners from the Odoo interface.
-
-    This function disables various ribbon and banner records that are
-    typically used during upgrade testing.
-    """
+    """Disable the standard upgrade-test ribbons and banners."""
     disable_record("__upgrade__.upg_test_banner")
     disable_record("__upgrade__.upg_test_ribbon")
     disable_record("web.neutralize_banner")

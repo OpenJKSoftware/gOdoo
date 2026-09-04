@@ -1,9 +1,4 @@
-"""Odoo instance launch and management module.
-
-This module provides functionality for launching and managing Odoo instances,
-including bootstrapping new databases, handling configuration, and managing
-the launch process with various options like development mode and worker counts.
-"""
+"""Prepare and launch Odoo processes."""
 
 import logging
 import threading
@@ -63,7 +58,7 @@ def _persist_runtime_config(godoo_conf: GodooConfig, x_sendfile: Optional[bool])
 
 
 def prepare_runtime(godoo_conf: GodooConfig, *, x_sendfile: Optional[bool] = None) -> None:
-    """Prepare configuration and Python dependencies without changing a database."""
+    """Write Odoo configuration without changing the database. Sources and Python packages are prebuilt inputs."""
     require_odoo_version(godoo_conf.odoo_install_folder, ">=19")
     if godoo_conf.odoo_conf_path.exists():
         update_odoo_conf(
@@ -102,7 +97,7 @@ def prepare_odoo(
         Optional[Path], typer.Option(envvar="ODOO_THIRDPARTY_ZIP_LOCATION", help="Third-party addon archive directory")
     ] = None,
 ) -> None:
-    """Prepare configuration and Python dependencies without touching the database."""
+    """Write Odoo configuration without changing the database. Sources and Python packages are prebuilt inputs."""
     godoo_conf = GodooConfig(
         odoo_install_folder=odoo_main_path,
         odoo_conf_path=odoo_conf_path,
@@ -211,39 +206,7 @@ def launch_import(
     install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
     multithread_worker_count: Annotated[int, CLI.odoo_launch.multithread_worker_count] = 2,
 ):
-    """Launch Odoo and import data from specified paths.
-
-    This command launches an Odoo instance and starts a separate thread to import
-    data through RPC. The import process runs asynchronously while Odoo is running.
-    Import launch never resets runtime state implicitly.
-
-    Args:
-        load_data_path: List of paths containing data to import.
-        odoo_main_path: Path to the Odoo installation directory.
-        workspace_addon_path: Path to workspace addons directory.
-        thirdparty_addon_path: Path to thirdparty addons directory.
-        odoo_conf_path: Path to odoo.conf file.
-        db_filter: Database filter pattern for odoo.conf.
-        db_host: Database host address.
-        db_port: Database port number.
-        db_name: Name of the database to use.
-        db_user: Database user name.
-        data_dir: Odoo data directory containing filestores and runtime data.
-        db_password: Database password.
-        rpc_host: Host address for RPC connections.
-        rpc_user: Username for RPC authentication.
-        rpc_password: Password for RPC authentication.
-        odoo_demo: If True, load demo data during bootstrap.
-        dev_mode: If True, enable development mode features.
-        install_workspace_modules: If True, install all modules in workspace.
-        extra_launch_args: Additional command line arguments for odoo-bin.
-        extra_bootstrap_args: Additional arguments for bootstrap process.
-        log_file_path: Path to the log file (None for stdout).
-        multithread_worker_count: Number of worker processes.
-
-    Returns:
-        int: 0 for success, non-zero for failure.
-    """
+    """Launch Odoo, import through RPC, and preserve existing runtime state."""
     require_odoo_version(odoo_main_path, ">=19")
     godoo_conf = GodooConfig(
         db_user=db_user,

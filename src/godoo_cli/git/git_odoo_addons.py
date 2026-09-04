@@ -1,10 +1,4 @@
-"""Odoo addon Git repository management module.
-
-This module provides functionality for managing Odoo addon Git repositories,
-including cloning, updating, and configuring repositories based on YAML
-configuration files. It supports both direct Git operations and archive-based
-downloads for addon repositories.
-"""
+"""Manage Git repositories that provide Odoo addons."""
 
 import concurrent.futures
 import logging
@@ -89,20 +83,7 @@ def git_ensure_thirdparty_repos(
     pin_commits: bool = False,
     generate_yml_compare_comments: bool = False,
 ) -> dict[str, Repo]:
-    """Clone Thirdparty Addon Repositories specified in Manifest parallely.
-
-    Ensures repo names are prefixed and uses 8 threads to clone.
-
-    Args:
-        root_folder: Clone target folder.
-        manifest: Parsed GodooManifest instance.
-        download_archive: Whether to download as .zip (fast but no history).
-        pin_commits: Whether to pin commits in manifest to current HEAD SHA.
-        generate_yml_compare_comments: Whether to emit compare URL comments when manifest is saved.
-
-    Returns:
-        Dict mapping addon folder names to Repo instances.
-    """
+    """Materialize third-party addon repositories from the manifest."""
     if not manifest.thirdparty:
         LOGGER.info("No Thirdparty Key in manifest. Skipping...")
         return {}

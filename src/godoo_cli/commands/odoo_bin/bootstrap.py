@@ -1,9 +1,4 @@
-"""Module for bootstrapping Odoo instances.
-
-This module provides functionality to bootstrap Odoo instances by installing
-required Python dependencies, setting up database connections, and initializing
-the Odoo environment with necessary modules and configurations.
-"""
+"""Bootstrap missing or empty Odoo runtimes."""
 
 import logging
 import os
@@ -37,28 +32,14 @@ def bootstrap_and_prep_launch_cmd(  # noqa: C901
     install_workspace_addons: bool = True,
     launch_or_bootstrap: bool = False,
 ) -> Union[int, list[str]]:
-    """Bootstrap an Odoo instance if needed and prepare the launch command.
+    """Bootstrap a missing runtime, then prepare its launch command.
 
-    This function handles the complete process of preparing an Odoo instance for launch:
-    1. Checks if the database exists and is bootstrapped
-    2. Bootstraps the database if needed
-    3. Installs Python dependencies
-    4. Updates odoo.conf with current addon paths
-    5. Prepares the launch command with appropriate options
-
-    Args:
-        godoo_conf: GodooConfig object with Odoo configuration details.
-        odoo_demo: If True, load demo data during bootstrap.
-        dev_mode: If True, enable development mode features.
-        extra_launch_args: Additional arguments for the launch command.
-        extra_bootstrap_args: Additional arguments for the bootstrap process.
-        log_file_path: Path to the log file (None for stdout).
-        install_workspace_addons: If True, install all modules found in workspace.
-        launch_or_bootstrap: If True, only return launch command if bootstrap didn't run.
+    When bootstrapping is required and ``launch_or_bootstrap`` is set, stop
+    after initialization and return that process status.
 
     Returns:
-        Union[int, str]: Either a non-zero error code if bootstrap failed,
-            or the launch argument vector if successful.
+        The bootstrap status when initialization stops the operation; otherwise,
+        the argument vector for launching Odoo.
     """
     LOGGER.info("Starting godoo Init Script")
 

@@ -1,4 +1,4 @@
-"""Functions that operate on Odoos Source Code."""
+"""Inspect an Odoo source checkout."""
 
 import logging
 import re
@@ -14,18 +14,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def odoo_bin_get_version(odoo_main_repo_path: Path) -> OdooVersion:
-    """Get Odoo Version by calling 'odoo-bin --version'.
-
-    Parameters
-    ----------
-    odoo_main_repo_path : Path
-        Path to odoo-bin folder
-
-    Returns:
-    -------
-    OdooVersion
-        odoo-bin --version output parsed into Dataclass
-    """
+    """Read the Odoo version from ``odoo-bin``."""
     odoo_bin_path = odoo_main_repo_path / "odoo-bin"
     version_out = run_cmd(f"{odoo_bin_path.absolute()} --version", capture_output=True, text=True)
     vers_match = re.match(r"(?P<text>.*) (?P<major>\d+)\.(?P<minor>\d+)", version_out.stdout)
