@@ -1,84 +1,37 @@
-# gOdoo Agent Notes (High-Signal Only)
+# gOdoo repository contracts
 
-Purpose: keep only repo-specific guidance that is easy for agents to miss.
+Keep only repo-specific behavior that code and tooling do not make obvious. Prefer existing patterns and the smallest
+coherent change.
 
-## Scope
+## Execution
 
-- This repo is a Python CLI (`godoo`) plus DevContainer tooling for Odoo work.
-- Ignore generic Python/Typer/Odoo best practices unless they are enforced here.
-- Prefer existing patterns over introducing new abstractions.
+- The host owns Git, workspace commands, VS Code, linting, and the development `.venv`. Odoo runs in the selected
+  environment (`VIRTUAL_ENV`, otherwise the project `.venv`). Downstream owns Docker and system packages; gOdoo never
+  detects or orchestrates containers.
+- Load the matching skill under `.agents/skills/` for source-workspace or runtime work; load both only when a change
+  crosses those boundaries.
+- Use `godoo-editor-validation` for VS Code diagnostics and development-flow checks, and `godoo-changeset-review` for
+  whole-changeset reviews.
+- Keep shared Docker validation sequential.
 
-## Non-Obvious Rules
+## Code and CLI
 
-1. Logging contract is mandatory.
+- Every shell script under `scripts/` has a purpose comment immediately below its shebang.
+- Operational Python modules define and use `LOGGER = logging.getLogger(__name__)`; passive metadata, value-type, and
+  re-export modules do not carry unused loggers. Reserve `rich.print()` for user-facing output.
+- Export command groups through `src/godoo_cli/commands/__init__.py` and attach them in
+  `src/godoo_cli/commands/root.py`. Reuse env-first option metadata from `src/godoo_cli/commands/common.py`; new options
+  need an environment fallback unless there is a concrete reason not to provide one.
+- For Typer commands, keep behavior in the function docstring and parameter help in `Annotated` metadata.
 
-- Every Python module should define `LOGGER = logging.getLogger(__name__)`.
-- Use `LOGGER.*` for operational logs.
-- Do not use `print()` for operational output; user-facing terminal output can use `rich.print()`.
-- Logging setup is centralized via `helpers.system.set_logging()`.
+## Validation
 
-2. New CLI commands need 2 registration points.
-
-- Add/Export command module in `src/godoo_cli/commands/__init__.py`.
-- Wire it into the CLI app in `src/godoo_cli/cli.py`.
-
-3. CLI options are env-first by design.
-
-- Reuse option definitions from `src/godoo_cli/cli_common.py` where possible.
-- New options should include env var fallback (do not create CLI-only knobs without reason).
-
-4. Manifest handling has strict expectations.
-
-- `odoo_manifest.yml` is the source of truth for source repos.
-- The `odoo` section is required; missing/empty manifest is treated as an error.
-- Preserve YAML comments/shape by using manifest helpers (roundtrip loader behavior), not ad-hoc yaml dumps.
-
-5. Path and typing discipline matter.
-
-- Prefer `pathlib.Path` over raw path strings.
-- Keep type hints compatible with Python 3.9+.
-
-6. Odoo test runs are intentionally single-threaded in command flows.
-
-- Preserve worker/thread behavior in test command paths unless intentionally changing test semantics.
-
-## Docstrings
-
-- Use a one-sentence docstring when the signature already explains the interface.
-- Add prose for behavior the signature cannot show, especially side effects, destructive operations, lifecycle
-  guarantees, transactions, concurrency, and coupled options.
-- Use Google-style `Args:`, `Returns:`, `Yields:`, and `Raises:` sections only when they add useful semantics. Do not
-  repeat types or defaults from the signature.
-- When a docstring uses `Args:`, document every parameter. Multiline docstrings must document returned or yielded values
-  and directly raised exceptions.
-- For Typer commands, keep command behavior in the function docstring and parameter help in `Annotated` option or
-  argument metadata.
-
-## Fast Navigation
-
-- Main CLI entry and wiring: `src/godoo_cli/cli.py`
-- Shared CLI options/env mapping: `src/godoo_cli/cli_common.py`
-- Command packages: `src/godoo_cli/commands/`
-- Manifest model/parsing: `src/godoo_cli/models/godoo_manifest.py`
-- Logging setup/utilities: `src/godoo_cli/helpers/system.py`
-
-## Validation Commands
-
-- Lint: `hatch run dev:lint`
-- Tests: `hatch run dev:test`
-- CI-equivalent local run: `hatch run dev:ci`
-
-## DevContainer/Runtime Notes
-
-- Primary access path is Traefik (`*.docker.localhost`), not raw port assumptions.
-- `make` targets are the canonical runtime flows (`make`, `make bare`, `make reset`, `make reset-hard`, `make kill`).
-
-## Agent Editing Policy
-
-- Keep edits minimal and local to the request.
-- Do not rewrite working command surfaces unless asked.
-- Prefer updating docs/help text only when behavior changes.
-
----
-
-Last updated: 2026-05-12
+- Implementers run only focused proof for owned behavior; they never run full `make lint` or `make test` unless
+  explicitly the integration owner.
+- The coordinator or named integration owner runs `make lint` and `make test` sequentially on the final tree, plus
+  applicable editor, workspace, runtime, and live-surface checks.
+- For whole-changeset review, the validator receives a coordinator-generated current staged, unstaged, and untracked
+  diff snapshot and coverage manifest before implementer reports or prior findings; it performs an independent first
+  pass, then may consume those reports for a targeted second pass.
+- Validate relevant Python typing boundaries and editor configuration with the editor-validation skill; lint and unit
+  tests do not establish that editor diagnostics are clear.
