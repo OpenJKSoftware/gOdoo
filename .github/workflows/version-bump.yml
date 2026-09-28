@@ -69,7 +69,7 @@ jobs:
           # Commit and push the changes
           git add -A
           git commit -m "🔖 Bump version ${{ steps.version_info.outputs.CURRENT_VERSION }} → $NEW_VERSION"
-          git push --force origin "$RELEASE_BRANCH"
+          git push origin "$RELEASE_BRANCH"
 
       - name: Generate Release Notes
         id: changelog
