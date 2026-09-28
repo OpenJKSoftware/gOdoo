@@ -1,101 +1,52 @@
 name: Quality
 
-concurrency:
-  # Cancel any running workflow for the same PR/branch
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
-
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    types: [opened, synchronize, ready_for_review, auto_merge_enabled]
 
-env:
-  PYTHON_VERSION: "3.9"
-  REGISTRY: ghcr.io
-  IMAGE_NAME: "${{ github.repository }}"
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   QualityChecks:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.11", "3.12"]
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install UV
-        uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v6
         with:
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Install Project Dependencies
-        run: uv sync --all-extras
-
-      - name: Run Quality Checks
-        run: uv run hatch run dev:ci
-
-      - name: Upload Coverage
-        uses: codecov/codecov-action@v5
-        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+      - run: sudo apt-get update && sudo apt-get install -y libpq-dev
+      - run: uv sync --locked
+      - name: Build and smoke test wheel
+        run: |
+          set -eu
+          smoke_dir="$(mktemp -d)"
+          trap 'rm -rf "$smoke_dir"' EXIT
+          uv build --wheel --out-dir "$smoke_dir"
+          uv venv "$smoke_dir/venv"
+          uv pip install --python "$smoke_dir/venv/bin/python" "$smoke_dir"/*.whl
+          cd "$smoke_dir"
+          env -u PYTHONPATH "$smoke_dir/venv/bin/python" -c "import godoo_cli"
+          env -u PYTHONPATH "$smoke_dir/venv/bin/godoo" --help
+      - run: cp .env.sample .env
+      - run: make lint
+      - run: make test PYTEST_ARGS="--junitxml=junit/pytest-results.xml --cov-report=xml -o junit_family=legacy"
+        env:
+          GODOO_SOURCES_ROOT: ""
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          files: ./coverage.xml
-          fail_ci_if_error: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload test results to Codecov
-        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: codecov/test-results-action@v1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-  docker-build:
-    runs-on: ubuntu-latest
-    needs: QualityChecks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 1 # Shallow clone sufficient for build
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-
-      - name: Login to Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: "./docker/Dockerfile"
-          platforms: "linux/amd64"
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+          name: test-results-${{ matrix.python-version }}
+          path: |
+            junit/pytest-results.xml
+            coverage.xml
