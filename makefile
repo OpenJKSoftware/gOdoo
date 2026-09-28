@@ -50,8 +50,10 @@ prod: check-env # Check selected sources, then build and start the production st
 	$(BIN)/godoo workspace check --sources-only
 	GODOO_PACKAGE=/build/project GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED=true COMPOSE_PROFILES= docker compose $(PROD_COMPOSE_FILES) up --build
 
-stop: check-env # Stop the active stack without removing containers or volumes.
-	docker compose $(BASE_COMPOSE_FILES) stop
+stop: check-env # Stop every running container in this Compose project.
+	@set -eu; \
+		containers="$$(docker compose $(BASE_COMPOSE_FILES) ps --quiet --orphans)"; \
+		if [ -n "$$containers" ]; then docker stop $$containers; fi
 
 reset: check-env # Remove the active stack and all database, filestore, and configuration volumes.
 	docker compose $(BASE_COMPOSE_FILES) down --volumes --remove-orphans
