@@ -22,15 +22,10 @@ LOGGER.info("Attachments to Delete: %d", len(att))
 LOGGER.info("Size: %dMB", round(sum([a.file_size for a in att]) / 1024 / 1024, 2))
 
 
-def chunks(lst: list, n: int):
-    """Yield lists containing at most ``n`` values."""
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]
-
-
 chunk_size = 100
-for idx, chunk in enumerate(chunks(att, chunk_size), 1):
-    LOGGER.info("Deleting chunk %d of %d", idx, int(len(att) / chunk_size))
+for offset in range(0, len(att), chunk_size):
+    chunk = att[offset : offset + chunk_size]
+    LOGGER.info("Deleting chunk %d of %d", offset // chunk_size + 1, int(len(att) / chunk_size))
     chunk.unlink()
     env.cr.commit()
 
