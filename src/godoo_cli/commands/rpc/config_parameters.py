@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 from godoo_rpc.login import wait_for_odoo
 
-from ...cli_common import CommonCLI
+from ..common import CommonCLI
 
 CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)

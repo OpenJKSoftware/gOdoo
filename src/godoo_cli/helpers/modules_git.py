@@ -3,8 +3,7 @@
 from logging import getLogger
 from pathlib import Path
 
-from git import Repo
-
+from ..git import repository
 from ..models import GodooModule, GodooModules
 
 LOGGER = getLogger(__name__)
@@ -16,12 +15,9 @@ def get_changed_modules(
 ) -> list[GodooModule]:
     """Return modules changed from a Git reference."""
     addon_path = addon_path.absolute()
-    repo = Repo(addon_path, search_parent_directories=True)
-    git_root = Path(repo.git.rev_parse("--show-toplevel"))
+    repo = repository(addon_path)
     changed_module_files = []  # All files that changed in the repo and are in addon_path
-    diff_lines = repo.git.diff("--name-status", diff_ref).split("\n")
-    for change in diff_lines:
-        diff_path = git_root / change.split("\t")[1]
+    for diff_path in repo.changed_paths(diff_ref):
         if addon_path in diff_path.parents:
             changed_module_files.append(diff_path)
 

@@ -1,21 +1,21 @@
 """Manage Odoo modules through RPC."""
 
 import logging
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
 from godoo_rpc import OdooApiWrapper
 from godoo_rpc.login import wait_for_odoo
 
-from ...cli_common import CommonCLI
+from ..common import CommonCLI
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
 
 def rpc_get_modules(
-    odoo_api: OdooApiWrapper, module_query: str, valid_module_names: Optional[list[str]] = None
-) -> Optional[Any]:
+    odoo_api: OdooApiWrapper, module_query: str, valid_module_names: list[str] | None = None
+) -> Any | None:
     """Return Odoo modules matching the query and optional allowlist."""
     odoo_env = odoo_api.session.env
     if odoo_env is None:

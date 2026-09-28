@@ -1,133 +1,94 @@
-"""Parse Git URLs and derive hosting-service URLs."""
+"""Parse, canonicalize, and transport Git repository URLs."""
+
+from __future__ import annotations
 
 import re
-from enum import Enum
-from logging import getLogger
-from typing import Literal, Optional
-
-LOGGER = getLogger(__name__)
-
-
-class GitRemoteType(Enum):
-    """Identify a supported Git hosting service."""
-
-    gitlab = "gitlab"
-    github = "github"
+from pathlib import Path
+from typing import Literal
+from urllib.parse import unquote, urlsplit
 
 
 class GitUrl:
-    """Parse local, HTTP(S), and SSH repository locations.
-
-    Attributes:
-        url: The original repository location.
-        url_type: The location scheme: file, HTTP, HTTPS, or SSH.
-        domain: The domain name of the Git service.
-        path: The repository path.
-        user: The username for SSH URLs.
-        port: The port number for SSH URLs.
-        name: The repository name.
-    """
+    """One authoritative Git URL identity and transport representation."""
 
     url: str
-    url_type: Literal["http", "https", "ssh"]
+    url_type: Literal["file", "http", "https", "ssh"]
     domain: str
     path: str
     user: str
-    port: Optional[int]
+    port: int | None
     name: str
 
     def __init__(self, url: str) -> None:
-        """Parse a repository location.
-
-        Args:
-            url: A local path, file URL, HTTP(S) URL, or SSH URL.
-
-        Raises:
-            ValueError: If the URL format is invalid or unsupported.
-        """
+        """Parse and validate one native or legacy Git transport URL."""
         self.url = url
-        if "http" in url:
-            http_regex = r"(?P<schema>https?):\/\/(?P<domain>[^\/]+)(?P<path>.*)"
-            http_match: Optional[re.Match[str]] = re.search(http_regex, url)
-            if not http_match:
-                msg = f"Invalid HTTP URL format: {url}"
-                LOGGER.error(msg)
-                raise ValueError(msg)
-
-            schema = http_match.group("schema")
-            if schema not in ("http", "https"):
-                msg = f"Invalid schema: {schema}"
-                LOGGER.error(msg)
-                raise ValueError(msg)
-            self.url_type = schema  # Now we can use the actual schema
-            self.domain = http_match.group("domain")
-            self.path = http_match.group("path")
-            self.user = ""  # Not applicable for HTTP
-            self.port = None  # Not applicable for HTTP
+        native = self._legacy_transport(url)
+        if native.startswith("file://") or Path(native).is_absolute():
+            parsed = urlsplit(native)
+            if parsed.scheme == "file" and parsed.netloc not in {"", "localhost"}:
+                message = "File repository URLs must refer to the local host."
+                raise ValueError(message)
+            self.url_type = "file"
+            self.domain = ""
+            self.path = str(Path(unquote(parsed.path) if parsed.scheme else native).expanduser().resolve())
+            self.user = ""
+            self.port = None
+        elif native.startswith(("http://", "https://", "ssh://")):
+            parsed = urlsplit(native)
+            if not parsed.hostname or not parsed.path or parsed.password or parsed.query or parsed.fragment:
+                message = "Repository URLs need a host and path and must not contain credentials or query strings."
+                raise ValueError(message)
+            if parsed.username and parsed.scheme != "ssh":
+                message = "Repository URLs must not contain credentials; use a Git credential helper or SSH."
+                raise ValueError(message)
+            self.url_type = parsed.scheme  # type: ignore[assignment]
+            self.domain = parsed.hostname.lower()
+            self.path = unquote(parsed.path)
+            self.user = parsed.username or ""
+            self.port = parsed.port
         else:
-            ssh_regex = r"(?P<user>\w+)@(?P<domain>[^:]+):(?:(?P<port>\d+)]?:)?(?P<path>.*)"
-            ssh_match: Optional[re.Match[str]] = re.search(ssh_regex, url)
-            if not ssh_match:
-                msg = f"Invalid SSH URL format: {url}"
-                LOGGER.error(msg)
-                raise ValueError(msg)
-
+            match = re.fullmatch(r"(?:(?P<user>[^/@:]+)@)?(?P<host>[^/:]+):(?P<path>.+)", native)
+            if not match:
+                message = "Invalid Git repository URL."
+                raise ValueError(message)
             self.url_type = "ssh"
-            self.domain = ssh_match.group("domain")
-            self.path = ssh_match.group("path")
-            self.user = ssh_match.group("user")
-            port_str = ssh_match.group("port")
-            self.port = int(port_str) if port_str else None
-
-        self.path = self.path.removesuffix("/")
-        self.path = self.path.removesuffix(".git")
-        self.path = self.path.removeprefix("/")
+            self.domain = match["host"].lower()
+            self.path = match["path"]
+            self.user = match["user"] or ""
+            self.port = None
+        self.path = self.path.rstrip("/").removesuffix(".git")
+        if self.url_type != "file":
+            self.path = self.path.lstrip("/")
+        if not self.path:
+            message = "Repository URLs need a repository path."
+            raise ValueError(message)
         self.name = self.path.split("/")[-1]
 
-    def _clean_http_url(self) -> str:
-        """Return an HTTPS repository URL without its ``.git`` suffix."""
-        return f"https://{self.domain}/{self.path}"
+    @staticmethod
+    def _legacy_transport(url: str) -> str:
+        match = re.fullmatch(r"\[([^@\[\]]+)@([^:\[\]]+):(\d+)\]:(.+)", url)
+        if match:
+            user, host, port, path = match.groups()
+            return f"ssh://{user}@{host}:{port}/{path.lstrip('/')}"
+        return url
 
-    def _git_type(self) -> GitRemoteType:
-        """Return the supported Git hosting service."""
-        if "gitlab" in self.domain:
-            return GitRemoteType.gitlab
-        if "github" in self.domain:
-            return GitRemoteType.github
-        msg = f"Cant get Git Service type from {self.domain}"
-        LOGGER.error(msg)
-        raise ValueError(msg)
+    @property
+    def transport(self) -> str:
+        """Return the URL passed to Git without legacy bracket syntax."""
+        return self._legacy_transport(self.url)
 
-    def get_compare_url(self, from_compare: str, to_compare: str) -> str:
-        """Build a compare URL between two refs."""
-        remote_type = self._git_type()
-        if from_compare == to_compare:
-            return ""  # Nothing to Compare here
-        http_url = self._clean_http_url()
-        if remote_type in [GitRemoteType.github, GitRemoteType.gitlab]:
-            return f"{http_url}/compare/{from_compare}...{to_compare}"
-        return ""
-
-    def get_archive_url(self, ref: str) -> str:
-        """Build a ZIP archive URL for a ref."""
-        if not ref:
-            msg = "Missing either download ref (e.g. branch or commit) to generate Archive URL."
-            LOGGER.error(msg)
-            raise ValueError(msg)
-        http_url = self._clean_http_url()
-        remote_type = self._git_type()
-        if remote_type == GitRemoteType.github:
-            return f"{http_url}/archive/{ref}.zip"
-        if remote_type == GitRemoteType.gitlab:
-            return f"{http_url}/-/archive/{ref}/{self.name}.zip"
-        return ""
-
-    def get_file_raw_url(self, ref: str, file_path: str) -> str:
-        """Build a raw-file URL for a ref and repository path."""
-        http_url = self._clean_http_url()
-        remote_type = self._git_type()
-        if remote_type == GitRemoteType.github:
-            return f"{http_url.replace(self.domain, 'raw.githubusercontent.com')}/{ref}/{file_path}"
-        if remote_type == GitRemoteType.gitlab:
-            return f"{http_url}/-/raw/{ref}/{file_path}"
-        return ""
+    @property
+    def canonical(self) -> str:
+        """Return the credential-free identity used for pools and recipes."""
+        if self.url_type == "file":
+            return Path(self.path).as_uri()
+        if self.domain in {"github.com", "gitlab.com", "bitbucket.org"} and self.port in {None, 22, 443}:
+            return f"https://{self.domain}/{self.path}"
+        if "://" not in self.transport:
+            authority = f"{self.user}@" if self.user else ""
+            return f"{authority}{self.domain}:{self.path}"
+        authority = f"{self.user}@" if self.user and self.url_type == "ssh" else ""
+        authority += self.domain
+        if self.port is not None and (self.url_type, self.port) not in {("https", 443), ("http", 80), ("ssh", 22)}:
+            authority += f":{self.port}"
+        return f"{self.url_type}://{authority}/{self.path}"

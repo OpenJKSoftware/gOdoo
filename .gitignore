@@ -1,11 +1,13 @@
 .DS_Store
 import
-pyrightconfig.json
 remote_instance_data/
 config/odoo.conf
 *.pass
 *.nogit.*
 .env
+.godoo/
+/*.code-workspace
+/pyrightconfig.json
 *:Zone.Identifier
 *.xlsx
 ### Python ###
@@ -116,7 +118,6 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
 env/
 venv/

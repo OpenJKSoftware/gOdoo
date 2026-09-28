@@ -1,49 +1,61 @@
-.DEFAULT_GOAL := dev
+.DEFAULT_GOAL := test
 
-.PHONY: dev prepare bootstrap launch quick offline bare kill reset-container reset-container-hard reset reset-hard rebuild restore-dump-to-template lint test-odoo-integration
+BIN := .venv/bin
+PYTEST_ARGS ?=
+DEV_UP_ARGS ?=
+BASE_COMPOSE_FILES := -f docker/docker-compose.base.yml
+DEV_COMPOSE_FILES := $(BASE_COMPOSE_FILES) -f docker/docker-compose.traefik.yml -f docker/docker-compose.dev.yml
+PROD_COMPOSE_FILES := $(BASE_COMPOSE_FILES) -f docker/docker-compose.traefik.yml
 
-dev: # Prepare, bootstrap a missing database, then launch with development mode.
-	ODOO_BIN_BOOTSTRAP_ARGS='--odoo-demo' scripts/launchodoo.sh --dev-mode
+.PHONY: setup check-env lint typecheck test pre-commit sync workspace configure dev prod stop reset test-odoo-integration
 
-prepare: # Synchronize source and prepare configuration and Python dependencies.
-	scripts/launchodoo.sh --prepare-only
+setup: # Install native development tools without replacing existing environment.
+	uv sync --locked
 
-bootstrap: # Prepare and initialize a missing database; does not start Odoo.
-	ODOO_BIN_BOOTSTRAP_ARGS='--odoo-demo' scripts/launchodoo.sh --bootstrap-only
+check-env: # Require repository environment setup before operational commands.
+	@test -f .env || (echo "Missing .env; copy .env.sample to .env and configure it first." && exit 1)
 
-launch: # Start an existing prepared Odoo runtime; does not bootstrap or upgrade it.
-	godoo launch --dev-mode
+lint: # Run repository quality checks on host.
+	$(BIN)/ruff check .
+	$(BIN)/ruff check . --preview --select DOC201,DOC202,DOC402,DOC403,DOC501
+	$(BIN)/ruff format --check .
+	$(BIN)/python scripts/check_docstring_style.py
+	$(BIN)/pylint .
 
-quick: launch # Alias for starting an existing development runtime.
+typecheck: # Run Pyright against the generated project configuration.
+	@test -f pyrightconfig.json || (echo "Missing pyrightconfig.json; run make workspace first." && exit 1)
+	$(BIN)/pyright --project pyrightconfig.json
 
-offline: # Prepare/bootstrap/launch without fetching source repositories.
-	ODOO_BIN_BOOTSTRAP_ARGS='--odoo-demo' scripts/launchodoo.sh --dev-mode --skip-source-sync
+test: check-env # Run unit tests in current development environment.
+	$(BIN)/pytest $(PYTEST_ARGS)
 
-bare: # Prepare/bootstrap/launch without installing workspace modules.
-	ODOO_BIN_BOOTSTRAP_ARGS='--no-install-workspace-modules' scripts/launchodoo.sh
+pre-commit: # Run all pre-commit checks on host.
+	$(BIN)/pre-commit run --all-files
 
-kill: # Search for odoo-bin processes and kill them.
-	pgrep -f odoo-bin | xargs kill -s KILL
+sync: check-env # Synchronize only verified managed Git worktrees.
+	$(BIN)/godoo workspace sync
 
-reset-container: # Deletes DevContainer volumes and restarts the environment.
-	scripts/reset_devcontainer.sh
+workspace: check-env # Regenerate the VS Code workspace on the host.
+	$(BIN)/godoo workspace configure
 
-reset-container-hard: # Also deletes VSCode extension volumes and forces a rebuild.
-	scripts/reset_devcontainer.sh --hard
+configure: workspace # Compatibility alias for workspace generation.
 
-# Compatibility aliases. Prefer the explicit container target names above.
-reset: reset-container
+dev: check-env # Build and start the bind-mounted development stack.
+	@set -eu; \
+		eval "$$($(BIN)/godoo workspace runtime-env)"; \
+		export GODOO_SOURCES_ROOT GODOO_RUNTIME_ODOO_PATH GODOO_RUNTIME_ADDON_PATHS; \
+		GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED=false COMPOSE_PROFILES=dev docker compose $(DEV_COMPOSE_FILES) up --build $(DEV_UP_ARGS)
 
-reset-hard: reset-container-hard
+prod: check-env # Check selected sources, then build and start the production stack.
+	$(BIN)/godoo workspace check --sources-only
+	GODOO_PACKAGE=/build/project GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED=true COMPOSE_PROFILES= docker compose $(PROD_COMPOSE_FILES) up --build
 
-rebuild:
-	cd docker && docker compose -f docker-compose.base.yml -f docker-compose.devcontainer.yml build
+stop: check-env # Stop the active stack without removing containers or volumes.
+	docker compose $(BASE_COMPOSE_FILES) stop
 
-restore-dump-to-template: # Load an Odoo-native ZIP archive into the template DB.
-	godoo db load --force --db-name odoo_template remote_instance_data.zip
+reset: check-env # Remove the active stack and all database, filestore, and configuration volumes.
+	docker compose $(BASE_COMPOSE_FILES) down --volumes --remove-orphans
 
-lint:
-	hatch run dev:lint
 
-test-odoo-integration: # Run isolated lifecycle/reset tests against real Odoo and PostgreSQL.
-	hatch run dev:test-odoo-integration
+test-odoo-integration: check-env # Run isolated real-runtime tests in prepared execution environment.
+	GODOO_RUN_ODOO_INTEGRATION=1 $(BIN)/pytest -m odoo_integration --no-cov tests/integration/test_odoo_integration.py

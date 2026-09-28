@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.pylint",
+    "charliermarsh.ruff",
+    "redhat.vscode-xml",
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    "jigar-patel.odoosnippets",
+    "trinhanhngoc.vscode-odoo",
+    "Odoo.owl-vision",
+    "eamodio.gitlens",
+    "github.vscode-github-actions"
+  ]
+}

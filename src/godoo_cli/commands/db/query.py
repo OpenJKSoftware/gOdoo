@@ -1,122 +1,25 @@
-"""Query Odoo database state."""
+"""Typer adapters for database inspection."""
 
-import enum
 import logging
+from pathlib import Path
 from typing import Annotated
 
 import typer
-from psycopg2 import OperationalError, ProgrammingError
 
-from ...cli_common import CommonCLI
-from ...helpers.cli import check_dangerous_command
-from ...models import DBConnection
-
-
-class DbBootstrapStatus(enum.Enum):
-    """Describe whether a database can be used as an Odoo runtime."""
-
-    BOOTSTRAPPED = "bootstrapped"
-    NO_DB = "db missing"
-    EMPTY_DB = "db empty"
-    INVALID_DB = "db invalid"
-
+from ...database.connection import DBConnection
+from ...database.state import BOOTSTRAP_EXIT_CODE, DbBootstrapStatus, classify_bootstrap_state, installed_modules
+from ...runtime.locks import database_inconsistency_reason
+from ..common import CommonCLI
+from ..configuration import check_dangerous_command
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
-BOOTSTRAP_EXIT_CODE = {
-    DbBootstrapStatus.BOOTSTRAPPED: 0,
-    DbBootstrapStatus.NO_DB: 20,
-    DbBootstrapStatus.EMPTY_DB: 21,
-    DbBootstrapStatus.INVALID_DB: 22,
-}
 
-
-def query_database(
-    query: Annotated[str, typer.Argument(help="SQL Query. Use '-' to read from stdin.")],
-    db_user: Annotated[str, CLI.database.db_user],
-    db_name: Annotated[str, CLI.database.db_name],
-    db_host: Annotated[str, CLI.database.db_host] = "",
-    db_port: Annotated[int, CLI.database.db_port] = 0,
-    db_password: Annotated[str, CLI.database.db_password] = "",
-    readonly: Annotated[bool, typer.Option(help="Run query in readonly mode", show_default=True)] = True,
-):
-    """Run SQL and delimit returned rows for machine-readable output."""
-    # read stdin if query is not provided
-    if query == "-":
-        stdin = typer.get_text_stream("stdin")
-        query = stdin.read()
-
-    check_dangerous_command()
-    # regex to check if SQL query contains writing command
-
-    connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name=db_name,
-        readonly=readonly,
-    )
-    with connection.connect() as cursor:
-        try:
-            LOGGER.info("Running Query against Odoo DB: %s", query)
-            cursor.execute(query)
-            LOGGER.info("Affected Rows: %s", cursor.rowcount)
-            try:
-                rows = cursor.fetchall()
-                # Use Print here to write to Stdout.
-                # START and END query are there to help parsing the actual output
-                print("START QUERY_OUTPUT")  # pylint: disable=print-used
-                for row in rows:
-                    print_line = "\t".join(map(str, row)) if isinstance(row, tuple) else str(row)
-                    print(print_line)  # pylint: disable=print-used
-                print("END QUERY_OUTPUT")  # pylint: disable=print-used
-            except ProgrammingError:
-                # When there is nothing to fetch, fetchall() raises a ProgrammingError
-                pass
-        except Exception:
-            raise typer.Exit(1)  # noqa: B904
-
-
-def _is_bootstrapped(db_connection: DBConnection) -> DbBootstrapStatus:
-    """Classify a database as missing, empty, bootstrapped, or invalid."""
-    try:
-        with db_connection.connect() as cursor:
-            cursor.execute(
-                "SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public'), "
-                "to_regclass('public.ir_module_module') IS NOT NULL;"
-            )
-            row = cursor.fetchone()
-            if row is None or not row[0]:
-                LOGGER.debug("Database '%s' is empty", db_connection.db_name)
-                return DbBootstrapStatus.EMPTY_DB
-            if not row[1]:
-                LOGGER.error("Database '%s' contains tables but no Odoo module registry", db_connection.db_name)
-                return DbBootstrapStatus.INVALID_DB
-            cursor.execute("SELECT state FROM ir_module_module WHERE name = 'base';")
-            base = cursor.fetchone()
-            if base is None or base[0] not in {"installed", "to upgrade"}:
-                LOGGER.error("Database '%s' has no usable installed base module", db_connection.db_name)
-                return DbBootstrapStatus.INVALID_DB
-            LOGGER.debug("Database '%s' is not empty", db_connection.db_name)
-            return DbBootstrapStatus.BOOTSTRAPPED
-    except OperationalError as target_error:
-        # An OperationalError can mean a missing database, but also bad
-        # credentials, an unavailable server, or an interrupted connection.
-        # Only classify it as missing after PostgreSQL itself confirms that.
-        maintenance_connection = db_connection.with_db("postgres", readonly=True)
-        try:
-            with maintenance_connection.connect() as cursor:
-                cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s);", [db_connection.db_name])
-                row = cursor.fetchone()
-        except OperationalError as maintenance_error:
-            LOGGER.exception("Could not determine whether database '%s' exists", db_connection.db_name)
-            raise target_error from maintenance_error
-        if row is None or row[0]:
-            raise target_error
-        LOGGER.debug("Database '%s' does not exist", db_connection.db_name)
-        return DbBootstrapStatus.NO_DB
+def _connection(
+    db_name: str, db_user: str, db_host: str, db_port: int, db_password: str, *, readonly: bool = True
+) -> DBConnection:
+    return DBConnection(db_host, db_port, db_user, db_password, db_name, readonly=readonly)
 
 
 def is_bootstrapped(
@@ -125,40 +28,16 @@ def is_bootstrapped(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
-):
-    """Report the database state through its stable bootstrap exit code."""
-    connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name=db_name,
-        readonly=True,
-    )
-    bootstrap_value = _is_bootstrapped(db_connection=connection)
-    LOGGER.info("Odoo Database Status: %s", bootstrap_value.value)
-    raise typer.Exit(BOOTSTRAP_EXIT_CODE[bootstrap_value])
-
-
-def get_installed_modules_from_connection(
-    db_connection: DBConnection,
-    to_install: bool = False,
-) -> tuple[list[str], DbBootstrapStatus]:
-    """Return installed modules and optionally those pending installation."""
-    if (boot := _is_bootstrapped(db_connection=db_connection)) != DbBootstrapStatus.BOOTSTRAPPED:
-        return [], boot
-
-    lookup_states = ["installed", "to upgrade"]
-    if to_install:
-        lookup_states.append("to install")
-
-    with db_connection.connect() as cursor:
-        cursor.execute(
-            "SELECT name FROM ir_module_module WHERE state IN %s;",
-            [tuple(lookup_states)],
-        )
-        sql_res = cursor.fetchall()
-        return [r[0] for r in sql_res], DbBootstrapStatus.BOOTSTRAPPED
+    data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
+) -> None:
+    """Report database readiness with stable exit codes."""
+    connection = _connection(db_name, db_user, db_host, db_port, db_password)
+    status = classify_bootstrap_state(connection)
+    if database_inconsistency_reason(
+        data_dir, db_name, missing_or_empty=status in (DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB)
+    ):
+        raise typer.Exit(BOOTSTRAP_EXIT_CODE[DbBootstrapStatus.INVALID_DB])
+    raise typer.Exit(BOOTSTRAP_EXIT_CODE[status])
 
 
 def get_installed_modules(
@@ -167,29 +46,42 @@ def get_installed_modules(
     db_host: Annotated[str, CLI.database.db_host] = "",
     db_port: Annotated[int, CLI.database.db_port] = 0,
     db_password: Annotated[str, CLI.database.db_password] = "",
-    to_install: Annotated[
-        bool,
-        typer.Option(
-            "--to-install",
-            help="Include modules marked for installation",
-        ),
-    ] = False,
-):
-    """Print modules marked as installed by Odoo."""
-    db_connection = DBConnection(
-        hostname=db_host,
-        port=db_port,
-        username=db_user,
-        password=db_password,
-        db_name=db_name,
-        readonly=True,
+    to_install: Annotated[bool, typer.Option("--to-install")] = False,
+) -> None:
+    """Print installed Odoo module names."""
+    modules, status = installed_modules(
+        _connection(db_name, db_user, db_host, db_port, db_password), to_install=to_install
     )
-    installed_modules, status = get_installed_modules_from_connection(
-        db_connection=db_connection,
-        to_install=to_install,
-    )
-    if status != DbBootstrapStatus.BOOTSTRAPPED:
+    if status is not DbBootstrapStatus.BOOTSTRAPPED:
         raise typer.Exit(BOOTSTRAP_EXIT_CODE[status])
+    for module in sorted(modules):
+        typer.echo(module)
 
-    for module in sorted(installed_modules):
-        print(module)  # pylint: disable=print-used
+
+def query_database(
+    query: Annotated[str, typer.Argument(help="SQL query; use '-' for stdin.")],
+    db_user: Annotated[str, CLI.database.db_user],
+    db_name: Annotated[str, CLI.database.db_name],
+    db_host: Annotated[str, CLI.database.db_host] = "",
+    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_password: Annotated[str, CLI.database.db_password] = "",
+    readonly: Annotated[bool, typer.Option()] = True,
+) -> None:
+    """Run SQL and delimit returned rows."""
+    if query == "-":
+        query = typer.get_text_stream("stdin").read()
+    if not readonly:
+        check_dangerous_command()
+    try:
+        with _connection(db_name, db_user, db_host, db_port, db_password, readonly=readonly).connect() as cursor:
+            cursor.execute(query)
+            try:
+                rows = cursor.fetchall()
+            except Exception:
+                rows = []
+        typer.echo("START QUERY_OUTPUT")
+        for row in rows:
+            typer.echo("\t".join(map(str, row)) if isinstance(row, tuple) else str(row))
+        typer.echo("END QUERY_OUTPUT")
+    except Exception as error:
+        raise typer.Exit(1) from error

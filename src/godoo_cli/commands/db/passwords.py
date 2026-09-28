@@ -6,9 +6,9 @@ from typing import Annotated
 import typer
 from passlib.context import CryptContext
 
-from ...cli_common import CommonCLI
-from ...helpers.cli import check_dangerous_command
-from ...models import DBConnection
+from ...database.connection import DBConnection
+from ..common import CommonCLI
+from ..configuration import check_dangerous_command
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()

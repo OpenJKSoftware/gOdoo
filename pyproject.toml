@@ -8,22 +8,22 @@ build-backend = "hatchling.build"
 [project]
 name = "gOdoo-cli"
 dynamic = ["version"]
-description = "Wrapper around Odoo-Bin with some convinience RPC functions."
+description = "Odoo lifecycle, Python dependency preflight, and shared Git workspaces."
 authors = [{name="Joshua Kreuder", email="Joshua_Kreuder@outlook.com"}]
 license = {text = "LGPL-3.0-only"}
 readme = "README.md"
-keywords = ["odoo", "godoo", "devcontainer"]
-requires-python = ">=3.9"
+keywords = ["odoo", "godoo", "docker", "worktree"]
+requires-python = ">=3.11"
 urls = {repository = "https://github.com/OpenJKSoftware/gOdoo"}
-scripts = {godoo = "godoo_cli:launch_cli"}
+scripts = {godoo = "godoo_cli.commands.root:launch_cli"}
 dependencies = [
+    "godoo-rpc>=0.1.4",
+    "passlib>=1.7.3",
     "python-dotenv>=0.20.0",
     "ruamel-yaml>=0.17.21",
     "gitpython>=3.1.27",
-    "godoo-rpc>=0.1.4",
-    "openupgradelib>=3.3.4",
-    "psycopg2>=2.7.7", # Mirror of Odoo's requirements
-    "passlib>=1.7.3",
+    "psycopg2>=2.7.7; sys_platform == 'linux'", # Mirror of Odoo's requirements
+    "psycopg2-binary>=2.7.7; sys_platform != 'linux'",
     "packaging>=21.0",
     "typer-common-functions>=0.1.0",
     "typer>=0.9.0",
@@ -44,7 +44,6 @@ odoo-dev = [
     "pydevd-odoo>=1.2.1",
     "pre-commit>=4.0.0",
     "pylint-odoo>=9.3.2",
-    "py-spy>=0.3.11",
 ]
 
 [dependency-groups]
@@ -53,6 +52,12 @@ dev = [
     # Development Tools
     "hatch>=1.14.0",
     "pre-commit>=4.0.0",
+    "mock>=4.0.3",
+    "pytest>=7.2.1",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.16.5",
+    "pyright==1.1.414",
+    "pylint-odoo>=9.3.2",
 ]
 
 # --------------------------------
@@ -68,50 +73,10 @@ packages = ["src/godoo_cli"]
 installer = "uv"
 
 # --------------------------------
-# Development Environments
-# --------------------------------
-[tool.hatch.envs.dev]
-dependencies = [
-    # Testing
-    "pytest>=7.2.1",
-    "pytest-cov>=4.0.0",
-    "mock>=4.0.3",
-    # Linting
-    "ruff>=0.16.5",
-    "pylint_odoo>=9.3.2"
-]
-installer = "uv"
-
-[tool.hatch.envs.dev.scripts]
-
-# Linting commands
-lint = [
-  "ruff check .",
-  "ruff check . --preview --select DOC201,DOC202,DOC402,DOC403,DOC501",
-  "ruff format --check .",
-  "python scripts/check_docstring_style.py",
-  "pylint .",  # Keep pylint for Odoo-specific checks
-]
-
-# Testing commands
-test = "pytest"
-
-# Opt-in tests that execute the real Odoo and PostgreSQL binaries available in
-# the gOdoo container. These tests create and remove isolated runtime state.
-test-odoo-integration = "GODOO_RUN_ODOO_INTEGRATION=1 pytest -m odoo_integration --no-cov src/tests/test_odoo_integration.py"
-
-# CI commands
-ci = [
-  "lint",
-  "pytest --verbose --exitfirst --failed-first --junitxml=junit/pytest-results.xml --cov=src --cov-report=xml -o junit_family=legacy"
-]
-
-# --------------------------------
-# Tool Configurations
 # --------------------------------
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py311"
 required-version = ">=0.16.5"
 exclude = [".venv"]
 
@@ -189,7 +154,7 @@ max-line-length = 120
 [tool.pylint.odoolint]
 manifest-required-authors = "Joshua Kreuder"
 manifest-required-keys = "license"
-valid-odoo-versions = "16.0"
+valid-odoo-versions = "19.0"
 
 [tool.pylint.'MESSAGES CONTROL']
 disable = [
@@ -232,15 +197,16 @@ min-public-methods = 0
 max-public-methods = 20
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
-testpaths = ["tests", "src"]
+testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py", "*_test.py"]
 addopts = [
-    "--cov=src",
+    "--cov=godoo_cli",
     "--cov-report=term-missing",
     "--cov-report=xml",
     "--no-cov-on-fail",
-    "--verbose"
+    "--verbose",
+ "--import-mode=importlib",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

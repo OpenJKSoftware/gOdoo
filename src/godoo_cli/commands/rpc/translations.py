@@ -8,8 +8,8 @@ from typing import Annotated, Any
 import typer
 from godoo_rpc.login import wait_for_odoo
 
-from ...cli_common import CommonCLI
 from ...models import GodooModule, GodooModules
+from ..common import CommonCLI
 from .modules import rpc_get_modules
 
 CLI = CommonCLI()

@@ -1,25 +1,20 @@
-# This is the default manifest.yml
-# Here we can specify which Version of odoo to Clone and which Thirdparty libraries we want to clone from git.
-# a "Repo" always consists of an "url" and "branch" or "commit". where "commit" can basicallly be every valid Git ref.
-# When only selecting "branch" and no "commit" this causes godoo to always pull changes form the remote.
-# On big repos like Odoo this can be really slow.
-# Specifying a more specific ref in the "commit" section, we can pin the Version.
-# This also causes `godoo source get` to skip over already matching Repos. (Big speed bump on launches.)
-
-# When `--source-download-archive` or it's envvar is passed to godoo, Downloads will be even faster for big repos, because Zip Blobs will directly be downloaded.
+# Select the Odoo and addon repositories managed by `godoo workspace sync`.
+# A repository needs a URL and may select a branch, commit, or merge recipe.
+# Sync updates shared floating branches and discards edits in managed worktrees.
+# Pin a commit for a fixed version; merge recipes are rebuilt on their own branches.
 
 odoo:
-  # The Odoo section describes where to Clone the odoo source code form. (the one with odoo-bin)
+  # The required Odoo repository contains odoo-bin.
   url: https://github.com/odoo/odoo/
   branch: 19.0 # Branch is mandatory on Odoo Repo but not on OCA Repos
+  # shallow: true # Optional depth-one history; selected refs use full history by default.
 thirdparty:
   # In the thirdparty section we can add more Repos to download.
   # This can also be an ssh style Url for Odoo Enterprise for example.
-  OCA: # This repo folder will be called "OCA_server-tools" when downloading.
-    - url:
-        https://github.com/OCA/server-tools
-        # branch: 19.0 # Branch is optional here. If not specified, the default branch of the Repo will be used.
-        # commit: abcdef1234567890abcdef1234567890abcdef12 # Commit is also optional. If not specified, the branch will be used and pulled on every `godoo source get`.
+  OCA: # Runtime mounts use the OCA_<repository> name.
+    - url: https://github.com/OCA/server-tools
+      # branch: 19.0 # Branch is optional here. If not specified, the default branch of the Repo will be used.
+      # commit: abcdef1234567890abcdef1234567890abcdef12 # Optional fixed ref; otherwise sync resolves the branch.
     - url: https://github.com/OCA/product-attribute.git
       # merge_from: # We can also Create local merge commits on top of the downloaded Repo.
       #   - url: https://github.com/fd-oerp/product-attribute.git

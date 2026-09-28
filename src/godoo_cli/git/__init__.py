@@ -1,4 +1,4 @@
 """Expose Git source-management helpers."""
 
-from .git_repo import git_ensure_repo
 from .git_url import GitUrl
+from .repository import GitRepository, native_git_result, repository

@@ -2,26 +2,16 @@
 
 import atexit
 import contextlib
-import datetime
 import logging
 import os
 import re
-import subprocess
 import sys
 import threading
-from collections.abc import Sequence
-from pathlib import Path
-from typing import Any, Optional, Union
 
 import click
-import requests
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.prompt import Confirm
-from rich.table import Table
 from rich.traceback import install as install_rich_traceback
-
-from . import cli as godoo_cli_helpers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -121,26 +111,7 @@ def _install_fd_filter(pattern: re.Pattern) -> None:
     atexit.register(_cleanup)
 
 
-def run_cmd(command: Union[str, Sequence[str]], **kwargs: Any) -> subprocess.CompletedProcess:
-    """Run a command, preserving legacy shell strings and safe argument vectors."""
-    shell = kwargs.setdefault("shell", isinstance(command, str))
-    LOGGER.debug("Running %s command:\n%s", "shell" if shell else "argv", command)
-    proc = subprocess.run(command, **kwargs)
-    LOGGER.debug("Return Code: %s", proc.returncode)
-    return proc
-
-
-def ensure_dotenv(varname: str) -> str:
-    """Return a required environment variable or reject the command."""
-    var = os.getenv(varname)
-    if var is None:
-        msg = f"Env Variable: {varname} is not set"
-        LOGGER.error(msg)
-        raise ReferenceError(msg)
-    return var
-
-
-def set_logging(verbose: bool = False, log_filter: Optional[str] = None) -> None:
+def set_logging(verbose: bool = False, log_filter: str | None = None) -> None:
     """Set the logging configuration according to passed arguments.
 
     Args:
@@ -149,13 +120,14 @@ def set_logging(verbose: bool = False, log_filter: Optional[str] = None) -> None
             matches the pattern will be emitted.
     """
     if verbose:
-        install_rich_traceback(suppress=[click, godoo_cli_helpers])
+        install_rich_traceback(suppress=[click])
         logging.basicConfig(
             level=logging.DEBUG,
             format="[italic bright_black]{name}:[/] {message}",
             style="{",
             handlers=[
                 RichHandler(
+                    console=Console(stderr=True),
                     level=logging.DEBUG,
                     markup=True,
                     show_path=True,
@@ -170,7 +142,9 @@ def set_logging(verbose: bool = False, log_filter: Optional[str] = None) -> None
             level=logging.INFO,
             format="{message}",
             style="{",
-            handlers=[RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=False)],
+            handlers=[
+                RichHandler(console=Console(stderr=True), level=logging.INFO, show_path=False, rich_tracebacks=False)
+            ],
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
@@ -181,66 +155,3 @@ def set_logging(verbose: bool = False, log_filter: Optional[str] = None) -> None
             handler.addFilter(regex_filter)
         _install_fd_filter(pattern)
         LOGGER.debug("Log filter active: '%s'", log_filter)
-
-
-def download_file(url: str, save_path: Path, chunk_size: int = 128) -> None:
-    """Download a URL to the requested path."""
-    LOGGER.debug("Downloading File: '%s' to '%s'", url, save_path)
-    r = requests.get(url, stream=True)
-    with open(save_path, "wb") as fd:
-        for chunk in r.iter_content(chunk_size=chunk_size):
-            fd.write(chunk)
-
-
-def file_or_folder_size_mb(path: Path) -> float:
-    """Return a file or directory tree size in megabytes."""
-
-    def file_size_mb(file: Path) -> float:
-        """Return a file size in megabytes."""
-        return file.stat().st_size / (1024 * 1024)
-
-    if path.is_file():
-        return file_size_mb(path)
-    return sum([file_size_mb(f) for f in path.rglob("*")])
-
-
-def path_has_content(path: Path):
-    """Check if path exists and is not an empty directory."""
-    if path.is_dir():
-        return bool(path.glob("*"))
-    return path.exists() and path.stat().st_size
-
-
-def typer_ask_overwrite_path(paths: Union[list[Path], Path]) -> bool:
-    """Ask before overwriting non-empty paths."""
-    if isinstance(paths, Path):
-        paths = [paths]
-
-    existing_paths = [p for p in paths if path_has_content(p)]
-    if not existing_paths:
-        return True
-    table = Table()
-    table.add_column("Name")
-    table.add_column("Size", justify="right")
-    table.add_column("Date Changed")
-
-    for p in existing_paths:
-        timestamp = datetime.datetime.fromtimestamp(p.stat().st_mtime)
-        path_size = round(file_or_folder_size_mb(p), 2)
-        table.add_row(p.name, f"{path_size}mb", timestamp.strftime("%Y-%m-%d: %H:%M:%S"))
-    LOGGER.warning("Found Existing Odoo Files:")
-    Console().print(table)
-    override = Confirm.ask("override?")
-    if override:
-        return True
-    LOGGER.info("Aborting")
-    return False
-
-
-def sizeof_fmt(num: float, suffix: str = "B"):
-    """Format a byte count with a human-readable binary unit."""
-    for unit in ("", "K", "M", "G", "T", "P", "E", "Z"):
-        if abs(num) < 1024.0:
-            return f"{num:3.1f}{unit}{suffix}"
-        num /= 1024.0
-    return f"{num:.1f}Y{suffix}"

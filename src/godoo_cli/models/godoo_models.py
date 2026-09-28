@@ -4,12 +4,12 @@ import logging
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Optional
 
 from packaging.version import Version
 
-from .db_connection import DBConnection
-from .godoo_manifest import GodooManifest
+from ..database.connection import DBConnection
+from ..database.settings import DatabaseSettings
+from ..workspace.manifest import GodooManifest
 from .godoo_modules import GodooModules
 
 LOGGER = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class WorkspaceLayout:
     odoo_conf_path: Path
     workspace_addon_path: Path
     thirdparty_addon_path: Path
-    manifest_path: Optional[Path] = None
+    manifest_path: Path | None = None
     data_dir: Path = Path("/var/lib/odoo")
 
     @property
@@ -59,29 +59,6 @@ class WorkspaceLayout:
     def odoo_bin_path(self) -> Path:
         """Return the odoo-bin executable path for this installation."""
         return self.odoo_install_folder / "odoo-bin"
-
-
-@dataclass(frozen=True)
-class DatabaseSettings:
-    """Immutable database identity used by Odoo and gOdoo operations."""
-
-    db_user: str = ""
-    db_password: str = ""
-    db_host: str = ""
-    db_port: int = 0
-    db_name: str = ""
-    db_filter: str = ""
-
-    @cached_property
-    def db_connection(self) -> DBConnection:
-        """Return the DBConnection adapter for these settings."""
-        return DBConnection(
-            hostname=self.db_host,
-            port=self.db_port,
-            username=self.db_user,
-            password=self.db_password,
-            db_name=self.db_name,
-        )
 
 
 @dataclass(frozen=True)
@@ -134,7 +111,8 @@ class GodooConfig:
     thirdparty_addon_path: Path
 
     # Optional fields
-    manifest_path: Optional[Path] = None
+    manifest_path: Path | None = None
+    resolved_addon_paths: tuple[Path, ...] | None = None
 
     # Configurable fields with defaults
     data_dir: Path = Path("/var/lib/odoo")
@@ -148,6 +126,7 @@ class GodooConfig:
     db_port: int = 0
     db_name: str = ""
     db_filter: str = ""
+    db_sslmode: str | None = None
 
     @cached_property
     def workspace_layout(self) -> WorkspaceLayout:
@@ -171,6 +150,7 @@ class GodooConfig:
             db_port=self.db_port,
             db_name=self.db_name,
             db_filter=self.db_filter,
+            db_sslmode=self.db_sslmode,
         )
 
     @cached_property
@@ -180,7 +160,7 @@ class GodooConfig:
         Raises:
             ValueError: If manifest_path is not configured.
         """
-        from .godoo_manifest import GodooManifest
+        from ..workspace.manifest import GodooManifest
 
         if not self.workspace_layout.manifest_path:
             msg = "manifest_path not configured in GodooConfig"
@@ -203,17 +183,8 @@ class GodooConfig:
         return self.workspace_layout.odoo_bin_path
 
     @cached_property
-    def odoo_version(self) -> OdooVersion:
-        """Return the cached Odoo version."""
-        from ..helpers.odoo_files import odoo_bin_get_version
-
-        return odoo_bin_get_version(self.odoo_install_folder)
-
-    @cached_property
     def addon_paths(self) -> list[Path]:
-        """Return discovered addon paths through the workspace resolver.
-
-        Kept as a compatibility property while discovery remains an explicit,
-        reusable concern in :class:`AddonPathResolver`.
-        """
+        """Return explicit effective addon paths or discover workspace defaults."""
+        if self.resolved_addon_paths is not None:
+            return list(self.resolved_addon_paths)
         return AddonPathResolver(self.workspace_layout).resolve()

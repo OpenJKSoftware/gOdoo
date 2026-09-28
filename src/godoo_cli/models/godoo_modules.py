@@ -5,11 +5,10 @@ from collections.abc import Generator
 from functools import cached_property
 from logging import getLogger
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 LOGGER = getLogger(__name__)
 NO_MODULE_PATHS: set[Path] = set()
-SPECIAL_MODULES = {"base", "studio_customization"}
 
 
 class NotAValidModuleError(ValueError):
@@ -59,12 +58,6 @@ class GodooModule:
         return self.path.stem
 
     @property
-    def py_depends(self) -> list[str]:
-        """Return Python packages required by this module."""
-        module_depends = self.manifest.get("external_dependencies", {}).get("python", [])
-        return module_depends
-
-    @property
     def odoo_depends(self) -> list[str]:
         """Return Odoo modules required by this module."""
         return self.manifest.get("depends", [])
@@ -82,7 +75,7 @@ class GodooModule:
 class GodooModules:
     """Discover modules and dependencies across addon paths."""
 
-    def __init__(self, addon_paths: Union[list[Path], Path]) -> None:
+    def __init__(self, addon_paths: list[Path] | Path) -> None:
         """Search one or more addon paths."""
         if not isinstance(addon_paths, list):
             addon_paths = [addon_paths]
@@ -90,7 +83,7 @@ class GodooModules:
         self.godoo_modules: dict[str, GodooModule] = {}
 
     def get_modules(
-        self, module_names: Optional[list[str]] = None, raise_missing_names: bool = True
+        self, module_names: list[str] | None = None, raise_missing_names: bool = True
     ) -> Generator[GodooModule, None, None]:
         """Yield all modules or only those explicitly requested."""
         if module_names:
@@ -108,6 +101,8 @@ class GodooModules:
     def _get_modules(self) -> Generator[GodooModule, None, None]:
         """Yield every valid module found below the addon paths."""
         for path in self.addon_paths:
+            if not path.is_dir():
+                continue
             for addon_folder_child in path.iterdir():
                 if addon_folder_child in NO_MODULE_PATHS:
                     # Skip paths that are already known to not be modules
@@ -127,10 +122,8 @@ class GodooModules:
                     NO_MODULE_PATHS.add(addon_folder_child)
                     continue
 
-    def get_module(self, name: str) -> Optional[GodooModule]:
-        """Return one named module, ignoring built-in special modules."""
-        if name in SPECIAL_MODULES:
-            return None
+    def get_module(self, name: str) -> GodooModule | None:
+        """Return one named module, including Odoo's built-in addons."""
         if mod := self.godoo_modules.get(name):
             return mod
         for mod in self._get_modules():
@@ -141,7 +134,10 @@ class GodooModules:
         raise ModuleNotFoundError(msg)
 
     def get_module_dependencies(
-        self, module: Union[GodooModule, list[GodooModule]], dont_follow: Optional[list[str]] = None
+        self,
+        module: GodooModule | list[GodooModule],
+        dont_follow: list[str] | None = None,
+        strict: bool = False,
     ) -> list[GodooModule]:
         """Return module dependencies recursively."""
         if isinstance(module, GodooModule):
@@ -149,15 +145,15 @@ class GodooModules:
         deps = []
         for mod in module:
             deps += mod.odoo_depends
-        deps = list(set(deps))
+        deps = list(dict.fromkeys(deps))
 
         if dont_follow:
             deps = [d for d in deps if d not in dont_follow]
         if deps:
             dont_follow = (dont_follow or []) + deps
-            dep_modules = list(self.get_modules(deps, raise_missing_names=False))
+            dep_modules = list(self.get_modules(deps, raise_missing_names=strict))
             sub_dep_modules = []
             for dep in dep_modules:
-                sub_dep_modules += self.get_module_dependencies(dep, dont_follow)
-            return list(set(dep_modules + sub_dep_modules))
+                sub_dep_modules += self.get_module_dependencies(dep, dont_follow, strict)
+            return list(dict.fromkeys(dep_modules + sub_dep_modules))
         return []
