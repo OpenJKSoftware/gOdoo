@@ -1,224 +1,82 @@
-# syntax = docker/dockerfile:1.14
-# Odoo Docker Container
-# This file uses Multiple Build Stages
+# syntax=docker/dockerfile:1.19
+# Representative downstream image; copy and maintain it in the downstream project.
+FROM pgvector/pgvector:pg18-trixie AS postgres
 
-ARG USERNAME=ContainerUser
+FROM python:3.12-slim-bookworm AS tooling
+COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /usr/local/bin/uv
+COPY --from=postgres /usr/local/share/keyrings/postgres.gpg.asc /usr/local/share/keyrings/postgres.gpg.asc
 
-ARG WORKSPACE=/odoo/godoo_workspace
-ARG VIRTUAL_ENV=/odoo/venv
+RUN echo "deb [signed-by=/usr/local/share/keyrings/postgres.gpg.asc] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main 18" \
+    > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates libpq-dev postgresql-client-18 \
+    libldap2-dev libsasl2-dev libssl-dev libxml2-dev libxslt1-dev \
+    libjpeg-dev zlib1g-dev libffi-dev liblcms2-dev libopenjp2-7-dev wkhtmltopdf \
+    && rm -rf /var/lib/apt/lists/*
 
-ARG DEV_IMAGE=ghcr.io/openjksoftware/python-devcontainer:3.12
-ARG PROD_IMAGE=python:3.12-slim-bullseye
-
-ARG NODE_VERSION=20.18.0
-ARG NVM_VERSION=v0.40.1
-ARG SOURCE_CLONE_ARCHIVE=False
-
-
-FROM ${DEV_IMAGE} AS dev_base
-ARG WORKSPACE
-WORKDIR $WORKSPACE
-
-ENV ODOO_CONF_PATH=${WORKSPACE}/config/odoo.conf \
+ENV VIRTUAL_ENV=/opt/odoo-venv \
+    UV_PROJECT_ENVIRONMENT=/opt/odoo-venv \
+    PATH=/opt/odoo-venv/bin:/usr/lib/postgresql/18/bin:$PATH \
+    GIT_PYTHON_REFRESH=quiet \
+    GODOO_ODOO_REQUIREMENTS_PREINSTALLED=1 \
+    UV_LINK_MODE=copy \
     ODOO_MAIN_FOLDER=/odoo/odoo \
-    ODOO_DATA_DIR=/var/lib/odoo \
-    ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
-    ODOO_MANIFEST=${WORKSPACE}/odoo_manifest.yml \
-    ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
-    ODOO_THIRDPARTY_ZIP_LOCATION=${WORKSPACE}/thirdparty
+    ODOO_WORKSPACE_ADDON_LOCATION=/odoo/godoo_workspace/addons \
+    ODOO_CONF_PATH=/odoo/config/odoo.conf
 
-ARG VIRTUAL_ENV
-ARG USERNAME
-# Path Env Vars:
-ENV VIRTUAL_ENV=${VIRTUAL_ENV} \
-    UV_PROJECT_ENVIRONMENT=${VIRTUAL_ENV} \
-    UV_COMPILE_BYTECODE=1
-ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
-    PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$VIRTUAL_ENV/bin:$PATH"
-RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv venv ${VIRTUAL_ENV}
+ARG APP_UID=1000
+ARG APP_GID=1000
+RUN groupadd --gid "$APP_GID" odoo \
+    && useradd --uid "$APP_UID" --gid "$APP_GID" --create-home odoo \
+    && mkdir -p /odoo/godoo_workspace /odoo/config /odoo/thirdparty /var/lib/odoo \
+    && chown -R odoo:odoo /odoo /var/lib/odoo
 
-ARG SOURCE_CLONE_ARCHIVE
-ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
+# Keep dependency resolution independent of gOdoo source edits.
+FROM tooling AS dependencies
+WORKDIR /build/project
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    --mount=type=bind,source=pyproject.toml,target=/build/project/pyproject.toml,readonly \
+    --mount=type=bind,source=uv.lock,target=/build/project/uv.lock,readonly \
+    uv sync --frozen --no-dev --no-install-project
 
-# Install Dependencies using depends_build.sh
-COPY docker/depends_build.sh docker/psql.gpg /tmp/
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked set -ex; \
-    sudo bash /tmp/depends_build.sh
+# Development uses live project/source mounts and installs only Odoo requirements.
+FROM dependencies AS development
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    --mount=type=bind,from=odoo-source,source=requirements.txt,target=/tmp/odoo-requirements.txt,readonly \
+    uv pip install --python "$VIRTUAL_ENV/bin/python" -r /tmp/odoo-requirements.txt \
+    && uv pip install --python "$VIRTUAL_ENV/bin/python" inotify \
+    && chown -R odoo:odoo "$VIRTUAL_ENV"
+WORKDIR /odoo/godoo_workspace
+USER odoo
+CMD ["python", "-m", "godoo_cli", "runtime", "launch"]
 
-# ------------------------------------------------------------------------------------------------------
-# Install godoo from this workspace. (see pip install below)
-# This workspace is made to be reused as a Odoo Workspace, godoo installed as a Package.
-# Remove whats between the ----- and replace with: RUN pip install godoo
-# Install only dependencies, so they only reinstall when lock or toml where changed
-COPY pyproject.toml uv.lock README.md ./
-COPY ./src/godoo_cli/__about__.py ./src/godoo_cli/__about__.py
-RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --no-install-project --compile-bytecode --frozen
+# Materialize selected sources from read-only mounts without Git commands or worktree scans.
+FROM dependencies AS materialized
+RUN --mount=type=bind,source=.,target=/build/project,readonly \
+    --mount=type=bind,from=godoo-sources,source=.,target=/build/sources,readonly \
+    PYTHONPATH=/build/project/src "$VIRTUAL_ENV/bin/python" -m godoo_cli workspace materialize \
+        --project-root /build/project \
+        --manifest /build/project/odoo_manifest.yml \
+        --sources-root /build/sources \
+        --destination-root /image
 
-COPY --chown=$USERNAME:$USERNAME ./src ./src
-RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 uv sync --all-extras --compile-bytecode --frozen
-# In the Devcontainer stage we remove everything in $WORKSPACE and replace it with a Bind-Mount
-# ------------------------------------------------------------------------------------------------------
-# Godoo Pypi Install via pip
-# RUN pip install godoo-cli[devcontainer,codequality]
-# ---------------------------------------------------------------------------------------------------------
+# This dependency layer keys on the requirements file contents alone.
+FROM dependencies AS production-dependencies
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    --mount=type=bind,from=materialized,source=/image/odoo/odoo/requirements.txt,target=/tmp/odoo-requirements.txt,readonly \
+    uv pip install --python "$VIRTUAL_ENV/bin/python" -r /tmp/odoo-requirements.txt \
+    && chown -R odoo:odoo "$VIRTUAL_ENV"
 
-COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml ./
-
-# Install everything from Odoo requirements.txt, by downloading its raw contents
-FROM dev_base AS odoo_requirements
-ARG ODOO_CONF_PATH
-RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 set -ex; \
-    godoo source get-file --file-path requirements.txt --save-path ./odoo_requirements.txt \
-    && uv pip install -r ./odoo_requirements.txt --upgrade \
-    && uv pip install pycups
-
-# Download Odoo Source Code
-FROM dev_base AS odoo_source
-ARG ODOO_MAIN_FOLDER
-RUN set -ex ; \
-    godoo source get  odoo \
-    && chmod +x $ODOO_MAIN_FOLDER/odoo-bin
-
-# Download Odoo Addons and unpack .zip Addons
-FROM dev_base AS oodo_addon_source
-ARG USERNAME
-RUN --mount=type=ssh set -ex; \
-    mkdir -p $ODOO_THIRDPARTY_LOCATION \
-    && sudo chown $USERNAME:$USERNAME $SSH_AUTH_SOCK || true \
-    && godoo source get thirdparty
-COPY thirdparty thirdparty
-RUN godoo source get zip
-
-
-# Image for Devserver (Start in Entrypoint)
-FROM ${PROD_IMAGE} AS prod
-ARG WORKSPACE
-WORKDIR $WORKSPACE
-
-ENV ODOO_CONF_PATH=/odoo/config/odoo.conf \
-    ODOO_MAIN_FOLDER=/odoo/odoo \
-    ODOO_DATA_DIR=/var/lib/odoo \
-    ODOO_WORKSPACE_ADDON_LOCATION=$WORKSPACE/addons \
-    ODOO_MANIFEST=${WORKSPACE}/odoo_manifest.yml \
-    ODOO_THIRDPARTY_LOCATION=/odoo/thirdparty \
-    ODOO_THIRDPARTY_ZIP_LOCATION=${WORKSPACE}/thirdparty
-
-# Path Env Vars:
-ARG VIRTUAL_ENV
-ENV VIRTUAL_ENV=$VIRTUAL_ENV
-ENV PYTHONPATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$PYTHONPATH" \
-    PATH="$ODOO_MAIN_FOLDER:$WORKSPACE:$WORKSPACE/scripts:$VIRTUAL_ENV/bin:$PATH"
-
-# Install runtime dependencies using depends_runtime.sh
-RUN --mount=type=bind,source=docker/depends_runtime.sh,target=/tmp/depends_runtime.sh \
-    set -ex; bash /tmp/depends_runtime.sh
-
-COPY --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
-COPY --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
-COPY --from=odoo_requirements $VIRTUAL_ENV $VIRTUAL_ENV
-
-COPY ../config/nginx.conf /etc/nginx/nginx.conf
-COPY ../config/nginx-proxy_headers.conf /etc/nginx/proxy_headers.conf
-COPY ../config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY ../scripts/launchodoo.sh launchodoo.sh
-COPY ../scripts/migrations migrations
-
-COPY --chown=$USERNAME:$USERNAME odoo_manifest.yml $ODOO_MANIFEST
-ARG SOURCE_CLONE_ARCHIVE
-ENV SOURCE_CLONE_ARCHIVE=${SOURCE_CLONE_ARCHIVE}
-
-RUN set -ex; \
-    mkdir -p /var/lib/odoo \
-    && bash -c 'rm -rf {/tmp/*,/var/cache/apt,/var/lib/apt/lists/*}'
-COPY ./addons $ODOO_WORKSPACE_ADDON_LOCATION
-
-EXPOSE 8069 8071 8072
-ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-
-
-# Copy Addons and Odoo Source into image with requirements.
-FROM dev_base AS dev_odoo
-# Install runtime dependencies and WKHTMLtoPDF
-RUN --mount=type=bind,source=docker/depends_runtime.sh,target=/tmp/depends_runtime.sh \
-    set -ex; sudo bash /tmp/depends_runtime.sh
-
-ARG USERNAME
-COPY --chown=${USERNAME}:${USERNAME} --from=odoo_source $ODOO_MAIN_FOLDER $ODOO_MAIN_FOLDER
-COPY --chown=${USERNAME}:${USERNAME} --from=oodo_addon_source $ODOO_THIRDPARTY_LOCATION $ODOO_THIRDPARTY_LOCATION
-COPY --chown=${USERNAME}:${USERNAME} --from=odoo_requirements $VIRTUAL_ENV $VIRTUAL_ENV
-RUN set -ex; \
-    sudo mkdir -p /var/lib/odoo \
-    && sudo chown -R ${USERNAME}:${USERNAME} /var/lib/odoo
-
-# Stage for testing, because we need the workspace with git available for delta checking
-FROM dev_odoo AS test
-ARG USERNAME
-RUN set -ex; sudo bash -c 'rm -rf {/tmp/*,/var/cache/apt,./*,/var/lib/apt/lists/*}'
-ADD --chown=${USERNAME}:${USERNAME} . .
-ENTRYPOINT [ "godoo", "test" ,"all" ]
-
-
-# Image for Devcontainer. (Infinite Sleep command for VScode Attach. Start Odoo via "Make")
-FROM dev_odoo AS devcontainer
-
-# Instal godoo autocomplete. Env var to disable shellingham, as docker doesnt run in a shell
-RUN set -ex; _TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION=true godoo --install-completion zsh
-
-ARG NVM_VERSION
-ARG NODE_VERSION
-ENV NVM_DIR=/usr/local/nvm \
-    NODE_VERSION=${NODE_VERSION}
-
-# Setup NVM directory with proper permissions
-RUN set -ex; sudo install -d -m 0755 -o ${USERNAME} -g ${USERNAME} $NVM_DIR
-
-# Install NVM, Node.js and npm as non-root user
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
-# Install node and npm
-RUN set -e; \
-    . $NVM_DIR/nvm.sh \
-    && nvm install $NODE_VERSION \
-    && nvm alias default $NODE_VERSION \
-    && npm config -g set cafile /etc/ssl/certs/ca-certificates.crt \
-    && nvm use default
-# Add node and npm to path so the commands are available
-ENV NODE_PATH=$NVM_DIR/v$NODE_VERSION/lib/node_modules \
-    PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH\
-    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-
-# Configure system settings that require root
-USER root
-RUN set -ex; \
-    mkdir -p /etc/cups \
-    && echo "ServerName cups:631" > /etc/cups/client.conf \
-    && printf "Host upgrade.odoo.com\n\tStrictHostKeyChecking accept-new" > /etc/ssh/ssh_config.d/odoo_upgrade.conf
-
-ARG WORKSPACE
-ENV ODOO_PRINT_PDF_LOCATION=$WORKSPACE
-
-# Setup nginx and fix permissions
-RUN set -ex; \
-    rm -rf /tmp/* \
-    && rm -f /etc/nginx/nginx.conf \
-    && ln -s /odoo/config/nginx.conf /etc/nginx/nginx.conf \
-    && rm -f /etc/nginx/proxy_headers.conf \
-    && ln -s /odoo/config/nginx-proxy_headers.conf /etc/nginx/proxy_headers.conf \
-    && usermod -a -G www-data ${USERNAME} \
-    && chown -R ${USERNAME} /var/lib/nginx /var/log/nginx
-
-# Install system packages that require root
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked set -ex; \
-    apt-get update \
-    && apt-get install default-jre -y
-
-# Switch back to non-root user for npm and pip installations
-USER ${USERNAME}
-RUN --mount=type=cache,target=$UV_CACHE_DIR,uid=1000,gid=1000 \
-    --mount=type=cache,target=/root/.npm,uid=1000,gid=1000 set -ex; \
-    npm install -g prettier eslint \
-    && uv pip install pydevd-odoo pre-commit jingtrang
-
-ENV EDITOR=code
-ENTRYPOINT  [ "/bin/sh", "-c", "service nginx start; sleep infinity"]
+# Install the CLI after dependency layers so application edits do not reinstall Odoo.
+FROM production-dependencies AS production
+ENV GODOO_RUNTIME_MATERIALIZED=1
+ARG GODOO_PACKAGE=godoo-cli
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    --mount=type=bind,source=pyproject.toml,target=/build/project/pyproject.toml,readonly \
+    --mount=type=bind,source=README.md,target=/build/project/README.md,readonly \
+    --mount=type=bind,source=src,target=/build/project/src,readonly \
+    uv pip install --python "$VIRTUAL_ENV/bin/python" "$GODOO_PACKAGE"
+COPY --from=materialized --chown=odoo:odoo /image/odoo/ /odoo/
+WORKDIR /odoo/godoo_workspace
+USER odoo
+CMD ["godoo", "runtime", "launch"]

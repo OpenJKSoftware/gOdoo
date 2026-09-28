@@ -1,0 +1,60 @@
+# Development source mounts; combine with docker-compose.base.yml, never production.
+services:
+  init:
+    build:
+      target: development
+      additional_contexts:
+        odoo-source: ${GODOO_RUNTIME_ODOO_PATH}
+    command: [python, -m, godoo_cli, runtime, init]
+    volumes:
+      - ..:/odoo/godoo_workspace
+      - ${GODOO_SOURCES_ROOT}:${GODOO_SOURCES_ROOT}:ro
+    environment:
+      GODOO_SOURCES_ROOT: ${GODOO_SOURCES_ROOT}
+      GODOO_RUNTIME_ODOO_PATH: ${GODOO_RUNTIME_ODOO_PATH}
+      GODOO_RUNTIME_ADDON_PATHS: ${GODOO_RUNTIME_ADDON_PATHS}
+      ODOO_MANIFEST: /odoo/godoo_workspace/odoo_manifest.yml
+      PYTHONPATH: /odoo/godoo_workspace/src
+
+  app:
+    build:
+      target: development
+      additional_contexts:
+        odoo-source: ${GODOO_RUNTIME_ODOO_PATH}
+    command: [python, -m, godoo_cli, runtime, launch, --extra-args=--workers=0]
+    volumes:
+      - ..:/odoo/godoo_workspace
+      - ${GODOO_SOURCES_ROOT}:${GODOO_SOURCES_ROOT}:ro
+    environment:
+      GODOO_SOURCES_ROOT: ${GODOO_SOURCES_ROOT}
+      GODOO_RUNTIME_ODOO_PATH: ${GODOO_RUNTIME_ODOO_PATH}
+      GODOO_RUNTIME_ADDON_PATHS: ${GODOO_RUNTIME_ADDON_PATHS}
+      GODOO_DEV_MODE: "1"
+      ODOO_MANIFEST: /odoo/godoo_workspace/odoo_manifest.yml
+      PYTHONPATH: /odoo/godoo_workspace/src
+
+  websocket:
+    extends:
+      file: docker-compose.base.yml
+      service: init
+    build:
+      target: development
+      additional_contexts:
+        odoo-source: ${GODOO_RUNTIME_ODOO_PATH}
+    command: [sh, -c, 'exec "$$GODOO_RUNTIME_ODOO_PATH/odoo-bin" gevent --config "$$ODOO_CONF_PATH"']
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - ..:/odoo/godoo_workspace
+      - ${GODOO_SOURCES_ROOT}:${GODOO_SOURCES_ROOT}:ro
+    environment:
+      GODOO_SOURCES_ROOT: ${GODOO_SOURCES_ROOT}
+      GODOO_RUNTIME_ODOO_PATH: ${GODOO_RUNTIME_ODOO_PATH}
+      GODOO_RUNTIME_ADDON_PATHS: ${GODOO_RUNTIME_ADDON_PATHS}
+      PGPASSWORD: ${ODOO_DB_PASSWORD:?Set ODOO_DB_PASSWORD}
+      ODOO_MANIFEST: /odoo/godoo_workspace/odoo_manifest.yml
+      PYTHONPATH: /odoo/godoo_workspace/src
+    networks:
+      - default
+      - traefik

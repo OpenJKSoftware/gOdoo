@@ -1,44 +1,81 @@
-services:
-  app:
-    build:
-      context: ..
-      dockerfile: ./docker/Dockerfile
-      ssh:
-        - default
-      target: prod
-    init: true
-    environment:
-      - ODOO_DB_HOST=/var/run/postgresql
-    extra_hosts:
-      - "host.docker.internal:host-gateway" # Link host as dns
-    env_file:
-      - .env
-    depends_on:
-      - db
-    volumes:
-      - "/etc/localtime:/etc/localtime:ro"
-      - "odoo_web:/var/lib/odoo"
-      - "config:/odoo/config"
-      - "cache:/var/cache"
-      - "postgres_socket:/var/run/postgresql"
+# Representative downstream Compose file; copy and maintain it downstream.
+x-runtime: &runtime
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+    additional_contexts:
+      godoo-sources: ${GODOO_SOURCES_ROOT:?Set GODOO_SOURCES_ROOT}
+    args:
+      APP_UID: ${APP_UID:-1000}
+      APP_GID: ${APP_GID:-1000}
+      GODOO_PACKAGE: ${GODOO_PACKAGE:-godoo-cli}
+  init: true
+  environment:
+    ODOO_MAIN_DB: ${ODOO_MAIN_DB:-odoo}
+    ODOO_DB_FILTER: ${ODOO_DB_FILTER:-odoo}
+    ODOO_DB_PASSWORD: ${ODOO_DB_PASSWORD:?Set ODOO_DB_PASSWORD}
+    ODOO_DB_USER: ${ODOO_DB_USER:-odoo}
+    ODOO_DB_HOST: ${ODOO_DB_HOST:-db}
+    ODOO_DB_PORT: ${ODOO_DB_PORT:-5432}
+    ODOO_DATA_DIR: ${ODOO_DATA_DIR:-/var/lib/odoo}
+    ODOO_MAIN_FOLDER: ${ODOO_MAIN_FOLDER:-/odoo/odoo}
+    ODOO_WORKSPACE_ADDON_LOCATION: ${ODOO_WORKSPACE_ADDON_LOCATION:-/odoo/godoo_workspace/addons}
+    ODOO_CONF_PATH: ${ODOO_CONF_PATH:-/odoo/config/odoo.conf}
+    GODOO_RUNTIME_SEED: "${GODOO_RUNTIME_SEED:-}"
+    GODOO_X_SENDFILE: ${GODOO_X_SENDFILE:-true}
+    GODOO_AFTER_BOOTSTRAP_DIRS: "${GODOO_AFTER_BOOTSTRAP_DIRS:-}"
+    GODOO_AFTER_RESTORE_DIRS: "${GODOO_AFTER_RESTORE_DIRS:-}"
+    GODOO_AFTER_RECONCILE_DIRS: "${GODOO_AFTER_RECONCILE_DIRS:-}"
+    GODOO_REPORT_URL: ${GODOO_REPORT_URL:-http://nginx}
+  volumes:
+    - odoo_data:/var/lib/odoo
+    - odoo_config:/odoo/config
 
-  db:
-    image: postgres:18.4-bookworm
-    command: ["postgres", "-c", "file_copy_method=clone"]
-    environment:
-      - TZ=${TZ:-Europe/Berlin}
-      - POSTGRES_DB=postgres
-      - POSTGRES_PASSWORD=${ODOO_DB_PASSWORD}
-      - POSTGRES_USER=${ODOO_DB_USER}
+services:
+  init:
+    <<: *runtime
+    command: [godoo, runtime, init]
+    depends_on:
+      db:
+        condition: service_healthy
+  app:
+    <<: *runtime
+    command: [godoo, runtime, launch]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+  nginx:
+    image: nginx:stable-alpine
+    ports: ["127.0.0.1:8069:80"]
+    depends_on:
+      app:
+        condition: service_started
     volumes:
-      - "db:/var/lib/postgresql"
-      - "/etc/localtime:/etc/localtime:ro"
-      - "../config/postgresql.conf:/etc/postgresql/postgresql.conf"
-      - "postgres_socket:/var/run/postgresql"
+      - ../config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - odoo_data:/var/lib/odoo:ro
+  db:
+    image: pgvector/pgvector:pg18-trixie
+    command: [postgres, -c, config_file=/etc/postgresql/postgresql.conf]
+    shm_size: 512mb
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${ODOO_DB_USER:-odoo}
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:?Set ODOO_DB_PASSWORD}
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          'test "$$(cat /proc/1/comm)" = postgres && pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d postgres',
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - db_data:/var/lib/postgresql
+      - ../config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres-init/10-vector.sql:/docker-entrypoint-initdb.d/10-vector.sql:ro
 
 volumes:
-  config:
-  cache:
-  db:
-  odoo_web:
-  postgres_socket:
+  db_data:
+  odoo_data:
+  odoo_config:
