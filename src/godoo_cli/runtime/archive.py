@@ -169,6 +169,7 @@ def load_runtime_archive(  # noqa: C901
     database_rollback: DatabaseRollback = rollback_database_swap,
     odoo_version: int | None = None,
     database_creator: Callable[[DBConnection, str], None] = create_database,
+    use_native_db_load: bool | None = None,
 ) -> int:
     """Stage a native restore and promote its database and filestore together."""
     # Validate replacement eligibility while the target runtime remains stable.
@@ -191,7 +192,9 @@ def load_runtime_archive(  # noqa: C901
         # Build an isolated database and filestore before either live artifact is replaced.
         staged_database = temporary_database_name("native_restore")
         extracted: tempfile.TemporaryDirectory | None = None
-        native = _uses_native_db_commands(odoo_version, odoo_bin_path)
+        native = (
+            _uses_native_db_commands(odoo_version, odoo_bin_path) if use_native_db_load is None else use_native_db_load
+        )
         if native:
             command = odoo_db_command(
                 odoo_bin_path=odoo_bin_path,

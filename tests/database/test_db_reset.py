@@ -308,6 +308,33 @@ def test_native_archive_staging_and_cleanup_use_the_selected_connection(tmp_path
     assert command[-1] == str(archive_path)
 
 
+def test_pre_upgrade_archive_load_uses_psql_for_odoo_19(tmp_path: Path):
+    """Keep Odoo's registry out of the restore path before pre-upgrade scripts."""
+    archive_path = tmp_path / "runtime.zip"
+    with zipfile.ZipFile(archive_path, "w") as runtime_zip:
+        runtime_zip.writestr("dump.sql", "select 1;")
+    connection = DBConnection("selected-host", 5544, "selected-user", "selected-secret", "runtime")
+    commands: list[list[str]] = []
+
+    result = load_runtime_archive(
+        db_name="runtime",
+        archive_path=archive_path,
+        odoo_bin_path=Path("/odoo/odoo-bin"),
+        data_dir=tmp_path / "data",
+        connection=connection,
+        force=True,
+        odoo_version=19,
+        use_native_db_load=False,
+        runner=lambda command: commands.append(list(command)) or 13,
+        database_creator=lambda *_args: None,
+        database_cleaner=lambda *_args: None,
+    )
+
+    assert result == 13
+    assert commands[0][0] == "psql"
+    assert "--file" in commands[0]
+
+
 def test_native_archive_load_clears_inherited_postgres_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Native archive loads must use selected connection PostgreSQL environment."""
     archive_path = tmp_path / "runtime.zip"
