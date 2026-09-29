@@ -202,6 +202,14 @@ def test_missing_ordinary_database_module_still_raises(tmp_path: Path):
         selected_modules(cfg)
 
 
+def test_pre_upgrade_preflight_skips_missing_installed_module(tmp_path: Path):
+    """Allow a pre-upgrade script to reconcile a legacy installed module."""
+    cfg = config(tmp_path)
+    object.__setattr__(cfg, "db_connection", FakeConnection([("base",), ("legacy_module",)]))
+
+    assert dependency_requirements(cfg, ignore_missing_installed_modules=True) == []
+
+
 def test_imported_module_in_one_database_does_not_hide_other_database_missing_source(tmp_path: Path):
     """Guards imported metadata stays specific to its database."""
     cfg = GodooConfig(**{**config(tmp_path).__dict__, "db_name": "first,second"})

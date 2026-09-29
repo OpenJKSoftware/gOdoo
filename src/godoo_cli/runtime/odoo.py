@@ -442,7 +442,12 @@ def _database_modules(config: GodooConfig) -> dict[str, bool]:
     return result
 
 
-def _selected_modules(config: GodooConfig, options: OdooOptions) -> list[str]:
+def _selected_modules(
+    config: GodooConfig,
+    options: OdooOptions,
+    *,
+    ignore_missing_installed_modules: bool = False,
+) -> list[str]:
     """Resolve requested and installed modules from one effective configuration."""
     database_modules = _database_modules(config)
     requested = [*database_modules, *options.init_modules, *options.update_modules]
@@ -464,6 +469,12 @@ def _selected_modules(config: GodooConfig, options: OdooOptions) -> list[str]:
             module = registry.get_module(name)
         except ModuleNotFoundError:
             if name == "studio_customization" or database_modules.get(name, False):
+                continue
+            if ignore_missing_installed_modules and name in database_modules and name != "base":
+                LOGGER.info(
+                    "Skipping unavailable installed module during pre-upgrade dependency preflight: %s",
+                    name,
+                )
                 continue
             raise
         else:
@@ -501,7 +512,12 @@ def selected_modules(config: GodooConfig, arguments: Sequence[str] = ()) -> list
     return _selected_modules(resolve_odoo_config(config, arguments), parse_odoo_options(arguments))
 
 
-def _dependency_requirements(config: GodooConfig, options: OdooOptions) -> list[str]:
+def _dependency_requirements(
+    config: GodooConfig,
+    options: OdooOptions,
+    *,
+    ignore_missing_installed_modules: bool = False,
+) -> list[str]:
     """Return external Python requirements from one effective configuration."""
     registry_started_at = time.monotonic()
     registry = GodooModules(list(options.addon_paths or config.addon_paths))
@@ -511,7 +527,11 @@ def _dependency_requirements(config: GodooConfig, options: OdooOptions) -> list[
         time.monotonic() - registry_started_at,
     )
     discovery_started_at = time.monotonic()
-    selected = _selected_modules(config, options)
+    selected = _selected_modules(
+        config,
+        options,
+        ignore_missing_installed_modules=ignore_missing_installed_modules,
+    )
     requirements: list[str] = []
     manifest_count = 0
     for module in registry.get_modules(selected):
@@ -538,6 +558,7 @@ def dependency_requirements(
     arguments: Sequence[str] = (),
     *,
     resolved: bool = False,
+    ignore_missing_installed_modules: bool = False,
 ) -> list[str]:
     """Return ordered external Python requirements for selected modules."""
     config_started_at = time.monotonic()
@@ -556,7 +577,11 @@ def dependency_requirements(
         options.addon_paths is not None,
         time.monotonic() - options_started_at,
     )
-    return _dependency_requirements(effective, options)
+    return _dependency_requirements(
+        effective,
+        options,
+        ignore_missing_installed_modules=ignore_missing_installed_modules,
+    )
 
 
 def preflight_for_config(
@@ -565,6 +590,7 @@ def preflight_for_config(
     *,
     project_root: Path | None = None,
     include_module_dependencies: bool = True,
+    ignore_missing_installed_modules: bool = False,
 ) -> None:
     """Install required Python dependencies for an effective Odoo configuration."""
     preflight_started_at = time.monotonic()
@@ -577,7 +603,16 @@ def preflight_for_config(
         environment.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["uv", "venv", str(environment)], check=True)
     dependency_discovery_started_at = time.monotonic()
-    requirements = dependency_requirements(effective, arguments, resolved=True) if include_module_dependencies else []
+    requirements = (
+        dependency_requirements(
+            effective,
+            arguments,
+            resolved=True,
+            ignore_missing_installed_modules=ignore_missing_installed_modules,
+        )
+        if include_module_dependencies
+        else []
+    )
     LOGGER.debug(
         "Odoo dependency preflight dependency discovery completed: enabled=%s requirements=%d elapsed=%.3fs",
         include_module_dependencies,

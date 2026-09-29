@@ -333,6 +333,8 @@ def preflight_reconcile_dependencies(
     config: GodooConfig,
     update_modules: list[str] | None,
     install_modules: list[str] | None,
+    *,
+    ignore_missing_installed_modules: bool = False,
 ) -> None:
     """Include explicitly selected modules in dependency preflight."""
     arguments: list[str] = []
@@ -342,7 +344,11 @@ def preflight_reconcile_dependencies(
         arguments.extend(["--update", ",".join(updates)])
     if installs:
         arguments.extend(["--init", ",".join(installs)])
-    preflight_for_config(config, arguments)
+    preflight_for_config(
+        config,
+        arguments,
+        ignore_missing_installed_modules=ignore_missing_installed_modules,
+    )
 
 
 def reconcile_modules(

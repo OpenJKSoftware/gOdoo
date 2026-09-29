@@ -122,7 +122,7 @@ def test_public_deployment_init_real_bootstrap_retry_accepts_pending_marker(
     monkeypatch.setattr(lifecycle_commands, "reconcile_runtime", injected_reconcile)
     monkeypatch.setattr(lifecycle_commands, "deployment_init", injected_init)
     monkeypatch.setattr(lifecycle_commands, "prepare_runtime", lambda _config, **_kwargs: None)
-    monkeypatch.setattr(runtime_lifecycle, "preflight_for_config", lambda *_args: None)
+    monkeypatch.setattr(runtime_lifecycle, "preflight_for_config", lambda *_args, **_kwargs: None)
     result = CliRunner().invoke(
         app,
         [],

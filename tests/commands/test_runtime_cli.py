@@ -244,7 +244,13 @@ def test_public_run_preflight_creates_default_project_environment(tmp_path: Path
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("VIRTUAL_ENV", raising=False)
 
-    def dependency_requirements(_config: object, _arguments: object, *, resolved: bool = False) -> list[str]:
+    def dependency_requirements(
+        _config: object,
+        _arguments: object,
+        *,
+        resolved: bool = False,
+        **_kwargs: object,
+    ) -> list[str]:
         assert resolved is True
         return ["pkg"]
 

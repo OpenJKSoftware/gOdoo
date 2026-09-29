@@ -17,6 +17,7 @@ from ...runtime.lifecycle import (
     reconcile_modules,
     reconcile_runtime,
     run_lifecycle_hook,
+    split_lifecycle_values,
 )
 from ...runtime.odoo import (
     prepare_runtime,
@@ -28,6 +29,21 @@ from ..configuration import resolve_command_config
 
 LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
+
+
+def _validate_pre_upgrade_options(
+    seed: Path | None,
+    pre_upgrade_scripts: list[Path] | None,
+    update_modules: list[str] | None,
+    after_restore_dirs: list[Path] | None,
+) -> None:
+    """Reject hook combinations that would start Odoo before pre-upgrade scripts."""
+    if seed is not None and pre_upgrade_scripts and after_restore_dirs:
+        message = "--after-restore-dir cannot run with --pre-upgrade-script because restore hooks start Odoo first."
+        raise typer.BadParameter(message, param_hint="--after-restore-dir")
+    if pre_upgrade_scripts and not split_lifecycle_values(update_modules):
+        message = "--pre-upgrade-script requires at least one --update module."
+        raise typer.BadParameter(message, param_hint="--update")
 
 
 def deployment_init_odoo_runtime(
@@ -102,6 +118,7 @@ def deployment_init_odoo_runtime(
     if x_sendfile_enabled(config, x_sendfile) and not report_url:
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")
+    _validate_pre_upgrade_options(seed, pre_upgrade_scripts, update_modules, after_restore_dirs)
     runtime_seed = seed
 
     def already_prepared(_conf: GodooConfig) -> None:
@@ -131,6 +148,7 @@ def deployment_init_odoo_runtime(
             data_dir=conf.data_dir,
             force=True,
             connection=conf.db_connection,
+            use_native_db_load=False if pre_upgrade_scripts else None,
         )
         if result:
             message = f"Odoo seed archive load failed for runtime '{conf.db_name}' (exit code {result})"
@@ -143,8 +161,18 @@ def deployment_init_odoo_runtime(
             seeder=seed_runtime,
             ensure=ensure,
             preparer=lambda conf: prepare_runtime(conf, x_sendfile=x_sendfile),
-            preflight=lambda conf: preflight_reconcile_dependencies(conf, update_modules, install_modules),
-            post_restore_preflight=lambda conf: preflight_reconcile_dependencies(conf, update_modules, install_modules),
+            preflight=lambda conf: preflight_reconcile_dependencies(
+                conf,
+                update_modules,
+                install_modules,
+                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+            ),
+            post_restore_preflight=lambda conf: preflight_reconcile_dependencies(
+                conf,
+                update_modules,
+                install_modules,
+                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+            ),
             reconciler=lambda conf: reconcile_runtime(
                 conf,
                 preparer=already_prepared,

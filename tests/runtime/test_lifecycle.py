@@ -158,7 +158,7 @@ def test_reconcile_preflight_includes_selected_modules(tmp_path: Path, monkeypat
     monkeypatch.setattr(
         runtime_lifecycle,
         "preflight_for_config",
-        lambda _config, arguments: observed.extend(arguments),
+        lambda _config, arguments, **_kwargs: observed.extend(arguments),
     )
 
     runtime_lifecycle.preflight_reconcile_dependencies(
@@ -168,6 +168,27 @@ def test_reconcile_preflight_includes_selected_modules(tmp_path: Path, monkeypat
     )
 
     assert observed == ["--update", "sale,stock", "--init", "web"]
+
+
+def test_reconcile_preflight_allows_missing_installed_modules_for_pre_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Pass the pre-upgrade reconciliation allowance to dependency preflight."""
+    observed: dict[str, object] = {}
+
+    def preflight(_config: GodooConfig, _arguments: list[str], **kwargs: object) -> None:
+        observed.update(kwargs)
+
+    monkeypatch.setattr(runtime_lifecycle, "preflight_for_config", preflight)
+
+    runtime_lifecycle.preflight_reconcile_dependencies(
+        _config(tmp_path),
+        ["base"],
+        None,
+        ignore_missing_installed_modules=True,
+    )
+
+    assert observed == {"ignore_missing_installed_modules": True}
     return
     app = typer.Typer()
 
@@ -239,11 +260,11 @@ def test_deployment_init_passes_fresh_bootstrap_policy(monkeypatch: pytest.Monke
     assert observed["extra_bootstrap_args"] == ["--load-language=de_DE"]
 
 
-def test_deployment_init_preflights_requested_modules_before_and_after_restore(
+def test_deployment_init_preflights_pre_upgrade_before_and_after_restore(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Guards the contract that deployment init preflights requested modules before and after restore."""
-    observed: list[list[str]] = []
+    observed: list[tuple[list[str], dict[str, object]]] = []
     app = typer.Typer()
     app.command()(lifecycle_commands.deployment_init_odoo_runtime)
 
@@ -258,12 +279,12 @@ def test_deployment_init_preflights_requested_modules_before_and_after_restore(
     monkeypatch.setattr(
         runtime_lifecycle,
         "preflight_for_config",
-        lambda _config, arguments: observed.append(arguments),
+        lambda _config, arguments, **kwargs: observed.append((arguments, kwargs)),
     )
 
     result = CliRunner().invoke(
         app,
-        ["--update", "sale", "--install", "web"],
+        ["--update", "base", "--pre-upgrade-script", "/tmp/pre-upgrade.py"],
         env={
             "ODOO_MAIN_FOLDER": "/tmp/odoo",
             "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
@@ -276,8 +297,8 @@ def test_deployment_init_preflights_requested_modules_before_and_after_restore(
 
     assert result.exit_code == 0, result.output
     assert observed == [
-        ["--update", "sale", "--init", "web"],
-        ["--update", "sale", "--init", "web"],
+        (["--update", "base"], {"ignore_missing_installed_modules": True}),
+        (["--update", "base"], {"ignore_missing_installed_modules": True}),
     ]
 
 
@@ -320,7 +341,124 @@ def test_deployment_init_loads_native_seed_archive_through_odoo(
     assert observed["db_name"] == "runtime"
     assert observed["data_dir"] == Path("/var/lib/odoo")
     assert observed["force"] is True
+    assert observed["use_native_db_load"] is None
     connection = observed["connection"]
     assert isinstance(connection, DBConnection)
     assert connection.db_name == "runtime"
     assert connection.username == "odoo"
+
+
+def test_deployment_init_uses_sql_seed_load_before_pre_upgrade_scripts(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Restore through PostgreSQL before Odoo can run pre-upgrade scripts."""
+    observed: dict[str, object] = {}
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+
+    def load_archive(**kwargs: object) -> int:
+        observed.update(kwargs)
+        return 0
+
+    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
+        seeder = cast(Callable[[GodooConfig], None], kwargs["seeder"])
+        seeder(config)
+        return LifecycleOutcome.RESTORED, 0
+
+    monkeypatch.setattr(lifecycle_commands, "load_runtime_archive", load_archive)
+    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
+
+    result = CliRunner().invoke(
+        app,
+        ["--seed", "/tmp/runtime.zip", "--update", "base", "--pre-upgrade-script", "/tmp/pre-upgrade.py"],
+        env={
+            "ODOO_MAIN_FOLDER": "/tmp/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    assert observed["use_native_db_load"] is False
+
+
+def test_deployment_init_rejects_after_restore_hooks_with_pre_upgrade_scripts():
+    """Prevent restore hooks from creating Odoo's registry before reconciliation."""
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--seed",
+            "/tmp/runtime.zip",
+            "--pre-upgrade-script",
+            "/tmp/pre-upgrade.py",
+            "--after-restore-dir",
+            "/tmp/hooks",
+        ],
+        env={
+            "ODOO_MAIN_FOLDER": "/tmp/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+        },
+    )
+
+    assert result.exit_code == 2
+    assert "cannot run with" in result.output
+
+
+def test_deployment_init_allows_after_restore_hooks_without_seed_for_pre_upgrade(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Allow ready-runtime reconciliation to retain its ordinary hook configuration."""
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+    monkeypatch.setattr(
+        lifecycle_commands,
+        "deployment_init",
+        lambda *_args, **_kwargs: (LifecycleOutcome.READY, 0),
+    )
+
+    result = CliRunner().invoke(
+        app,
+        ["--update", "base", "--pre-upgrade-script", "/tmp/pre-upgrade.py", "--after-restore-dir", "/tmp/hooks"],
+        env={
+            "ODOO_MAIN_FOLDER": "/tmp/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+
+
+def test_deployment_init_rejects_pre_upgrade_scripts_without_update():
+    """Fail before seed restoration when Odoo has no module update to run."""
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+
+    result = CliRunner().invoke(
+        app,
+        ["--seed", "/tmp/runtime.zip", "--pre-upgrade-script", "/tmp/pre-upgrade.py"],
+        env={
+            "ODOO_MAIN_FOLDER": "/tmp/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+        },
+    )
+
+    assert result.exit_code == 2
+    assert "requires at least one" in result.output
