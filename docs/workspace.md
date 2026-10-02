@@ -1,36 +1,29 @@
 # Source workspaces
 
-Run workspace commands from the downstream project directory. gOdoo loads that directory's required `.env` without
-overriding the process environment. `GODOO_SOURCES_ROOT` is an absolute shared-source-root path outside the project.
-`ODOO_MANIFEST` defaults to `odoo_manifest.yml` in the Project dir; the manifest is the sole source-selection authority.
+Run workspace commands from the downstream project directory. gOdoo reads that project's `.env` without overriding
+exported values. `GODOO_SOURCES_ROOT` must be an absolute shared-source path outside the project. `ODOO_MANIFEST`
+defaults to `odoo_manifest.yml` there; the manifest is the source-selection authority and must declare Odoo plus any
+third-party repositories.
 
-`workspace sync` is the only command that changes managed Git worktrees or archive caches. `workspace configure` and
-`workspace check` inspect existing selected sources without creating repository or archive locks. Configure writes
-`<project>.code-workspace` and retains `.godoo/workspace.lock` to serialize workspace generation; check is offline and
-read-only.
+| Command                       | Effect                                                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `godoo workspace sync`        | Changes managed Git worktrees and archive caches; may reset verified worktrees.                            |
+| `godoo workspace configure`   | Checks selected sources and generates editor files; it serializes generation with `.godoo/workspace.lock`. |
+| `godoo workspace check`       | Offline, read-only validation of sources, with no source-worktree or archive locks.                        |
+| `godoo workspace runtime-env` | Validates sources on the host and prints shell-safe resolved path assignments.                             |
 
-The generated workspace lists the project as `.` under the fixed name `gOdoo`. It uses `${workspaceFolder:gOdoo}` for
-project paths in workspace settings, tasks, and launch configurations. These paths stay tied to the project folder,
-including when the workspace is generated inside the development container. Selected Odoo, third-party, and archive
-roots remain absolute host paths. Pylance receives those paths through `python.analysis.extraPaths`; the generated
-`gOdoo: attach` configuration maps the project to `/odoo/godoo_workspace` and selected sources to the same absolute
-paths inside the development container.
+The generated `<project>.code-workspace` uses the fixed folder name `gOdoo` and `${workspaceFolder:gOdoo}` for project
+paths. Selected Odoo, addon, and archive paths remain absolute host paths. Pylance receives them through
+`python.analysis.extraPaths`; the generated `gOdoo: attach` configuration maps the project to `/odoo/godoo_workspace`
+and uses the selected source paths inside the development container.
 
-Downstream Compose owns services, bind mounts, BuildKit contexts, users, and cache mounts. Before development starts,
-`workspace runtime-env` validates the selected worktrees on the host and prints shell-safe resolved path assignments.
-Development mounts the full source root read-only at the same absolute path and passes those paths to the containers;
-runtime commands do not inspect Git. Production `make prod` first runs `workspace check --sources-only` on the host,
-then supplies `GODOO_SOURCES_ROOT` as a BuildKit context. A separate image stage runs `workspace materialize` against
-read-only project and source mounts, then writes selected contents and provenance beneath `/image/odoo`. The final image
-copies these files into canonical `/odoo` paths. Materialization selects and copies sources; the host check verifies
-worktrees. No temporary host source tree is used, and no Git commands or worktree scans run inside the image build.
+Downstream Compose owns bind mounts and service configuration. Development resolves paths on the host and mounts the
+source root read-only; runtime commands do not inspect Git. Production builds check sources on the host, then
+materialize selected files from a read-only BuildKit context. See [downstream runtime setup](downstream.md) for those
+contracts.
 
-Use `make workspace` to generate the editor workspace on the host. `make configure` remains a compatibility alias.
-
-`.godoo/docker-compose.sources.yml` and `.godoo/source-provenance.json` are retired artifacts. Configure removes safe
-regular-file copies; check fails while either remains, preventing old generated infrastructure from being used.
-
-Configure also generates the ignored project-root `pyrightconfig.json` alongside `<project>.code-workspace`. It targets
-the project `.venv` with Python 3.11, includes `src/`, `addons/`, and `scripts/`, and adds the project addon directory
-plus resolved source and archive paths to `extraPaths`. Run `make workspace` before `make typecheck`; the latter runs
-`.venv/bin/pyright --project pyrightconfig.json` and fails if the generated configuration is missing.
+Configure removes retired `.godoo/docker-compose.sources.yml` and `.godoo/source-provenance.json` only when they are
+regular files. Check fails while either remains. Configure also generates the ignored project-root `pyrightconfig.json`
+for the project `.venv` (Python 3.11), including `src/`, `addons/`, `scripts/`, project addons, and resolved source
+paths. Run `make workspace` before `make typecheck`; typecheck runs `.venv/bin/pyright --project pyrightconfig.json` and
+fails if the generated file is missing. `make configure` remains a compatibility alias for `make workspace`.

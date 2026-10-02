@@ -1,83 +1,66 @@
 # Downstream runtime setup
 
-Downstream projects own their Dockerfile, Compose files, PostgreSQL sidecar, environment, runtime UID/GID, Make targets,
-debug service, and image. The supported database topology is a same-host PostgreSQL sidecar on an isolated Compose
-network. gOdoo manages selected sources and editor state.
+Downstream projects own the Dockerfile, Compose files, PostgreSQL sidecar, runtime UID/GID, environment, service
+startup, debug service, and image. gOdoo manages selected sources and editor configuration. The supported database
+topology is a same-host PostgreSQL sidecar on an isolated Compose network.
 
-## PostgreSQL 18 and pgvector
+## Prepare sources and start development
 
-The representative stack runs `pgvector/pgvector:pg18-trixie` for Odoo 19 AI features. It enables the `vector` extension
-in `template1` during first initialization, so databases created from the default template inherit it. Restored
-databases carry their own extension state and can enable it with `CREATE EXTENSION IF NOT EXISTS vector` when needed.
+From the downstream project directory, set the absolute `GODOO_SOURCES_ROOT`, then run `godoo workspace sync` and
+`godoo workspace check`. Sync may reset verified managed worktrees; check is offline and read-only. See
+[source workspaces](workspace.md) for the manifest and editor contract.
 
-PostgreSQL 18 stores its cluster below `/var/lib/postgresql/18/docker`, so the `db_data` volume mounts at
-`/var/lib/postgresql`. The representative stack initializes this volume as a new PostgreSQL 18 cluster.
+The representative development stack combines `docker-compose.base.yml` and `docker-compose.dev.yml`. Before Compose
+starts, resolve selected source paths on the host with `godoo workspace runtime-env`. The development override mounts
+the project read-write and the complete source root read-only at its existing absolute `GODOO_SOURCES_ROOT` path.
+`GODOO_RUNTIME_ODOO_PATH` names the selected Odoo subpath; `GODOO_RUNTIME_ADDON_PATHS` carries selected addon paths.
+Containers do not inspect or manage Git worktrees.
 
-Compose mounts `config/postgresql.conf` read-only and starts PostgreSQL with that file. The conservative development
-defaults allocate 256 MiB for vector-index maintenance and a 512 MiB shared-memory segment. Tune those values together
-for larger production datasets.
+## PostgreSQL
 
-## Prepare sources
+The representative Odoo 19 stack uses `pgvector/pgvector:pg18-trixie` for AI features. It enables `vector` in
+`template1`, so new databases inherit the extension. Restored databases may need
+`CREATE EXTENSION IF NOT EXISTS vector`. PostgreSQL 18 stores its cluster under `/var/lib/postgresql/18/docker`; mount
+the database volume at `/var/lib/postgresql`.
 
-From the project directory, set the required absolute `GODOO_SOURCES_ROOT`, then run `godoo workspace sync` and
-`godoo workspace check`. `sync` may reset verified managed worktrees; `configure` generates the VS Code workspace after
-checking local worktrees; `check` is offline and read-only. See [source workspaces](workspace.md).
-
-Compose is downstream-owned. Before starting development, evaluate the shell-safe output from
-`godoo workspace runtime-env` on the host. Combine the representative `docker-compose.base.yml` with
-`docker-compose.dev.yml`; the development override mounts the project read-write and the complete source root read-only
-at its existing absolute path, then forwards `GODOO_RUNTIME_ODOO_PATH` and `GODOO_RUNTIME_ADDON_PATHS`. Containers use
-those paths directly and never inspect the mounted Git worktrees. Production uses the base file with the Traefik
-override.
-
-`make dev` starts PostgreSQL, runs initialization to completion, then starts the app, WebSocket service, and Nginx. Use
-`make dev DEV_UP_ARGS=-d` to leave the stack running in the background. Nginx listens on host loopback port 8069.
+Compose mounts `config/postgresql.conf` read-only. Its development defaults allocate 256 MiB for vector-index
+maintenance and a 512 MiB shared-memory segment; tune both for larger datasets.
 
 ## HTTP and file delivery
 
-The representative stack sends ordinary HTTP through Nginx to Odoo on port 8069. Traefik routes `/websocket` to Odoo's
-evented port 8072 in production, or to the separate `websocket` service in development. The loopback port 8069 also
-points to Nginx; Odoo's HTTP port is not published.
+The example Nginx listens on host loopback port 8069 and proxies ordinary HTTP to Odoo. In production, Traefik routes
+`/websocket` directly to Odoo on port 8072; the development stack uses a separate WebSocket service. With
+`GODOO_X_SENDFILE=true`, Nginx serves file-backed attachments from the shared filestore. Keep its file-serving location
+internal. A separate filestore volume could narrow Nginx access, but would require migrating existing files. Disable
+X-Sendfile if the deployment removes Nginx.
 
-`runtime init` enables Odoo's X-Sendfile support by default through `GODOO_X_SENDFILE`. After Odoo checks access to a
-file-backed attachment, Nginx serves its `X-Accel-Redirect` from an internal filestore location. Nginx mounts the
-existing `odoo_data` volume read-only. This volume contains more than the filestore; a dedicated filestore volume would
-narrow Nginx's access but would require migrating existing files. Keep the Nginx location internal, and disable
-X-Sendfile if a deployment removes Nginx.
+Set `GODOO_REPORT_URL` to the file-serving proxy address as seen from Odoo (the example uses `http://nginx`). Init
+stores this as Odoo's `report.url` and requires it when X-Sendfile is enabled. Odoo serves module static files itself;
+they are outside the filestore. Do not mount host source trees into Nginx.
 
-PDF rendering fetches CSS through `report.url`. Set `GODOO_REPORT_URL` to the address of the file-serving proxy as seen
-from the Odoo container; this Compose example defaults to `http://nginx`. `runtime init` stores the value in Odoo and
-requires it when `GODOO_X_SENDFILE=true`.
+## Build and run production images
 
-Generated asset bundles stored as file-backed attachments use this path. Odoo still serves module files under
-`/module/static/` because they sit outside the filestore. Nginx does not mount the host source trees, avoiding another
-file-sharing path in development. Production sources are already copied into the Odoo image.
+Run `make prod` with Docker Compose 2.17 or newer. It checks selected worktrees on the host with
+`godoo workspace check --sources-only`, then passes `GODOO_SOURCES_ROOT` as the BuildKit `godoo-sources` context. A
+read-only materialization stage copies only selected repositories into `/image/odoo` and writes schema-2 source
+provenance. Builds do not create temporary host source trees or run Git against worktrees inside the image build.
 
-gOdoo finds third-party addons without a separate path setting. Development gets the manifest-selected paths from
-`workspace runtime-env`. Production scans `thirdparty` beside the selected Odoo installation, where materialization puts
-only selected repositories and archives.
+The requirements layer bind-mounts only `/image/odoo/odoo/requirements.txt`. The image includes the checked-out CLI and
+materialized runtime sources; it is self-contained. Runtime paths are `/odoo/odoo`, `/odoo/godoo_workspace`,
+`/odoo/thirdparty`, and `/odoo/config/odoo.conf`. Do not mount `GODOO_SOURCES_ROOT` into `init` or `app`, and do not
+bake database passwords into the image.
 
-## Build production image
+The `init` service runs `godoo runtime init` after PostgreSQL is healthy. The `app` service runs `godoo runtime launch`
+only after init completes successfully (`service_completed_successfully`). Start downstream debug services before using
+the attach-only `gOdoo: attach` VS Code configuration.
 
-Run `make prod` from the downstream project with Docker Compose 2.17 or newer. It first runs
-`godoo workspace check --sources-only` on the host to verify the selected worktrees without requiring generated editor
-files. Compose then passes `GODOO_SOURCES_ROOT` to BuildKit as the `godoo-sources` context. A separate materialization
-stage runs `godoo workspace materialize` with the project and selected source root mounted read-only. It selects and
-copies files and writes schema 2 provenance under `/image/odoo`; the host check owns worktree verification. The build
-does not create a temporary host tree or run Git commands or worktree scans.
+For Odoo's upgrade client and restore workflow, see the [runtime lifecycle guide](lifecycle.md). The optional
+`scripts/odoo_instance_get_upgrade.sh` wrapper belongs to the downstream project, not gOdoo. It maps:
 
-The production requirements layer bind-mounts only `/image/odoo/odoo/requirements.txt` from the materialized stage.
-BuildKit keys this layer on the file contents, so gOdoo source edits can reuse the Odoo dependency install. The final
-stage copies `/image/odoo/` into the image, then installs the gOdoo CLI package with normal dependency resolution.
-`make prod` sets `GODOO_PACKAGE=/build/project` to install the checked-out CLI; downstream Compose retains the
-`godoo-cli` default.
+| Downstream variable           | Official client option |
+| ----------------------------- | ---------------------- |
+| `ODOO_DUMP_SQL_PATH`          | `-i` input dump        |
+| `ODOO_UPGRADE_TARGET_VERSION` | `-t` target version    |
+| `ODOO_ENTERPRISE_SUBCODE`     | `-c` contract          |
 
-The production image sets `GODOO_RUNTIME_MATERIALIZED=1`, so runtime source resolution uses canonical image paths when
-no explicit development source overrides are set. The resulting image is self-contained: do not mount
-`GODOO_SOURCES_ROOT` into `init` or `app`. Canonical runtime paths are `/odoo/odoo`, `/odoo/godoo_workspace`,
-`/odoo/thirdparty`, and `/odoo/config/odoo.conf`. Both runtime services share Odoo data and configuration volumes.
-`init` runs `godoo runtime init` after PostgreSQL is healthy; `app` runs `godoo runtime launch` after initialization
-succeeds.
-
-Start downstream debug services before using the attach-only `gOdoo: attach` VS Code configuration. Do not bake database
-passwords into images. See [runtime lifecycle](lifecycle.md) for state, locking, and recovery details.
+The wrapper also passes `-x` to suppress the official client's local restore.
