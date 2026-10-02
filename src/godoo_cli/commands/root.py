@@ -9,7 +9,7 @@ from rich import print as rich_print
 
 from .. import __about__
 from ..helpers.system import set_logging
-from . import db_cli_app, rpc_cli_app, run_odoo, runtime_cli_app, test_cli_app, workspace_cli_app
+from . import db_cli_app, rpc_cli_app, run_odoo, runtime_cli_app, test_cli_app, upgrade, workspace_cli_app
 
 LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +86,10 @@ def main_cli():
         "run",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     )(run_odoo)
+    app.command(
+        "upgrade",
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    )(upgrade)
     return app
 
 
