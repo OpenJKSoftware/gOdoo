@@ -15,6 +15,7 @@ from ...runtime.archive import (
     load_runtime_archive,
 )
 from ...runtime.odoo import SUPPORTED_ODOO_VERSION_SPECIFIER
+from ...runtime.prepare import validate_original_filestore_source
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_development_odoo_main_path
 
@@ -61,8 +62,16 @@ def load_database(
     db_password: Annotated[str | None, CLI.database.db_password] = None,
     force: Annotated[bool, typer.Option("--force", envvar="GODOO_DB_LOAD_FORCE")] = False,
     db_template: Annotated[str, CLI.database.db_template_name] = "template0",
+    original_filestore: Annotated[
+        Path | None,
+        typer.Option("--original-filestore", envvar="GODOO_ORIGINAL_FILESTORE"),
+    ] = None,
 ) -> int:
     """Load an archive through staged promotion."""
+    try:
+        validated_archive = validate_original_filestore_source(archive_path, original_filestore)
+    except (RuntimeRestoreError, OSError, ValueError) as error:
+        raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
     try:
         connection = DBConnection.from_odoo_config(db_name, odoo_conf_path).with_overrides(
             hostname=db_host,
@@ -94,6 +103,8 @@ def load_database(
                 force=force,
                 odoo_version=version.major,
                 connection=connection,
+                original_filestore=original_filestore,
+                _validated_archive=validated_archive,
             )
         )
     except (RuntimeRestoreError, OSError, ValueError, psycopg2.Error):

@@ -1,6 +1,7 @@
 """Tests lifecycle orchestration across runtime setup and deployment initialization."""
 
 import logging
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,6 +59,31 @@ def test_ensure_runtime_prepares_and_skips_existing_database(tmp_path: Path):
 
     assert created is False
     assert calls == ["prepare"]
+
+
+def test_expected_odoo_major_rejects_before_deployment_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reject a transition target that disagrees with the configured Odoo runtime."""
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+    monkeypatch.setattr(
+        lifecycle_commands,
+        "deployment_init",
+        lambda *_args, **_kwargs: pytest.fail("version mismatch must reject before deployment"),
+    )
+    result = CliRunner().invoke(
+        app,
+        ["--expected-odoo-major", "18"],
+        env={
+            "ODOO_MAIN_FOLDER": "/tmp/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+        },
+    )
+    assert result.exit_code == 2
+    assert "requires Odoo 18.x" in result.output
 
 
 def test_ensure_runtime_prepares_and_bootstraps_missing_database(tmp_path: Path):
@@ -151,6 +177,31 @@ def test_reconcile_modules_builds_typed_upgrade_arguments(tmp_path: Path, monkey
     assert option_values("--upgrade-path") == [f"{tmp_path / 'upgrades'},{tmp_path / 'extra-upgrades'}"]
     assert option_values("--pre-upgrade-scripts") == [f"{tmp_path / 'first.py'},{tmp_path / 'second.py'}"]
     assert option_values("--log-handler") == ["odoo.modules:DEBUG", "odoo.sql_db:INFO"]
+
+
+def test_reconcile_modules_keeps_single_path_api_compatibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep existing direct callers that pass one Path working."""
+    observed: dict[str, list[str]] = {}
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "run_odoo_command",
+        lambda command: observed.update(command=command) or SimpleNamespace(returncode=0),
+    )
+    upgrade_root = tmp_path / "upgrades"
+    assert (
+        runtime_lifecycle.reconcile_modules(
+            _config(tmp_path),
+            ["sale"],
+            None,
+            upgrade_path=upgrade_root,
+        )
+        == 0
+    )
+    command = observed["command"]
+    assert command[command.index("--upgrade-path") + 1] == str(upgrade_root.resolve())
 
 
 def test_upgrade_options_require_an_explicit_update(tmp_path: Path):
@@ -274,9 +325,12 @@ def test_deployment_init_passes_fresh_bootstrap_policy(monkeypatch: pytest.Monke
 
 def test_deployment_init_preflights_pre_upgrade_before_and_after_restore(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ):
     """Guards the contract that deployment init preflights requested modules before and after restore."""
     observed: list[tuple[list[str], dict[str, object]]] = []
+    pre_upgrade_script = tmp_path / "pre-upgrade.py"
+    pre_upgrade_script.write_text("pass\n")
     app = typer.Typer()
     app.command()(lifecycle_commands.deployment_init_odoo_runtime)
 
@@ -296,7 +350,7 @@ def test_deployment_init_preflights_pre_upgrade_before_and_after_restore(
 
     result = CliRunner().invoke(
         app,
-        ["--update", "base", "--pre-upgrade-script", "/tmp/pre-upgrade.py"],
+        ["--update", "base", "--pre-upgrade-script", str(pre_upgrade_script)],
         env={
             "ODOO_MAIN_FOLDER": "/tmp/odoo",
             "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
@@ -314,11 +368,17 @@ def test_deployment_init_preflights_pre_upgrade_before_and_after_restore(
     ]
 
 
+@pytest.mark.parametrize("filename", ["backup", "backup.backup"])
 def test_deployment_init_loads_native_seed_archive_through_odoo(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    filename: str,
 ):
     """Guards the contract that deployment init loads native seed archive through odoo."""
     observed: dict[str, object] = {}
+    archive = tmp_path / filename
+    with zipfile.ZipFile(archive, "w") as seed:
+        seed.writestr("dump.sql", "-- seed")
     app = typer.Typer()
     app.command()(lifecycle_commands.deployment_init_odoo_runtime)
 
@@ -337,7 +397,7 @@ def test_deployment_init_loads_native_seed_archive_through_odoo(
 
     result = CliRunner().invoke(
         app,
-        ["--seed", "/tmp/runtime.zip"],
+        ["--seed", str(archive)],
         env={
             "ODOO_MAIN_FOLDER": "/tmp/odoo",
             "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
@@ -349,11 +409,13 @@ def test_deployment_init_loads_native_seed_archive_through_odoo(
     )
 
     assert result.exit_code == 0, result.output
-    assert observed["archive_path"] == Path("/tmp/runtime.zip")
+    assert observed["archive_path"] == archive
     assert observed["db_name"] == "runtime"
     assert observed["data_dir"] == Path("/var/lib/odoo")
     assert observed["force"] is True
     assert observed["use_native_db_load"] is None
+    assert observed["_validated_archive"] is not None
+    assert observed["require_same_archive_identity"] is True
     connection = observed["connection"]
     assert isinstance(connection, DBConnection)
     assert connection.db_name == "runtime"
@@ -362,9 +424,15 @@ def test_deployment_init_loads_native_seed_archive_through_odoo(
 
 def test_deployment_init_uses_sql_seed_load_before_pre_upgrade_scripts(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ):
     """Restore through PostgreSQL before Odoo can run pre-upgrade scripts."""
     observed: dict[str, object] = {}
+    pre_upgrade_script = tmp_path / "pre-upgrade.py"
+    pre_upgrade_script.write_text("pass\n")
+    archive = tmp_path / "runtime.zip"
+    with zipfile.ZipFile(archive, "w") as seed:
+        seed.writestr("dump.sql", "-- seed")
     app = typer.Typer()
     app.command()(lifecycle_commands.deployment_init_odoo_runtime)
 
@@ -382,7 +450,7 @@ def test_deployment_init_uses_sql_seed_load_before_pre_upgrade_scripts(
 
     result = CliRunner().invoke(
         app,
-        ["--seed", "/tmp/runtime.zip", "--update", "base", "--pre-upgrade-script", "/tmp/pre-upgrade.py"],
+        ["--seed", str(archive), "--update", "base", "--pre-upgrade-script", str(pre_upgrade_script)],
         env={
             "ODOO_MAIN_FOLDER": "/tmp/odoo",
             "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
@@ -428,8 +496,13 @@ def test_deployment_init_rejects_after_restore_hooks_with_pre_upgrade_scripts():
 
 def test_deployment_init_allows_after_restore_hooks_without_seed_for_pre_upgrade(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ):
     """Allow ready-runtime reconciliation to retain its ordinary hook configuration."""
+    pre_upgrade_script = tmp_path / "pre-upgrade.py"
+    pre_upgrade_script.write_text("pass\n")
+    hook_dir = tmp_path / "hooks"
+    hook_dir.mkdir()
     app = typer.Typer()
     app.command()(lifecycle_commands.deployment_init_odoo_runtime)
     monkeypatch.setattr(
@@ -440,7 +513,7 @@ def test_deployment_init_allows_after_restore_hooks_without_seed_for_pre_upgrade
 
     result = CliRunner().invoke(
         app,
-        ["--update", "base", "--pre-upgrade-script", "/tmp/pre-upgrade.py", "--after-restore-dir", "/tmp/hooks"],
+        ["--update", "base", "--pre-upgrade-script", str(pre_upgrade_script), "--after-restore-dir", str(hook_dir)],
         env={
             "ODOO_MAIN_FOLDER": "/tmp/odoo",
             "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
@@ -476,18 +549,42 @@ def test_deployment_init_rejects_pre_upgrade_scripts_without_update():
     assert "requires at least one" in result.output
 
 
-def test_expected_odoo_major_rejects_before_deployment_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Reject a transition target that disagrees with the configured Odoo runtime."""
+def test_deployment_init_passes_original_filestore_to_seed_loader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The init command sends the supplied original filestore to native restore."""
+    source = tmp_path / "original-filestore"
+    source.mkdir()
+    archive = tmp_path / "seed.zip"
+    with zipfile.ZipFile(archive, "w") as seed:
+        seed.writestr("dump.sql", "-- seed")
+    original_testzip = zipfile.ZipFile.testzip
+    crc_checks = 0
+
+    def count_crc_checks(native_archive: zipfile.ZipFile) -> str | None:
+        nonlocal crc_checks
+        crc_checks += 1
+        return original_testzip(native_archive)
+
+    monkeypatch.setattr(zipfile.ZipFile, "testzip", count_crc_checks)
+    observed: dict[str, object] = {}
     app = typer.Typer()
     app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-    monkeypatch.setattr(
-        lifecycle_commands,
-        "deployment_init",
-        lambda *_args, **_kwargs: pytest.fail("version mismatch must reject before deployment"),
-    )
+
+    def load_archive(**kwargs: object) -> int:
+        observed.update(kwargs)
+        return 0
+
+    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
+        seeder = cast(Callable[[GodooConfig], None], kwargs["seeder"])
+        seeder(config)
+        return LifecycleOutcome.RESTORED, 0
+
+    monkeypatch.setattr(lifecycle_commands, "load_runtime_archive", load_archive)
+    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
     result = CliRunner().invoke(
         app,
-        ["--expected-odoo-major", "18"],
+        ["--seed", str(archive), "--original-filestore", str(source)],
         env={
             "ODOO_MAIN_FOLDER": "/tmp/odoo",
             "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
@@ -497,30 +594,42 @@ def test_expected_odoo_major_rejects_before_deployment_callbacks(monkeypatch: py
             "ODOO_DB_USER": "odoo",
         },
     )
-    assert result.exit_code == 2
-    assert "requires Odoo 18.x" in result.output
+
+    assert result.exit_code == 0, result.output
+    assert observed["archive_path"] == archive
+    assert observed["_validated_archive"] is not None
+    assert crc_checks == 1
+    assert observed["original_filestore"] == source
+    assert observed["require_same_archive_identity"] is True
 
 
-def test_reconcile_modules_keeps_single_path_api_compatibility(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_deployment_init_requires_seed_for_original_filestore_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Keep existing direct callers that pass one Path working."""
-    observed: dict[str, list[str]] = {}
+    """The original-filestore environment setting fails before lifecycle work without a seed."""
+    source = tmp_path / "original-filestore"
+    source.mkdir()
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
     monkeypatch.setattr(
-        runtime_lifecycle,
-        "run_odoo_command",
-        lambda command: observed.update(command=command) or SimpleNamespace(returncode=0),
+        lifecycle_commands,
+        "deployment_init",
+        lambda *_args, **_kwargs: pytest.fail("Lifecycle work must not start without the ZIP seed."),
     )
-    upgrade_root = tmp_path / "upgrades"
-    assert (
-        runtime_lifecycle.reconcile_modules(
-            _config(tmp_path),
-            ["sale"],
-            None,
-            upgrade_path=upgrade_root,
-        )
-        == 0
+
+    result = CliRunner().invoke(
+        app,
+        [],
+        env={
+            "ODOO_MAIN_FOLDER": "/tmp/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+            "GODOO_ORIGINAL_FILESTORE": str(source),
+        },
     )
-    command = observed["command"]
-    assert command[command.index("--upgrade-path") + 1] == str(upgrade_root.resolve())
+
+    assert result.exit_code == 2
+    assert "An Odoo ZIP archive is required" in result.output

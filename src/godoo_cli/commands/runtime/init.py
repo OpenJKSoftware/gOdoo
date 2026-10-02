@@ -8,7 +8,7 @@ import psycopg2
 import typer
 
 from ...models import GodooConfig
-from ...runtime.archive import load_runtime_archive
+from ...runtime.archive import _validate_native_runtime_archive, load_runtime_archive
 from ...runtime.lifecycle import (
     LifecycleBootstrapError,
     deployment_init,
@@ -27,6 +27,7 @@ from ...runtime.odoo import (
     set_report_url,
     x_sendfile_enabled,
 )
+from ...runtime.prepare import validate_original_filestore_source
 from ..common import CommonCLI
 from ..configuration import resolve_command_config
 
@@ -66,6 +67,10 @@ def deployment_init_odoo_runtime(  # noqa: C901
     seed: Annotated[
         Path | None,
         typer.Option("--seed", envvar="GODOO_RUNTIME_SEED", help="Native Odoo ZIP archive."),
+    ] = None,
+    original_filestore: Annotated[
+        Path | None,
+        typer.Option("--original-filestore", envvar="GODOO_ORIGINAL_FILESTORE"),
     ] = None,
     update_modules: Annotated[list[str] | None, typer.Option("--update", envvar="GODOO_RECONCILE_UPDATE")] = None,
     install_modules: Annotated[list[str] | None, typer.Option("--install", envvar="GODOO_RECONCILE_INSTALL")] = None,
@@ -126,6 +131,16 @@ def deployment_init_odoo_runtime(  # noqa: C901
             f"the selected transition requires Odoo {expected_odoo_major}.x."
         )
         raise typer.BadParameter(message, param_hint="--expected-odoo-major")
+    _validate_pre_upgrade_options(seed, pre_upgrade_scripts, update_modules, after_restore_dirs)
+    try:
+        validated_archive = validate_original_filestore_source(seed, original_filestore)
+    except (RuntimeError, OSError, ValueError) as error:
+        raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
+    if seed is not None and validated_archive is None:
+        try:
+            validated_archive = _validate_native_runtime_archive(seed)
+        except (RuntimeError, OSError, ValueError) as error:
+            raise typer.BadParameter(str(error), param_hint="--seed") from error
     config = resolve_command_config(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,
@@ -142,7 +157,6 @@ def deployment_init_odoo_runtime(  # noqa: C901
     if x_sendfile_enabled(config, x_sendfile) and not report_url:
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")
-    _validate_pre_upgrade_options(seed, pre_upgrade_scripts, update_modules, after_restore_dirs)
     runtime_seed = seed
 
     def already_prepared(_conf: GodooConfig) -> None:
@@ -172,6 +186,9 @@ def deployment_init_odoo_runtime(  # noqa: C901
             data_dir=conf.data_dir,
             force=True,
             connection=conf.db_connection,
+            original_filestore=original_filestore,
+            _validated_archive=validated_archive,
+            require_same_archive_identity=True,
             use_native_db_load=False if pre_upgrade_scripts else None,
         )
         if result:

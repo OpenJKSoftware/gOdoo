@@ -21,6 +21,10 @@ def prepare_database(
     source_db: Annotated[str, typer.Option("--source-db")] = "",
     archive_path: Annotated[Path | None, typer.Option("--archive")] = None,
     filestore_path: Annotated[Path | None, typer.Option("--filestore")] = None,
+    original_filestore: Annotated[
+        Path | None,
+        typer.Option("--original-filestore", envvar="GODOO_ORIGINAL_FILESTORE"),
+    ] = None,
     strategy: Annotated[str, typer.Option("--strategy")] = "auto",
     force: Annotated[bool, typer.Option("--force")] = False,
     db_user: Annotated[str | None, CLI.database.db_user] = None,
@@ -47,6 +51,7 @@ def prepare_database(
             source_db=source_db,
             archive_path=archive_path,
             filestore_path=filestore_path,
+            original_filestore=original_filestore,
             force=force,
         )
     except (ValueError, RuntimeError) as error:

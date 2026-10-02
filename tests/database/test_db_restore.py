@@ -108,11 +108,11 @@ def test_filestore_staging_failure_does_not_clean_existing_database(tmp_path: Pa
     source.mkdir()
     cleaned: list[bool] = []
 
-    def fail_copytree(_source: Path, _stage: Path) -> None:
+    def fail_copy(_source: Path, _stage: Path) -> None:
         error = "disk full"
         raise OSError(error)
 
-    monkeypatch.setattr("godoo_cli.runtime.restore.shutil.copytree", fail_copytree)
+    monkeypatch.setattr("godoo_cli.runtime.restore.copy_filestore", fail_copy)
 
     with pytest.raises(OSError, match="disk full"):
         restore_custom_runtime(

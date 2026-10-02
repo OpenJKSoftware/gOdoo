@@ -12,7 +12,7 @@ from typing import Any, NoReturn
 import psycopg2
 
 from ..models import GodooConfig
-from .archive import load_runtime_archive, validate_native_runtime_archive
+from .archive import _validate_native_runtime_archive, _ValidatedNativeArchive, load_runtime_archive
 from .cow import duplicate_cow_runtime
 from .lifecycle import ensure_runtime
 from .locks import begin_runtime_lifecycle, finish_runtime_lifecycle, runtime_locks, write_runtime_lifecycle
@@ -84,6 +84,31 @@ def select_prepare_strategy(
 
 
 PrepareCallback = Callable[..., Any]
+
+
+def validate_original_filestore_source(
+    archive_path: Path | None,
+    original_filestore: Path | None,
+) -> _ValidatedNativeArchive | None:
+    """Validate native ZIP and original filestore before runtime work."""
+    if original_filestore is None:
+        return None
+    if not original_filestore.is_dir():
+        message = f"Original filestore directory does not exist: {original_filestore}"
+        raise ValueError(message)
+    if archive_path is None:
+        message = "An Odoo ZIP archive is required with --original-filestore."
+        raise ValueError(message)
+    if archive_path.is_dir():
+        message = "--original-filestore cannot be used with a legacy archive directory."
+        raise ValueError(message)
+    if archive_path.suffix.lower() != ".zip":
+        message = "--original-filestore requires an Odoo ZIP archive."
+        raise ValueError(message)
+    if not archive_path.is_file():
+        message = f"Odoo ZIP archive does not exist: {archive_path}"
+        raise ValueError(message)
+    return _validate_native_runtime_archive(archive_path)
 
 
 def _missing_prepare_argument(message: str) -> NoReturn:
@@ -200,13 +225,21 @@ def prepare_runtime(
     source_db: str = "",
     archive_path: Path | None = None,
     filestore_path: Path | None = None,
+    original_filestore: Path | None = None,
     force: bool = False,
 ) -> PreparePlan:
     """Prepare a runtime pair through the single domain-owned strategy contract."""
     # Classify and validate inputs before selecting a strategy that may mutate the runtime pair.
+    validated_archive = validate_original_filestore_source(archive_path, original_filestore)
+    if original_filestore is not None and strategy not in {"auto", PrepareStrategy.ODOO}:
+        message = "--original-filestore requires the Odoo preparation strategy."
+        raise ValueError(message)
+    if original_filestore is not None and filestore_path is not None:
+        message = "--filestore is for PostgreSQL archives; use --original-filestore with an Odoo ZIP."
+        raise ValueError(message)
     postgres = archive_path is not None and archive_path.suffix.lower() not in {".zip", ".odoo"}
     odoo = archive_path is not None and not postgres
-    cow = _cow_capability_available(config, source_db) if source_db else False
+    cow = _cow_capability_available(config, source_db) if source_db and original_filestore is None else False
     plan = select_prepare_strategy(strategy, cow_available=cow, postgres_archive=postgres, odoo_archive=odoo)
     if plan.strategy is not PrepareStrategy.POSTGRES:
         require_supported_odoo_runtime(config.odoo_install_folder)
@@ -216,8 +249,8 @@ def prepare_runtime(
             raise ValueError(msg)
         validate_custom_dump(archive_path)
         validate_filestore(filestore_path)
-    if plan.strategy is PrepareStrategy.ODOO and archive_path is not None:
-        validate_native_runtime_archive(archive_path)
+    if plan.strategy is PrepareStrategy.ODOO and archive_path is not None and validated_archive is None:
+        validated_archive = _validate_native_runtime_archive(archive_path)
 
     # Restore or clone through one selected strategy so database and filestore decisions match.
     def restore() -> int | None:
@@ -241,6 +274,8 @@ def prepare_runtime(
             data_dir=config.data_dir,
             force=force,
             connection=config.db_connection,
+            original_filestore=original_filestore,
+            _validated_archive=validated_archive,
         )
 
     def clone() -> int:

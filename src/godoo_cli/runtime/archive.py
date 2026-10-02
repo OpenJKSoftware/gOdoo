@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 import shutil
 import tempfile
 import uuid
 import zipfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
 from ..database.state import base_module_major, database_exists
+from .filestore import copy_filestore
 from .locks import begin_runtime_restore, runtime_data_directory, runtime_locks
 from .odoo import (
     odoo_bin_get_version,
@@ -44,6 +48,30 @@ CommandRunner = Callable[[Sequence[str]], int]
 
 LEGACY_DUMP_FILENAME = "odoo.dump"
 LEGACY_FILESTORE_DIRECTORY = "odoo_filestore"
+
+
+@dataclass(frozen=True)
+class _ArchiveFileIdentity:
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+    changed_ns: int
+
+
+@dataclass(frozen=True)
+class _ValidatedNativeArchive:
+    identity: _ArchiveFileIdentity
+
+
+def _archive_identity(stat_result: os.stat_result) -> _ArchiveFileIdentity:
+    return _ArchiveFileIdentity(
+        device=stat_result.st_dev,
+        inode=stat_result.st_ino,
+        size=stat_result.st_size,
+        modified_ns=stat_result.st_mtime_ns,
+        changed_ns=stat_result.st_ctime_ns,
+    )
 
 
 def _uses_native_db_commands(odoo_version: int | None, odoo_bin_path: Path | None = None) -> bool:
@@ -142,22 +170,89 @@ def dump_runtime_archive(
             sql_temporary.unlink(missing_ok=True)
 
 
-def validate_native_runtime_archive(archive_path: Path) -> None:
-    """Validate Odoo's ZIP structure and CRCs before allowing a forced load."""
+def _validate_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArchive:
+    """Validate an Odoo ZIP and retain the identity that was checked."""
     if not archive_path.is_file():
         message = f"Odoo runtime archive does not exist or is not a file: {archive_path}"
         raise RuntimeRestoreError(message)
     try:
-        with zipfile.ZipFile(archive_path) as archive:
-            if "dump.sql" not in archive.namelist():
-                message = f"Odoo runtime archive does not contain dump.sql: {archive_path}"
-                raise RuntimeRestoreError(message)
-            if bad_member := archive.testzip():
-                message = f"Odoo runtime archive contains a corrupt member '{bad_member}': {archive_path}"
+        with archive_path.open("rb") as archive_file:
+            identity = _archive_identity(os.fstat(archive_file.fileno()))
+            with zipfile.ZipFile(archive_file) as archive:
+                if "dump.sql" not in archive.namelist():
+                    message = f"Odoo runtime archive does not contain dump.sql: {archive_path}"
+                    raise RuntimeRestoreError(message)
+                if bad_member := archive.testzip():
+                    message = f"Odoo runtime archive contains corrupt member '{bad_member}': {archive_path}"
+                    raise RuntimeRestoreError(message)
+                for info in archive.infolist():
+                    if not info.filename.startswith("filestore/"):
+                        continue
+                    member = info.filename
+                    if "\\" in member or member.startswith("/") or posixpath.normpath(member) != member.rstrip("/"):
+                        message = f"Odoo runtime archive contains unsafe filestore path: {member}"
+                        raise RuntimeRestoreError(message)
+            if identity != _archive_identity(os.fstat(archive_file.fileno())):
+                message = f"Odoo runtime archive changed while it was being validated: {archive_path}"
                 raise RuntimeRestoreError(message)
     except zipfile.BadZipFile as error:
         message = f"Odoo runtime archive is not a valid ZIP file: {archive_path}"
         raise RuntimeRestoreError(message) from error
+    except OSError as error:
+        message = f"Could not read Odoo runtime archive: {archive_path}"
+        raise RuntimeRestoreError(message) from error
+    return _ValidatedNativeArchive(identity)
+
+
+def validate_native_runtime_archive(archive_path: Path) -> None:
+    """Validate Odoo's ZIP structure and CRCs before allowing a forced load."""
+    _validate_native_runtime_archive(archive_path)
+
+
+def _reuse_or_validate_archive(
+    archive_path: Path,
+    validated_archive: _ValidatedNativeArchive | None,
+    *,
+    require_same_identity: bool = False,
+) -> _ValidatedNativeArchive:
+    if validated_archive is None and require_same_identity:
+        message = "Lifecycle archive identity was not captured before initialization."
+        raise RuntimeRestoreError(message)
+    if validated_archive is not None:
+        try:
+            current_identity = _archive_identity(archive_path.stat())
+        except OSError:
+            current_identity = None
+        if current_identity == validated_archive.identity:
+            return validated_archive
+        if require_same_identity:
+            message = "Odoo runtime archive changed after lifecycle plan validation."
+            raise RuntimeRestoreError(message)
+    return _validate_native_runtime_archive(archive_path)
+
+
+@contextmanager
+def _open_validated_archive(
+    archive_path: Path,
+    validated_archive: _ValidatedNativeArchive,
+) -> Iterator[zipfile.ZipFile]:
+    """Open the same archive file whose contents passed CRC validation."""
+    try:
+        archive_file = archive_path.open("rb")
+    except OSError as error:
+        message = f"Could not read Odoo runtime archive: {archive_path}"
+        raise RuntimeRestoreError(message) from error
+    with archive_file:
+        if _archive_identity(os.fstat(archive_file.fileno())) != validated_archive.identity:
+            message = f"Odoo runtime archive changed after validation: {archive_path}"
+            raise RuntimeRestoreError(message)
+        try:
+            archive = zipfile.ZipFile(archive_file)
+        except zipfile.BadZipFile as error:
+            message = f"Odoo runtime archive is not a valid ZIP file: {archive_path}"
+            raise RuntimeRestoreError(message) from error
+        with archive:
+            yield archive
 
 
 def _validate_staged_base_version(connection: DBConnection, target_major: int) -> None:
@@ -172,10 +267,35 @@ def _validate_staged_base_version(connection: DBConnection, target_major: int) -
         raise RuntimeRestoreError(message)
 
 
+def _overlay_filestore(archive: zipfile.ZipFile, destination: Path) -> None:
+    """Write archive filestore members over a staged copy of the original."""
+    for info in archive.infolist():
+        if not info.filename.startswith("filestore/") or info.is_dir():
+            continue
+        relative = info.filename.removeprefix("filestore/")
+        target = destination.joinpath(*relative.split("/"))
+        parents: list[Path] = []
+        parent = target.parent
+        while parent != destination:
+            parents.append(parent)
+            parent = parent.parent
+        for parent in reversed(parents):
+            if parent.exists() and not parent.is_dir():
+                parent.unlink()
+            parent.mkdir(exist_ok=True)
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+        else:
+            target.unlink(missing_ok=True)
+        with archive.open(info) as member, target.open("wb") as output:
+            shutil.copyfileobj(member, output)
+
+
 def load_runtime_archive(  # noqa: C901
     *,
     db_name: str,
     archive_path: Path,
+    original_filestore: Path | None = None,
     odoo_bin_path: Path,
     odoo_conf_path: Path | None = None,
     data_dir: Path | None = None,
@@ -188,6 +308,8 @@ def load_runtime_archive(  # noqa: C901
     odoo_version: int | None = None,
     database_creator: Callable[[DBConnection, str], None] = create_database,
     use_native_db_load: bool | None = None,
+    _validated_archive: _ValidatedNativeArchive | None = None,
+    require_same_archive_identity: bool = False,
 ) -> int:
     """Stage a native restore and promote its database and filestore together."""
     # Validate replacement eligibility while the target runtime remains stable.
@@ -197,7 +319,14 @@ def load_runtime_archive(  # noqa: C901
     else:
         target_major = require_supported_odoo_major(odoo_version, odoo_bin_path.parent)
     with runtime_locks(data_dir, db_name, odoo_conf_path=odoo_conf_path):
-        validate_native_runtime_archive(archive_path)
+        validated_archive = _reuse_or_validate_archive(
+            archive_path,
+            _validated_archive,
+            require_same_identity=require_same_archive_identity,
+        )
+        if original_filestore is not None and not original_filestore.is_dir():
+            message = f"Filestore directory does not exist: {original_filestore}"
+            raise RuntimeRestoreError(message)
         target_connection = connection or _archive_connection(db_name, odoo_conf_path)
         if target_connection.db_name != db_name:
             message = "Archive connection database must match the requested runtime."
@@ -218,6 +347,10 @@ def load_runtime_archive(  # noqa: C901
         native = (
             _uses_native_db_commands(target_major, odoo_bin_path) if use_native_db_load is None else use_native_db_load
         )
+        if original_filestore is not None:
+            # Odoo's native load opens the restored registry before the staged
+            # filestore can be overlaid, so restore SQL into an isolated DB.
+            native = False
         if native:
             command = odoo_db_command(
                 odoo_bin_path=odoo_bin_path,
@@ -239,11 +372,12 @@ def load_runtime_archive(  # noqa: C901
             )
         else:
             extracted = tempfile.TemporaryDirectory(prefix="godoo-archive-")
-            with zipfile.ZipFile(archive_path) as source:
+            with _open_validated_archive(archive_path, validated_archive) as source:
                 source.extract("dump.sql", extracted.name)
-                for member in source.namelist():
-                    if member.startswith("filestore/") and not member.endswith("/"):
-                        source.extract(member, extracted.name)
+                if original_filestore is None:
+                    for member in source.namelist():
+                        if member.startswith("filestore/") and not member.endswith("/"):
+                            source.extract(member, extracted.name)
             command = [
                 "psql",
                 "--file",
@@ -253,6 +387,10 @@ def load_runtime_archive(  # noqa: C901
         stage = runtime_filestore_path(runtime_data, staged_database)
         marker = None
         try:
+            if original_filestore is not None:
+                copy_filestore(original_filestore, stage)
+                with _open_validated_archive(archive_path, validated_archive) as source:
+                    _overlay_filestore(source, stage)
             if not native:
                 database_creator(target_connection.with_db(staged_database), "template0")
             if runner is not None:
@@ -266,7 +404,7 @@ def load_runtime_archive(  # noqa: C901
             _validate_staged_base_version(target_connection.with_db(staged_database), target_major)
             if extracted is None:
                 stage.mkdir(parents=True, exist_ok=True)
-            else:
+            elif original_filestore is None:
                 source_filestore = Path(extracted.name) / "filestore"
                 if source_filestore.is_dir():
                     shutil.copytree(source_filestore, stage)

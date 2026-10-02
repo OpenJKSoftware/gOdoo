@@ -9,6 +9,7 @@ from pathlib import Path
 from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
 from ..database.state import database_exists
+from .filestore import copy_filestore
 from .locks import begin_runtime_restore, runtime_locks
 from .odoo import run_odoo_command
 from .promotion import (
@@ -118,7 +119,7 @@ def restore_custom_runtime(
         marker: Path | None = None
         staged_database_created = False
         try:
-            shutil.copytree(filestore_source, stage)
+            copy_filestore(filestore_source, stage)
             database_creator(connection.with_db(staged_database), db_template)
             staged_database_created = True
             result = _restore_database_dump(connection, staged_database, dump_path, runner)
