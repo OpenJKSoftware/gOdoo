@@ -16,6 +16,7 @@ from .archive import load_runtime_archive, validate_native_runtime_archive
 from .cow import duplicate_cow_runtime
 from .lifecycle import ensure_runtime
 from .locks import begin_runtime_lifecycle, finish_runtime_lifecycle, runtime_locks, write_runtime_lifecycle
+from .odoo import require_supported_odoo_runtime
 from .restore import restore_custom_runtime, validate_custom_dump, validate_filestore
 
 LOGGER = logging.getLogger(__name__)
@@ -207,6 +208,8 @@ def prepare_runtime(
     odoo = archive_path is not None and not postgres
     cow = _cow_capability_available(config, source_db) if source_db else False
     plan = select_prepare_strategy(strategy, cow_available=cow, postgres_archive=postgres, odoo_archive=odoo)
+    if plan.strategy is not PrepareStrategy.POSTGRES:
+        require_supported_odoo_runtime(config.odoo_install_folder)
     if plan.strategy is PrepareStrategy.POSTGRES:
         if archive_path is None or filestore_path is None:
             msg = "The PostgreSQL strategy requires --archive and --filestore."

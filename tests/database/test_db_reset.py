@@ -227,13 +227,15 @@ def test_default_drop_success_removes_filestore(tmp_path: Path, monkeypatch: pyt
     assert not target.exists()
 
 
-def test_omitted_version_uses_pre19_archive_dispatch(monkeypatch: pytest.MonkeyPatch):
-    """Guards the contract that omitted version uses pre19 archive dispatch."""
-    monkeypatch.setattr(runtime_archive, "odoo_bin_get_version", lambda _path: OdooVersion("Odoo", 18, 0))
-    assert runtime_archive._uses_native_db_commands(None, Path("/odoo/odoo-bin")) is False
+@pytest.mark.parametrize(("major", "expected"), [(18, False), (19, True), (20, True), (25, True)])
+def test_omitted_version_selects_archive_dispatch(monkeypatch: pytest.MonkeyPatch, major: int, expected: bool):
+    """Guards archive dispatch using native commands from Odoo 19 onward."""
+    monkeypatch.setattr(runtime_archive, "odoo_bin_get_version", lambda _path: OdooVersion("Odoo", major, 0))
+    assert runtime_archive._uses_native_db_commands(None, Path("/odoo/odoo-bin")) is expected
 
 
-def test_dump_replaces_destination_only_after_success(tmp_path: Path):
+@pytest.mark.parametrize("odoo_version", [19, 20])
+def test_dump_replaces_destination_only_after_success(tmp_path: Path, odoo_version: int):
     """Guards the contract that dump replaces destination only after success."""
     destination = tmp_path / "runtime.zip"
     destination.write_bytes(b"previous")
@@ -251,6 +253,7 @@ def test_dump_replaces_destination_only_after_success(tmp_path: Path):
             archive_path=destination,
             odoo_bin_path=Path("/odoo/odoo-bin"),
             data_dir=tmp_path / "data",
+            odoo_version=odoo_version,
             runner=create_archive,
         )
         == 0
@@ -270,7 +273,8 @@ def test_dump_replaces_destination_only_after_success(tmp_path: Path):
     assert not list(tmp_path.glob(".*.tmp"))
 
 
-def test_native_archive_staging_and_cleanup_use_the_selected_connection(tmp_path: Path):
+@pytest.mark.parametrize("odoo_version", [19, 20])
+def test_native_archive_staging_and_cleanup_use_the_selected_connection(tmp_path: Path, odoo_version: int):
     """Guards the contract that native archive staging and cleanup use the selected connection."""
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as runtime_zip:
@@ -286,6 +290,7 @@ def test_native_archive_staging_and_cleanup_use_the_selected_connection(tmp_path
         data_dir=tmp_path / "data",
         connection=connection,
         force=True,
+        odoo_version=odoo_version,
         runner=lambda command: commands.append(list(command)) or 13,
         database_cleaner=cleaned.append,
     )
@@ -382,6 +387,7 @@ def test_native_archive_filestore_failure_rolls_back_database(tmp_path: Path, mo
         raise OSError(message)
 
     monkeypatch.setattr(runtime_archive, "replace_filestore", fail_swap)
+    monkeypatch.setattr(runtime_archive, "_validate_staged_base_version", lambda *_args: None)
     with pytest.raises(OSError, match="disk unavailable"):
         load_runtime_archive(
             db_name="runtime",
@@ -415,6 +421,7 @@ def test_native_archive_rollback_failure_retains_staging_and_marker(tmp_path: Pa
         raise ConnectionError(message)
 
     monkeypatch.setattr(runtime_archive, "replace_filestore", fail_swap)
+    monkeypatch.setattr(runtime_archive, "_validate_staged_base_version", lambda *_args: None)
     data_dir = tmp_path / "data"
     with pytest.raises(RuntimeRestoreError, match="pending marker was retained"):
         load_runtime_archive(

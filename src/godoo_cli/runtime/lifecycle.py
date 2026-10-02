@@ -22,6 +22,7 @@ from .odoo import (
     build_odoo_shell_command,
     preflight_for_config,
     prepare_runtime,
+    require_runtime_database_major,
     run_odoo_command,
 )
 
@@ -246,6 +247,7 @@ def deployment_init(  # noqa: C901
     """Run lock-owned lifecycle phases, persisting each pending phase before entry."""
     # Serialize recovery and reconciliation so every marker describes one complete attempt.
     with runtime_locks(config.data_dir, config.db_name):
+        require_runtime_database_major(config)
         if preparer:
             preparer(config)
         if preflight:
@@ -361,6 +363,7 @@ def reconcile_modules(
     log_handlers: list[str] | None = None,
 ) -> int:
     """Run explicitly requested module actions and stop; no action is implicit."""
+    require_runtime_database_major(config)
     updates = split_lifecycle_values(update_modules)
     installs = split_lifecycle_values(install_modules)
     scripts = list(dict.fromkeys(pre_upgrade_scripts or []))

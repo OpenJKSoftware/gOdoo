@@ -13,9 +13,14 @@ from pathlib import Path
 
 from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
-from ..database.state import database_exists
+from ..database.state import base_module_major, database_exists
 from .locks import begin_runtime_restore, runtime_data_directory, runtime_locks
-from .odoo import odoo_bin_get_version, odoo_database_args, run_odoo_command
+from .odoo import (
+    odoo_bin_get_version,
+    odoo_database_args,
+    require_supported_odoo_major,
+    run_odoo_command,
+)
 from .promotion import (
     DatabaseCleaner,
     DatabaseRollback,
@@ -42,7 +47,7 @@ LEGACY_FILESTORE_DIRECTORY = "odoo_filestore"
 
 
 def _uses_native_db_commands(odoo_version: int | None, odoo_bin_path: Path | None = None) -> bool:
-    """Return whether this Odoo checkout provides the Odoo 19 db dispatcher."""
+    """Return whether this Odoo checkout provides native database commands."""
     if odoo_version is None:
         if odoo_bin_path is None:
             message = "Cannot select database archive commands without an Odoo binary path."
@@ -52,6 +57,7 @@ def _uses_native_db_commands(odoo_version: int | None, odoo_bin_path: Path | Non
         except ValueError as error:
             message = "Could not determine the Odoo version for database archive commands."
             raise RuntimeRestoreError(message) from error
+    require_supported_odoo_major(odoo_version, odoo_bin_path.parent if odoo_bin_path else Path("odoo"))
     return odoo_version >= 19
 
 
@@ -154,6 +160,18 @@ def validate_native_runtime_archive(archive_path: Path) -> None:
         raise RuntimeRestoreError(message) from error
 
 
+def _validate_staged_base_version(connection: DBConnection, target_major: int) -> None:
+    """Ensure staged Odoo restore contains the configured base module major."""
+    try:
+        actual_major = base_module_major(connection)
+    except RuntimeError as error:
+        message = "Could not read a usable base module version from staged Odoo database."
+        raise RuntimeRestoreError(message) from error
+    if actual_major != target_major:
+        message = f"The staged Odoo database version {actual_major}; runtime requires Odoo {target_major}."
+        raise RuntimeRestoreError(message)
+
+
 def load_runtime_archive(  # noqa: C901
     *,
     db_name: str,
@@ -173,6 +191,11 @@ def load_runtime_archive(  # noqa: C901
 ) -> int:
     """Stage a native restore and promote its database and filestore together."""
     # Validate replacement eligibility while the target runtime remains stable.
+    if odoo_version is None:
+        target_major = odoo_bin_get_version(odoo_bin_path.parent).major
+        require_supported_odoo_major(target_major, odoo_bin_path.parent)
+    else:
+        target_major = require_supported_odoo_major(odoo_version, odoo_bin_path.parent)
     with runtime_locks(data_dir, db_name, odoo_conf_path=odoo_conf_path):
         validate_native_runtime_archive(archive_path)
         target_connection = connection or _archive_connection(db_name, odoo_conf_path)
@@ -193,7 +216,7 @@ def load_runtime_archive(  # noqa: C901
         staged_database = temporary_database_name("native_restore")
         extracted: tempfile.TemporaryDirectory | None = None
         native = (
-            _uses_native_db_commands(odoo_version, odoo_bin_path) if use_native_db_load is None else use_native_db_load
+            _uses_native_db_commands(target_major, odoo_bin_path) if use_native_db_load is None else use_native_db_load
         )
         if native:
             command = odoo_db_command(
@@ -240,6 +263,7 @@ def load_runtime_archive(  # noqa: C901
                 result = _run_postgres_command(command, target_connection)
             if result:
                 return result
+            _validate_staged_base_version(target_connection.with_db(staged_database), target_major)
             if extracted is None:
                 stage.mkdir(parents=True, exist_ok=True)
             else:

@@ -16,6 +16,15 @@ from godoo_cli.runtime import odoo
 from godoo_cli.runtime.lifecycle import LifecycleOutcome
 
 
+@pytest.fixture(autouse=True)
+def supported_cli_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        runtime_init,
+        "require_odoo_version",
+        lambda *_args: SimpleNamespace(major=19, raw="19.0"),
+    )
+
+
 def _config(tmp_path: Path) -> GodooConfig:
     return GodooConfig(
         odoo_install_folder=tmp_path / "odoo",

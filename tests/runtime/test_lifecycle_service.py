@@ -4,10 +4,12 @@ import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TypedDict, Unpack
 
 import pytest
 
+from godoo_cli.commands.runtime import init as lifecycle_commands
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime import lifecycle as runtime_lifecycle
@@ -24,6 +26,16 @@ from godoo_cli.runtime.lifecycle import (
 from godoo_cli.runtime.locks import runtime_readiness_marker
 
 LOGGER = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def supported_cli_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        lifecycle_commands,
+        "require_odoo_version",
+        lambda *_args: SimpleNamespace(major=19, raw="19.0"),
+    )
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
 
 
 class _EnsureRuntimeKwargs(TypedDict):

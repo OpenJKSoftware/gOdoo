@@ -13,14 +13,22 @@ import psycopg2
 import pytest
 
 from godoo_cli.commands.run import run_odoo
-from godoo_cli.models import GodooConfig
+from godoo_cli.database.state import DbBootstrapStatus
+from godoo_cli.models import GodooConfig, OdooVersion
 from godoo_cli.runtime.odoo import (
     dependency_requirements,
     preflight_for_config,
+    require_runtime_database_major,
     resolve_odoo_config,
     sanitize_odoo_password,
     selected_modules,
 )
+
+
+@pytest.fixture(autouse=True)
+def skip_database_major_guard_for_dependency_preflight_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep dependency tests independent of a live configured Odoo database."""
+    monkeypatch.setattr("godoo_cli.runtime.odoo.require_runtime_database_major", lambda *_args: None)
 
 
 class FakeCursor:
@@ -702,3 +710,99 @@ def test_run_forwards_arbitrary_arguments_and_help_bypasses_preflight(tmp_path: 
     child = run.call_args.args[0]
     assert child[1 : 1 + len(arguments)] == arguments
     assert child[child.index("--config") + 1] == str(Path("selected.conf").absolute())
+
+
+def test_preflight_rejects_old_database_before_venv_or_dependency_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = config(tmp_path)
+    object.__setattr__(cfg, "db_connection", FakeConnection())
+    callbacks: list[str] = []
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+    monkeypatch.setattr("godoo_cli.runtime.odoo.require_runtime_database_major", require_runtime_database_major)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.classify_bootstrap_state",
+        lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
+    )
+    monkeypatch.setattr("godoo_cli.runtime.odoo.base_module_major", lambda _connection: 18)
+    monkeypatch.setattr("godoo_cli.runtime.odoo.subprocess.run", lambda *_args, **_kwargs: callbacks.append("venv"))
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.dependency_requirements",
+        lambda *_args, **_kwargs: callbacks.append("dependencies"),
+    )
+
+    with pytest.raises(RuntimeError, match=r"contains Odoo 18.*godoo db load"):
+        preflight_for_config(cfg, project_root=tmp_path)
+
+    assert callbacks == []
+
+
+@pytest.mark.parametrize("status", [DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB])
+def test_runtime_database_major_allows_missing_or_empty_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: DbBootstrapStatus
+) -> None:
+    cfg = config(tmp_path)
+    object.__setattr__(cfg, "db_connection", FakeConnection())
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+    monkeypatch.setattr("godoo_cli.runtime.odoo.classify_bootstrap_state", lambda _connection: status)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.base_module_major",
+        lambda _connection: pytest.fail("empty database must not query the base version"),
+    )
+
+    assert require_runtime_database_major(cfg) == 19
+
+
+@pytest.mark.parametrize("status", [DbBootstrapStatus.INVALID_DB, DbBootstrapStatus.BOOTSTRAPPED])
+def test_runtime_database_major_rejects_unusable_base_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: DbBootstrapStatus
+) -> None:
+    cfg = config(tmp_path)
+    object.__setattr__(cfg, "db_connection", FakeConnection())
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+    monkeypatch.setattr("godoo_cli.runtime.odoo.classify_bootstrap_state", lambda _connection: status)
+
+    def unreadable_base_version(_connection: object) -> int:
+        message = "no usable base version"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr("godoo_cli.runtime.odoo.base_module_major", unreadable_base_version)
+
+    with pytest.raises(RuntimeError, match=r"Database 'db-a'.*godoo db load.*service result"):
+        require_runtime_database_major(cfg)
+
+
+def test_runtime_database_major_checks_each_explicit_database_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = config(tmp_path)
+    object.__setattr__(cfg, "db_name", "db-a,db-b,db-a")
+    connections = {name: FakeConnection() for name in ("db-a", "db-b")}
+    for name, connection in connections.items():
+        connection.names = [name]
+    object.__setattr__(cfg, "db_connection", MultiDatabaseConnection(connections))
+    observed: list[str] = []
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.classify_bootstrap_state",
+        lambda connection: observed.append(connection.names[0]) or DbBootstrapStatus.BOOTSTRAPPED,
+    )
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.base_module_major",
+        lambda connection: observed.append(connection.names[0]) or 19,
+    )
+
+    assert require_runtime_database_major(cfg) == 19
+    assert observed == ["db-a", "db-a", "db-b", "db-b"]

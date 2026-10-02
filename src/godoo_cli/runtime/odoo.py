@@ -21,11 +21,13 @@ from typing import Any
 import psycopg2.errors
 from packaging.specifiers import SpecifierSet
 
+from ..database.state import DbBootstrapStatus, base_module_major, classify_bootstrap_state
 from ..models import GodooConfig, GodooModules, OdooVersion
 
 LOGGER = logging.getLogger(__name__)
 OdooCommand = str | Sequence[str]
 MODULE_STATES = ("installed", "to install", "to upgrade", "to remove")
+SUPPORTED_ODOO_VERSION_SPECIFIER = ">=16"
 
 
 class OdooVersionError(ValueError):
@@ -392,6 +394,63 @@ def require_odoo_version(path: Path, version_specifier: str) -> OdooVersion:
     return version
 
 
+def require_supported_odoo_major(major: int, path: Path) -> int:
+    """Reject Odoo majors outside the runtime support contract."""
+    version = OdooVersion(text=f"{major}.0", major=major, minor=0)
+    if version.semantic not in SpecifierSet(SUPPORTED_ODOO_VERSION_SPECIFIER):
+        raise OdooVersionError(
+            path / "odoo-bin",
+            SUPPORTED_ODOO_VERSION_SPECIFIER,
+            f"{major}.0",
+        )
+    return major
+
+
+def require_supported_odoo_runtime(path: Path) -> OdooVersion:
+    """Return the Odoo runtime version when its major is supported."""
+    return require_odoo_version(path, SUPPORTED_ODOO_VERSION_SPECIFIER)
+
+
+def _runtime_database_names(config: GodooConfig) -> list[str]:
+    """Return configured database names in their effective order."""
+    return list(dict.fromkeys(name.strip() for name in (config.db_name or "").split(",") if name.strip()))
+
+
+def _database_load_guidance(db_name: str, runtime_major: int, detail: str) -> str:
+    """Explain how to replace or select an incompatible initialized database."""
+    return (
+        f"Database '{db_name}' {detail} This runtime requires Odoo {runtime_major}. "
+        f"Load a matching archive with `godoo db load <archive>`, or select the Odoo "
+        f"service result for Odoo {runtime_major}."
+    )
+
+
+def require_runtime_database_major(config: GodooConfig) -> int | None:
+    """Require each initialized configured database to match this Odoo runtime."""
+    db_names = _runtime_database_names(config)
+    if not db_names:
+        return None
+
+    runtime_major = require_supported_odoo_runtime(config.odoo_install_folder).major
+    for db_name in db_names:
+        connection = config.db_connection.with_db(db_name)
+        state = classify_bootstrap_state(connection)
+        if state in {DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB}:
+            continue
+        if state is not DbBootstrapStatus.BOOTSTRAPPED:
+            detail = "is initialized but has no usable installed Odoo base module."
+            raise RuntimeError(_database_load_guidance(db_name, runtime_major, detail))
+        try:
+            database_major = base_module_major(connection)
+        except RuntimeError as error:
+            detail = f"has no usable Odoo base module version ({error})."
+            raise RuntimeError(_database_load_guidance(db_name, runtime_major, detail)) from error
+        if database_major != runtime_major:
+            detail = f"contains Odoo {database_major}."
+            raise RuntimeError(_database_load_guidance(db_name, runtime_major, detail))
+    return runtime_major
+
+
 def _database_modules(config: GodooConfig) -> dict[str, bool]:
     """Read installed modules and identify database-only modules."""
     started_at = time.monotonic()
@@ -598,6 +657,8 @@ def preflight_for_config(
     if any(item in {"--help", "-h", "--version"} for item in arguments):
         return
     effective = config
+    if include_module_dependencies:
+        require_runtime_database_major(effective)
     environment = (project_root or Path.cwd()).resolve() / ".venv"
     if not os.environ.get("VIRTUAL_ENV") and not environment.exists():
         environment.parent.mkdir(parents=True, exist_ok=True)
@@ -778,7 +839,7 @@ def build_bootstrap_command(
 
 def prepare_runtime(config: GodooConfig, *, x_sendfile: bool | None = None) -> None:
     """Write Odoo configuration without database initialization or reconciliation."""
-    require_odoo_version(config.odoo_install_folder, ">=16,<20")
+    require_supported_odoo_runtime(config.odoo_install_folder)
     options = {
         "data_dir": str(config.data_dir.absolute()),
         "addons_path": ",".join(str(path.absolute()) for path in config.addon_paths),
@@ -815,7 +876,7 @@ def bootstrap_runtime(
     install_base_modules: bool = True,
 ) -> int:
     """Initialize an Odoo database after additive dependency preflight."""
-    odoo_version = require_odoo_version(config.odoo_install_folder, ">=16,<20")
+    odoo_version = require_supported_odoo_runtime(config.odoo_install_folder)
     command = build_bootstrap_command(
         config,
         config.addon_paths,
@@ -831,7 +892,7 @@ def bootstrap_runtime(
 
 def build_odoo_shell_command(config: GodooConfig) -> list[str]:
     """Build an Odoo shell argv from a resolved configuration."""
-    require_odoo_version(config.odoo_install_folder, ">=16,<20")
+    require_supported_odoo_runtime(config.odoo_install_folder)
     command = [
         str(config.odoo_bin_path.absolute()),
         "shell",

@@ -20,7 +20,10 @@ from ...runtime.lifecycle import (
     split_lifecycle_values,
 )
 from ...runtime.odoo import (
+    SUPPORTED_ODOO_VERSION_SPECIFIER,
+    OdooVersionError,
     prepare_runtime,
+    require_odoo_version,
     set_report_url,
     x_sendfile_enabled,
 )
@@ -46,7 +49,8 @@ def _validate_pre_upgrade_options(
         raise typer.BadParameter(message, param_hint="--update")
 
 
-def deployment_init_odoo_runtime(
+# Keep validation and execution ordering visible at this public command boundary.
+def deployment_init_odoo_runtime(  # noqa: C901
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
@@ -87,6 +91,14 @@ def deployment_init_odoo_runtime(
     after_reconcile_dirs: Annotated[
         list[Path] | None, typer.Option("--after-reconcile-dir", envvar="GODOO_AFTER_RECONCILE_DIRS")
     ] = None,
+    expected_odoo_major: Annotated[
+        int | None,
+        typer.Option(
+            "--expected-odoo-major",
+            envvar="GODOO_EXPECTED_ODOO_MAJOR",
+            help="Require the configured Odoo runtime to match this major version.",
+        ),
+    ] = None,
     install_base_modules: Annotated[
         bool, typer.Option(envvar="GODOO_INSTALL_BASE_MODULES", help="Install base/web when bootstrapping.")
     ] = True,
@@ -102,6 +114,16 @@ def deployment_init_odoo_runtime(
     """One-shot init: seed or bootstrap, reconcile, run phase hooks, then exit."""
     if report_url is not None:
         report_url = report_url.strip()
+    try:
+        runtime_version = require_odoo_version(odoo_main_path, SUPPORTED_ODOO_VERSION_SPECIFIER)
+    except OdooVersionError as error:
+        raise typer.BadParameter(str(error), param_hint="--odoo-main-path") from error
+    if expected_odoo_major is not None and runtime_version.major != expected_odoo_major:
+        message = (
+            f"Configured Odoo runtime is {runtime_version.raw}; "
+            f"the selected transition requires Odoo {expected_odoo_major}.x."
+        )
+        raise typer.BadParameter(message, param_hint="--expected-odoo-major")
     config = resolve_command_config(
         odoo_main_path=odoo_main_path,
         workspace_addon_path=workspace_addon_path,

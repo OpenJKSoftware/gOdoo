@@ -6,7 +6,13 @@ from unittest.mock import patch
 import pytest
 
 from godoo_cli.models import OdooVersion
-from godoo_cli.runtime.odoo import OdooVersionError, odoo_bin_get_version, require_odoo_version
+from godoo_cli.runtime.odoo import (
+    OdooVersionError,
+    odoo_bin_get_version,
+    require_odoo_version,
+    require_supported_odoo_major,
+    require_supported_odoo_runtime,
+)
 
 
 def test_require_odoo_version_accepts_a_matching_semantic_specifier(tmp_path: Path):
@@ -77,3 +83,32 @@ def test_odoo_bin_get_version_parses_multidigit_components(tmp_path: Path):
             capture_output=True,
             text=True,
         )
+
+
+@pytest.mark.parametrize("major", [16, 17, 18, 19, 20])
+def test_supported_runtime_contract_accepts_supported_majors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    major: int,
+):
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.odoo_bin_get_version",
+        lambda _path: OdooVersion(text="Odoo", major=major, minor=0),
+    )
+
+    assert require_supported_odoo_runtime(tmp_path).major == major
+
+
+def test_supported_runtime_contract_rejects_versions_below_lower_bound(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.odoo_bin_get_version",
+        lambda _path: OdooVersion(text="Odoo", major=15, minor=0),
+    )
+
+    with pytest.raises(OdooVersionError):
+        require_supported_odoo_runtime(tmp_path)
+
+
+def test_supported_major_guard_rejects_versions_below_the_runtime_lower_bound(tmp_path: Path):
+    with pytest.raises(OdooVersionError):
+        require_supported_odoo_major(15, tmp_path)

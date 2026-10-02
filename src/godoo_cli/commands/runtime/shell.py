@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from ...runtime.odoo import build_odoo_shell_command, run_odoo_command
+from ...runtime.odoo import SUPPORTED_ODOO_VERSION_SPECIFIER, build_odoo_shell_command, run_odoo_command
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_command_config
 
@@ -71,7 +71,7 @@ def _shell_command(
         db_password=db_password,
         extra={"resolved_addon_paths": tuple(addon_paths)} if addon_paths else None,
     )
-    require_cli_odoo_version(config.odoo_install_folder, ">=16,<20")
+    require_cli_odoo_version(config.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
     return build_odoo_shell_command(config)
 
 

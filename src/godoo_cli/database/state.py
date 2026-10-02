@@ -2,12 +2,30 @@
 
 import enum
 import logging
+import re
 
-from psycopg2 import OperationalError
+from psycopg2 import Error, OperationalError
 
 from .connection import DBConnection
 
 LOGGER = logging.getLogger(__name__)
+
+
+def base_module_major(connection: DBConnection) -> int:
+    """Return the installed Odoo base module major version."""
+    try:
+        with connection.connect() as cursor:
+            cursor.execute("SELECT latest_version FROM ir_module_module WHERE name = 'base';")
+            row = cursor.fetchone()
+    except Error as error:
+        message = "Could not read the base module version from the Odoo database."
+        raise RuntimeError(message) from error
+
+    version = row[0] if row else None
+    if not isinstance(version, str) or re.fullmatch(r"\d+(?:\.\d+)*", version) is None:
+        message = "The Odoo database has no usable base module version."
+        raise RuntimeError(message)
+    return int(version.split(".", maxsplit=1)[0])
 
 
 class DbBootstrapStatus(enum.Enum):

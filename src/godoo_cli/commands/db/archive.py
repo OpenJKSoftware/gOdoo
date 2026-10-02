@@ -14,6 +14,7 @@ from ...runtime.archive import (
     load_legacy_runtime_dump,
     load_runtime_archive,
 )
+from ...runtime.odoo import SUPPORTED_ODOO_VERSION_SPECIFIER
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_development_odoo_main_path
 
@@ -31,7 +32,7 @@ def dump_database(
     """Create an Odoo runtime archive."""
     try:
         odoo_main_path = resolve_development_odoo_main_path(odoo_main_path)
-        version = require_cli_odoo_version(odoo_main_path, ">=16,<20")
+        version = require_cli_odoo_version(odoo_main_path, SUPPORTED_ODOO_VERSION_SPECIFIER)
         return CLI.returner(
             dump_runtime_archive(
                 db_name=db_name,
@@ -82,7 +83,7 @@ def load_database(
             )
             return CLI.returner(0)
         odoo_main_path = resolve_development_odoo_main_path(odoo_main_path)
-        version = require_cli_odoo_version(odoo_main_path, ">=16,<20")
+        version = require_cli_odoo_version(odoo_main_path, SUPPORTED_ODOO_VERSION_SPECIFIER)
         return CLI.returner(
             load_runtime_archive(
                 db_name=db_name,

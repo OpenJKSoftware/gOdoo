@@ -17,7 +17,8 @@ from godoo_cli.commands.runtime.shell import (
     odoo_shell_run_script,
 )
 from godoo_cli.commands.test.load_data import odoo_load_test_data
-from godoo_cli.runtime.odoo import execution_python, odoo_command_argv, run_odoo_command
+from godoo_cli.database.state import DbBootstrapStatus
+from godoo_cli.runtime.odoo import execution_python, odoo_command_argv, preflight_for_config, run_odoo_command
 from godoo_cli.workspace.types import ResolvedSource, WorkspaceSettings
 
 
@@ -415,3 +416,32 @@ def test_run_odoo_command_forwards_stdin_without_a_shell():
 
     assert result.returncode == 7
     assert result.stdout == "env['res.users']\n"
+
+
+def test_shell_major_guard_uses_the_effective_cli_selected_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = _command_paths(tmp_path)
+    selected_names: list[str] = []
+    monkeypatch.setattr("godoo_cli.commands.runtime.shell.require_cli_odoo_version", lambda *_args: None)
+    monkeypatch.setattr("godoo_cli.runtime.odoo.preflight_for_config", preflight_for_config)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: SimpleNamespace(major=19),
+    )
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.classify_bootstrap_state",
+        lambda connection: selected_names.append(connection.db_name) or DbBootstrapStatus.BOOTSTRAPPED,
+    )
+    monkeypatch.setattr("godoo_cli.runtime.odoo.base_module_major", lambda _connection: 18)
+
+    with pytest.raises(RuntimeError, match=r"selected-runtime.*contains Odoo 18"):
+        odoo_shell(
+            odoo_main_path=paths["odoo_main_path"],
+            odoo_conf_path=paths["odoo_conf_path"],
+            db_name="selected-runtime",
+            db_user="odoo",
+            data_dir=tmp_path / "data",
+        )
+
+    assert selected_names == ["selected-runtime"]

@@ -24,6 +24,16 @@ from godoo_cli.runtime.lifecycle import (
 LOGGER = logging.getLogger(__name__)
 
 
+@pytest.fixture(autouse=True)
+def supported_odoo_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        lifecycle_commands,
+        "require_odoo_version",
+        lambda *_args: SimpleNamespace(major=19, raw="19.0"),
+    )
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
+
+
 def _config(tmp_path: Path) -> GodooConfig:
     return GodooConfig(
         odoo_install_folder=tmp_path / "odoo",
@@ -55,14 +65,16 @@ def test_ensure_runtime_prepares_and_bootstraps_missing_database(tmp_path: Path)
     calls: list[str] = []
     bootstrap_args: list[str] = []
 
+    def bootstrapper(*_args: object, **kwargs: object) -> int:
+        bootstrap_args.extend(cast(list[str], kwargs["extra_cmd_args"]))
+        calls.append("bootstrap")
+        return 0
+
     created = ensure_runtime(
         _config(tmp_path),
         preparer=lambda _config: calls.append("prepare"),
         status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
-        bootstrapper=lambda *_args, **kwargs: (
-            bootstrap_args.extend(kwargs["extra_cmd_args"]),
-            calls.append("bootstrap"),
-        )[1],
+        bootstrapper=bootstrapper,
     )
 
     assert created is True
@@ -462,3 +474,28 @@ def test_deployment_init_rejects_pre_upgrade_scripts_without_update():
 
     assert result.exit_code == 2
     assert "requires at least one" in result.output
+
+
+def test_expected_odoo_major_rejects_before_deployment_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reject a transition target that disagrees with the configured Odoo runtime."""
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+    monkeypatch.setattr(
+        lifecycle_commands,
+        "deployment_init",
+        lambda *_args, **_kwargs: pytest.fail("version mismatch must reject before deployment"),
+    )
+    result = CliRunner().invoke(
+        app,
+        ["--expected-odoo-major", "18"],
+        env={
+            "ODOO_MAIN_FOLDER": "/tmp/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+        },
+    )
+    assert result.exit_code == 2
+    assert "requires Odoo 18.x" in result.output

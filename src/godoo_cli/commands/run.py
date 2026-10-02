@@ -6,7 +6,12 @@ from typing import Annotated
 
 import typer
 
-from ..runtime.odoo import odoo_database_args, preflight_for_config, run_odoo_command
+from ..runtime.odoo import (
+    odoo_database_args,
+    preflight_for_config,
+    require_runtime_database_major,
+    run_odoo_command,
+)
 from .common import CommonCLI
 from .configuration import resolve_command_config
 
@@ -56,6 +61,8 @@ def run_odoo(
         arguments=arguments,
     )
     if not _uses_managed_server_config(arguments):
+        if _odoo_command_name(arguments) == "shell":
+            require_runtime_database_major(config)
         preflight_for_config(config, arguments, include_module_dependencies=False)
         return CLI.returner(run_odoo_command([str(config.odoo_bin_path), *arguments]).returncode)
 

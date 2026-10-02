@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 from ...database.connection import DBConnection
+from ...runtime.odoo import SUPPORTED_ODOO_VERSION_SPECIFIER
 from ...runtime.reset import reset_empty_runtime, reset_runtime_from_template
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_development_odoo_main_path
@@ -21,7 +22,7 @@ def reset_odoo_state(
 ) -> int:
     """Drop a runtime or replace it from its template through staging."""
     odoo_main_path = resolve_development_odoo_main_path(odoo_main_path)
-    version = require_cli_odoo_version(odoo_main_path, ">=16,<20")
+    version = require_cli_odoo_version(odoo_main_path, SUPPORTED_ODOO_VERSION_SPECIFIER)
     if empty_reset:
         return CLI.returner(
             reset_empty_runtime(

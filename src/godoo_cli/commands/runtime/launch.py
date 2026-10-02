@@ -7,6 +7,7 @@ from typing import Annotated
 import typer
 
 from ...runtime.odoo import (
+    SUPPORTED_ODOO_VERSION_SPECIFIER,
     _extra_args_argv,
     build_launch_command,
     execution_python,
@@ -70,7 +71,7 @@ def launch_odoo(
         arguments=launch_args,
         extra={"multithread_worker_count": multithread_worker_count, "languages": languages},
     )
-    require_cli_odoo_version(godoo_conf.odoo_install_folder, ">=16,<20")
+    require_cli_odoo_version(godoo_conf.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
     if log_file_path is not None:
         log_file_path.unlink(missing_ok=True)
         launch_args.extend(["--logfile", str(log_file_path.absolute())])

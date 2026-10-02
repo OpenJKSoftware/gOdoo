@@ -19,6 +19,7 @@ from typer.testing import CliRunner
 from godoo_cli.commands.runtime import status
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
+from godoo_cli.runtime import lifecycle as runtime_lifecycle
 from godoo_cli.runtime import status as runtime_status
 from godoo_cli.runtime.lifecycle import LifecycleOutcome, deployment_init
 from godoo_cli.runtime.locks import begin_runtime_restore, runtime_locks
@@ -39,7 +40,13 @@ def _config(tmp_path: Path) -> GodooConfig:
 
 @pytest.mark.parametrize("db_status", list(DbBootstrapStatus))
 @pytest.mark.parametrize("seed_requested", [False, True])
-def test_initialization_state_seed_matrix(tmp_path: Path, db_status: DbBootstrapStatus, seed_requested: bool):
+def test_initialization_state_seed_matrix(
+    tmp_path: Path,
+    db_status: DbBootstrapStatus,
+    seed_requested: bool,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
     """Guards the contract that initialization state seed matrix."""
     calls = []
 
@@ -68,7 +75,11 @@ def test_initialization_state_seed_matrix(tmp_path: Path, db_status: DbBootstrap
             assert calls == ["restore" if seed_requested else "bootstrap", "reconcile"]
 
 
-def test_initialization_rejects_orphaned_filestore(tmp_path: Path):
+def test_initialization_rejects_orphaned_filestore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
     """Guards the contract that initialization rejects orphaned filestore."""
     config = _config(tmp_path)
     filestore = config.data_dir / "filestore" / config.db_name
@@ -87,6 +98,7 @@ def test_initialization_rejects_orphaned_filestore(tmp_path: Path):
 
 
 def test_unfinished_restore_marker_blocks_ready_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
     """Guards the contract that unfinished restore marker blocks ready runtime."""
     config = _config(tmp_path)
     marker = begin_runtime_restore(config.data_dir, config.db_name, "staged")
@@ -106,7 +118,11 @@ def test_unfinished_restore_marker_blocks_ready_runtime(tmp_path: Path, monkeypa
     assert marker.is_file()
 
 
-def test_competing_initializations_bootstrap_only_once(tmp_path: Path):
+def test_competing_initializations_bootstrap_only_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
     """Guards the contract that competing initializations bootstrap only once."""
     config = _config(tmp_path)
     ready = False
