@@ -331,6 +331,22 @@ def split_lifecycle_values(values: list[str] | None) -> list[str]:
     return list(dict.fromkeys(item.strip() for value in values or [] for item in value.split(",") if item.strip()))
 
 
+def split_upgrade_paths(values: list[Path] | Path | None) -> list[Path]:
+    """Normalize repeatable and comma-separated native upgrade roots."""
+    selected: list[Path] = []
+    seen: set[Path] = set()
+    raw_values = [values] if isinstance(values, Path) else values or []
+    for value in raw_values:
+        for item in str(value).split(","):
+            if not item.strip():
+                continue
+            path = Path(item.strip()).expanduser().resolve()
+            if path not in seen:
+                selected.append(path)
+                seen.add(path)
+    return selected
+
+
 def preflight_reconcile_dependencies(
     config: GodooConfig,
     update_modules: list[str] | None,
@@ -358,7 +374,7 @@ def reconcile_modules(
     update_modules: list[str] | None,
     install_modules: list[str] | None,
     *,
-    upgrade_path: Path | None = None,
+    upgrade_path: list[Path] | Path | None = None,
     pre_upgrade_scripts: list[Path] | None = None,
     log_handlers: list[str] | None = None,
 ) -> int:
@@ -368,7 +384,8 @@ def reconcile_modules(
     installs = split_lifecycle_values(install_modules)
     scripts = list(dict.fromkeys(pre_upgrade_scripts or []))
     handlers = split_lifecycle_values(log_handlers)
-    if (upgrade_path or scripts) and not updates:
+    upgrade_paths = split_upgrade_paths(upgrade_path)
+    if (upgrade_paths or scripts) and not updates:
         message = "--upgrade-path and --pre-upgrade-script require at least one --update module."
         raise ValueError(message)
     extra: list[str] = ["--stop-after-init"]
@@ -378,8 +395,8 @@ def reconcile_modules(
         extra.extend(["--init", ",".join(installs)])
     if not updates and not installs:
         return 0
-    if upgrade_path:
-        extra.extend(["--upgrade-path", str(upgrade_path)])
+    if upgrade_paths:
+        extra.extend(["--upgrade-path", ",".join(str(path) for path in upgrade_paths)])
     if scripts:
         extra.extend(["--pre-upgrade-scripts", ",".join(str(script) for script in scripts)])
     for handler in handlers:

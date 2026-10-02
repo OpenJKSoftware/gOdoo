@@ -129,7 +129,7 @@ def test_reconcile_modules_builds_typed_upgrade_arguments(tmp_path: Path, monkey
         config,
         ["sale,stock", "sale"],
         ["web"],
-        upgrade_path=tmp_path / "upgrades",
+        upgrade_path=[tmp_path / "upgrades", tmp_path / "extra-upgrades"],
         pre_upgrade_scripts=[tmp_path / "first.py", tmp_path / "second.py"],
         log_handlers=["odoo.modules:DEBUG,odoo.sql_db:INFO", "odoo.modules:DEBUG"],
     )
@@ -148,7 +148,7 @@ def test_reconcile_modules_builds_typed_upgrade_arguments(tmp_path: Path, monkey
     assert option_values("--db_port") == ["0"]
     assert option_values("--update") == ["sale,stock"]
     assert option_values("--init") == ["web"]
-    assert option_values("--upgrade-path") == [str(tmp_path / "upgrades")]
+    assert option_values("--upgrade-path") == [f"{tmp_path / 'upgrades'},{tmp_path / 'extra-upgrades'}"]
     assert option_values("--pre-upgrade-scripts") == [f"{tmp_path / 'first.py'},{tmp_path / 'second.py'}"]
     assert option_values("--log-handler") == ["odoo.modules:DEBUG", "odoo.sql_db:INFO"]
 
@@ -499,3 +499,28 @@ def test_expected_odoo_major_rejects_before_deployment_callbacks(monkeypatch: py
     )
     assert result.exit_code == 2
     assert "requires Odoo 18.x" in result.output
+
+
+def test_reconcile_modules_keeps_single_path_api_compatibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep existing direct callers that pass one Path working."""
+    observed: dict[str, list[str]] = {}
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "run_odoo_command",
+        lambda command: observed.update(command=command) or SimpleNamespace(returncode=0),
+    )
+    upgrade_root = tmp_path / "upgrades"
+    assert (
+        runtime_lifecycle.reconcile_modules(
+            _config(tmp_path),
+            ["sale"],
+            None,
+            upgrade_path=upgrade_root,
+        )
+        == 0
+    )
+    command = observed["command"]
+    assert command[command.index("--upgrade-path") + 1] == str(upgrade_root.resolve())

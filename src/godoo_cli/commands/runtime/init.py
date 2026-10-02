@@ -69,7 +69,9 @@ def deployment_init_odoo_runtime(  # noqa: C901
     ] = None,
     update_modules: Annotated[list[str] | None, typer.Option("--update", envvar="GODOO_RECONCILE_UPDATE")] = None,
     install_modules: Annotated[list[str] | None, typer.Option("--install", envvar="GODOO_RECONCILE_INSTALL")] = None,
-    upgrade_path: Annotated[Path | None, typer.Option("--upgrade-path", envvar="GODOO_RECONCILE_UPGRADE_PATH")] = None,
+    upgrade_path: Annotated[
+        list[Path] | None, typer.Option("--upgrade-path", envvar="GODOO_RECONCILE_UPGRADE_PATH")
+    ] = None,
     pre_upgrade_scripts: Annotated[
         list[Path] | None,
         typer.Option("--pre-upgrade-script", envvar="GODOO_RECONCILE_PRE_UPGRADE_SCRIPTS"),
