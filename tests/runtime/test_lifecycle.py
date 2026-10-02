@@ -16,10 +16,19 @@ from godoo_cli.database.connection import DBConnection
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime import lifecycle as runtime_lifecycle
+from godoo_cli.runtime import prepare as runtime_prepare
 from godoo_cli.runtime.lifecycle import (
     LifecycleBootstrapError,
     LifecycleOutcome,
+    build_runtime_lifecycle_plan,
     ensure_runtime,
+)
+from godoo_cli.runtime.locks import (
+    begin_runtime_lifecycle,
+    read_runtime_lifecycle,
+    retire_runtime_lifecycle,
+    runtime_readiness_marker,
+    write_runtime_lifecycle,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -600,6 +609,7 @@ def test_deployment_init_passes_original_filestore_to_seed_loader(
     assert observed["_validated_archive"] is not None
     assert crc_checks == 1
     assert observed["original_filestore"] == source
+    assert observed["lifecycle_owner"] == "init"
     assert observed["require_same_archive_identity"] is True
 
 
@@ -633,3 +643,274 @@ def test_deployment_init_requires_seed_for_original_filestore_env(
 
     assert result.exit_code == 2
     assert "An Odoo ZIP archive is required" in result.output
+
+
+def test_external_replacement_retires_lifecycle_marker(tmp_path: Path) -> None:
+    marker = runtime_readiness_marker(tmp_path, "runtime")
+    marker.parent.mkdir(parents=True)
+    marker.write_text("pending", encoding="utf-8")
+
+    retire_runtime_lifecycle(tmp_path, "runtime")
+
+    assert not marker.exists()
+
+
+def test_current_lifecycle_owner_preserves_marker(tmp_path: Path) -> None:
+    marker = runtime_readiness_marker(tmp_path, "runtime")
+    marker.parent.mkdir(parents=True)
+    marker.write_text("pending", encoding="utf-8")
+
+    retire_runtime_lifecycle(tmp_path, "runtime", owner="init")
+
+    assert marker.read_text(encoding="utf-8") == "pending"
+
+
+@pytest.mark.parametrize(
+    ("preparation_strategy", "outcome", "phase"),
+    [
+        ("odoo", "restored", "after-restore"),
+        ("postgres", "restored", "after-restore"),
+        ("cow", "restored", "after-restore"),
+        ("bootstrap", "bootstrapped", "after-bootstrap"),
+    ],
+)
+def test_prepare_handoff_binds_actual_init_plan_without_repeating_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    preparation_strategy: str,
+    outcome: str,
+    phase: str,
+) -> None:
+    config = _config(tmp_path)
+    monkeypatch.setattr(
+        runtime_prepare,
+        "_cow_capability_available",
+        lambda _config, _source: preparation_strategy == "cow",
+    )
+    monkeypatch.setattr(
+        runtime_prepare,
+        "require_supported_odoo_runtime",
+        lambda _path: SimpleNamespace(major=19),
+    )
+    monkeypatch.setattr(runtime_prepare, "ensure_runtime", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(runtime_prepare, "duplicate_cow_runtime", lambda **_kwargs: 0)
+    loader_options: dict[str, object] = {}
+    restore_options: dict[str, object] = {}
+
+    def restore_runtime(**kwargs: object) -> None:
+        restore_options.update(kwargs)
+
+    def load_archive(**kwargs: object) -> int:
+        loader_options.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(runtime_prepare, "load_runtime_archive", load_archive)
+    monkeypatch.setattr(runtime_prepare, "restore_custom_runtime", restore_runtime)
+    monkeypatch.setattr(runtime_prepare, "validate_custom_dump", lambda *_args: None)
+    monkeypatch.setattr(runtime_prepare, "validate_filestore", lambda *_args: None)
+
+    archive = None
+    filestore = None
+    source_db = "source" if preparation_strategy == "cow" else ""
+    if preparation_strategy == "odoo":
+        archive = tmp_path / "seed.zip"
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("dump.sql", "-- seed")
+    elif preparation_strategy == "postgres":
+        archive = tmp_path / "seed.dump"
+        archive.write_bytes(b"dump")
+        filestore = tmp_path / "seed-filestore"
+        filestore.mkdir()
+    runtime_prepare.prepare_runtime(
+        config,
+        strategy=preparation_strategy,
+        source_db=source_db,
+        archive_path=archive,
+        filestore_path=filestore,
+    )
+    marker = runtime_readiness_marker(config.data_dir, config.db_name)
+    prepared = read_runtime_lifecycle(marker, config.db_name)
+    assert prepared is not None
+    assert prepared["schema_version"] == 3
+    assert prepared["preparation_complete"] is True
+    assert prepared["outcome"] == outcome
+    assert prepared["pending_phase"] == phase
+    if preparation_strategy == "odoo":
+        assert loader_options["lifecycle_owner"] == "prepare"
+        assert loader_options["require_same_archive_identity"] is True
+    if preparation_strategy == "postgres":
+        assert restore_options["lifecycle_owner"] == "prepare"
+
+    plan = build_runtime_lifecycle_plan(
+        config,
+        runtime_version=None,
+        expected_odoo_major=None,
+        seed=None,
+        seed_requested=False,
+        original_filestore=None,
+        update_modules=None,
+        install_modules=None,
+        upgrade_paths=None,
+        pre_upgrade_scripts=None,
+        after_bootstrap_dirs=None,
+        after_restore_dirs=None,
+        after_reconcile_dirs=None,
+        install_base_modules=True,
+        install_workspace_modules=True,
+        odoo_demo=False,
+    )
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
+
+    result, exit_code = runtime_lifecycle.deployment_init(
+        config,
+        seed_requested=False,
+        seeder=lambda _config: pytest.fail("Prepared runtime must not be seeded again."),
+        ensure=lambda _config: pytest.fail("Prepared runtime must not be bootstrapped again."),
+        reconciler=lambda _config: 0,
+        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
+        lifecycle_plan=plan,
+    )
+
+    assert result.value == outcome
+    assert exit_code == 0
+    assert not marker.exists()
+
+
+def test_incomplete_or_changed_prepare_handoff_is_rejected(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    connection = config.db_connection
+    actual_target = {
+        "runtime_path": str(config.odoo_install_folder.resolve()),
+        "database": config.db_name,
+        "data_dir": str(config.data_dir.resolve()),
+        "connection": {
+            "host": connection.hostname,
+            "port": connection.port,
+            "user": connection.username,
+            "sslmode": connection.sslmode,
+        },
+    }
+    preparation = {
+        "strategy": "odoo",
+        "source_db": "",
+        "archive": None,
+        "filestore": None,
+        "original_filestore": None,
+        "target": {**actual_target, "database": "other"},
+    }
+    begin_runtime_lifecycle(config.data_dir, config.db_name, owner="prepare", preparation=preparation)
+    with pytest.raises(RuntimeError, match="inputs differ"):
+        begin_runtime_lifecycle(
+            config.data_dir,
+            config.db_name,
+            owner="prepare",
+            preparation={**preparation, "source_db": "changed"},
+        )
+    plan = build_runtime_lifecycle_plan(
+        config,
+        runtime_version=None,
+        expected_odoo_major=None,
+        seed=None,
+        seed_requested=False,
+        original_filestore=None,
+        update_modules=None,
+        install_modules=None,
+        upgrade_paths=None,
+        pre_upgrade_scripts=None,
+        after_bootstrap_dirs=None,
+        after_restore_dirs=None,
+        after_reconcile_dirs=None,
+        install_base_modules=True,
+        install_workspace_modules=True,
+        odoo_demo=False,
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete"):
+        begin_runtime_lifecycle(config.data_dir, config.db_name, plan=plan)
+    with pytest.raises(RuntimeError, match="schema-one"):
+        begin_runtime_lifecycle(
+            config.data_dir,
+            config.db_name,
+            plan=plan,
+            adopt_legacy_plan=True,
+        )
+
+    marker = runtime_readiness_marker(config.data_dir, config.db_name)
+    write_runtime_lifecycle(
+        marker,
+        config.db_name,
+        outcome="restored",
+        pending_phase="after-restore",
+        owner="prepare",
+        preparation=preparation,
+        preparation_complete=True,
+    )
+    with pytest.raises(RuntimeError, match="target differs"):
+        begin_runtime_lifecycle(config.data_dir, config.db_name, plan=plan)
+
+
+def test_prepare_provenance_survives_binding_and_phase_writes(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    connection = config.db_connection
+    preparation = {
+        "strategy": "postgres",
+        "source_db": "",
+        "archive": None,
+        "filestore": None,
+        "original_filestore": None,
+        "target": {
+            "runtime_path": str(config.odoo_install_folder.resolve()),
+            "database": config.db_name,
+            "data_dir": str(config.data_dir.resolve()),
+            "connection": {
+                "host": connection.hostname,
+                "port": connection.port,
+                "user": connection.username,
+                "sslmode": connection.sslmode,
+            },
+        },
+    }
+    marker = begin_runtime_lifecycle(config.data_dir, config.db_name, owner="prepare", preparation=preparation)
+    write_runtime_lifecycle(
+        marker,
+        config.db_name,
+        outcome="restored",
+        pending_phase="after-restore",
+        owner="prepare",
+        preparation=preparation,
+        preparation_complete=True,
+    )
+    plan = build_runtime_lifecycle_plan(
+        config,
+        runtime_version=None,
+        expected_odoo_major=None,
+        seed=None,
+        seed_requested=False,
+        original_filestore=None,
+        update_modules=None,
+        install_modules=None,
+        upgrade_paths=None,
+        pre_upgrade_scripts=None,
+        after_bootstrap_dirs=None,
+        after_restore_dirs=None,
+        after_reconcile_dirs=None,
+        install_base_modules=True,
+        install_workspace_modules=True,
+        odoo_demo=False,
+    )
+
+    begin_runtime_lifecycle(config.data_dir, config.db_name, plan=plan)
+    state = read_runtime_lifecycle(marker, config.db_name)
+    assert state is not None
+    assert state["preparation_provenance"] == preparation
+
+    write_runtime_lifecycle(
+        marker,
+        config.db_name,
+        outcome="restored",
+        pending_phase="reconcile",
+        plan=plan,
+    )
+    state = read_runtime_lifecycle(marker, config.db_name)
+    assert state is not None
+    assert state["preparation_provenance"] == preparation

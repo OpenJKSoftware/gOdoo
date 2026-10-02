@@ -10,6 +10,7 @@ from ..runtime.odoo import (
     odoo_database_args,
     preflight_for_config,
     require_runtime_database_major,
+    require_runtime_launch_ready,
     run_odoo_command,
 )
 from .common import CommonCLI
@@ -66,6 +67,7 @@ def run_odoo(
         preflight_for_config(config, arguments, include_module_dependencies=False)
         return CLI.returner(run_odoo_command([str(config.odoo_bin_path), *arguments]).returncode)
 
+    require_runtime_launch_ready(config)
     preflight_for_config(config, arguments)
     child_args = [
         "--config",

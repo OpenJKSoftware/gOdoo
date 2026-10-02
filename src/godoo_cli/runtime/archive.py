@@ -309,6 +309,7 @@ def load_runtime_archive(  # noqa: C901
     database_creator: Callable[[DBConnection, str], None] = create_database,
     use_native_db_load: bool | None = None,
     _validated_archive: _ValidatedNativeArchive | None = None,
+    lifecycle_owner: str | None = None,
     require_same_archive_identity: bool = False,
 ) -> int:
     """Stage a native restore and promote its database and filestore together."""
@@ -421,6 +422,7 @@ def load_runtime_archive(  # noqa: C901
                 database_cleaner=database_cleaner,
                 database_rollback=database_rollback,
                 filestore_replacer=replace_filestore,
+                lifecycle_owner=lifecycle_owner,
             )
             return 0
         finally:

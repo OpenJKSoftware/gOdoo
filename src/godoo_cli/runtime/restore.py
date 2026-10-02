@@ -91,6 +91,7 @@ def restore_custom_runtime(
     database_cleaner: DatabaseCleaner = cleanup_database,
     database_swapper: DatabaseSwapper = swap_database,
     database_rollback: DatabaseRollback = rollback_database_swap,
+    lifecycle_owner: str | None = None,
 ) -> None:
     """Restore custom PostgreSQL and filestore artifacts as one runtime pair.
 
@@ -135,6 +136,7 @@ def restore_custom_runtime(
                 target_filestore=target,
                 database_cleaner=database_cleaner,
                 database_rollback=database_rollback,
+                lifecycle_owner=lifecycle_owner,
             )
         except BaseException:
             if staged_database_created and (marker is None or not marker.exists()):

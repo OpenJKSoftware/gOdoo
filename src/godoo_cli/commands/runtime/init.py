@@ -11,6 +11,7 @@ from ...models import GodooConfig
 from ...runtime.archive import _validate_native_runtime_archive, load_runtime_archive
 from ...runtime.lifecycle import (
     LifecycleBootstrapError,
+    build_runtime_lifecycle_plan,
     deployment_init,
     ensure_runtime,
     preflight_reconcile_dependencies,
@@ -106,6 +107,13 @@ def deployment_init_odoo_runtime(  # noqa: C901
             help="Require the configured Odoo runtime to match this major version.",
         ),
     ] = None,
+    adopt_pending_plan: Annotated[
+        bool,
+        typer.Option(
+            "--adopt-pending-plan",
+            help="Bind a verified unbound legacy pending marker to this initialization plan once.",
+        ),
+    ] = False,
     install_base_modules: Annotated[
         bool, typer.Option(envvar="GODOO_INSTALL_BASE_MODULES", help="Install base/web when bootstrapping.")
     ] = True,
@@ -159,6 +167,25 @@ def deployment_init_odoo_runtime(  # noqa: C901
         raise typer.BadParameter(message, param_hint="--report-url")
     runtime_seed = seed
 
+    lifecycle_plan = build_runtime_lifecycle_plan(
+        config,
+        runtime_version=runtime_version.raw,
+        expected_odoo_major=expected_odoo_major,
+        seed=runtime_seed,
+        seed_requested=runtime_seed is not None,
+        original_filestore=original_filestore,
+        update_modules=update_modules,
+        install_modules=install_modules,
+        upgrade_paths=upgrade_path,
+        pre_upgrade_scripts=pre_upgrade_scripts,
+        after_bootstrap_dirs=after_bootstrap_dirs,
+        after_restore_dirs=after_restore_dirs,
+        after_reconcile_dirs=after_reconcile_dirs,
+        install_base_modules=install_base_modules,
+        install_workspace_modules=install_workspace_modules,
+        odoo_demo=odoo_demo,
+    )
+
     def already_prepared(_conf: GodooConfig) -> None:
         """Skip preparation already completed by init."""
         return None
@@ -188,6 +215,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
             connection=conf.db_connection,
             original_filestore=original_filestore,
             _validated_archive=validated_archive,
+            lifecycle_owner="init",
             require_same_archive_identity=True,
             use_native_db_load=False if pre_upgrade_scripts else None,
         )
@@ -231,6 +259,8 @@ def deployment_init_odoo_runtime(  # noqa: C901
             after_restore_dirs=after_restore_dirs,
             after_reconcile_dirs=after_reconcile_dirs,
             hook_runner=run_lifecycle_hook,
+            lifecycle_plan=lifecycle_plan,
+            adopt_legacy_plan=adopt_pending_plan,
         )
         if result == 0 and report_url:
             set_report_url(config, report_url)

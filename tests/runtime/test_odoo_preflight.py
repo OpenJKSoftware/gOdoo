@@ -15,10 +15,12 @@ import pytest
 from godoo_cli.commands.run import run_odoo
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig, OdooVersion
+from godoo_cli.runtime.locks import runtime_readiness_marker, runtime_restore_marker
 from godoo_cli.runtime.odoo import (
     dependency_requirements,
     preflight_for_config,
     require_runtime_database_major,
+    require_runtime_launch_ready,
     resolve_odoo_config,
     sanitize_odoo_password,
     selected_modules,
@@ -806,3 +808,98 @@ def test_runtime_database_major_checks_each_explicit_database_name(
 
     assert require_runtime_database_major(cfg) == 19
     assert observed == ["db-a", "db-a", "db-b", "db-b"]
+
+
+@pytest.mark.parametrize("marker_kind", ["restore", "lifecycle"])
+def test_launch_readiness_rejects_pending_recovery_markers(tmp_path: Path, marker_kind: str) -> None:
+    cfg = config(tmp_path)
+    data_dir = tmp_path / "data"
+    object.__setattr__(cfg, "data_dir", data_dir)
+    if marker_kind == "restore":
+        marker = runtime_restore_marker(data_dir, cfg.db_name)
+    else:
+        marker = runtime_readiness_marker(data_dir, cfg.db_name)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    if marker_kind == "lifecycle":
+        marker.write_text(
+            '{"schema_version":2,"database":"db-a","outcome":"unknown",'
+            '"pending_phase":"initialize","plan":{"identity":{},"diagnostics":{}}}',
+            encoding="utf-8",
+        )
+    else:
+        marker.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=r"pending restore|pending lifecycle|unfinished"):
+        require_runtime_launch_ready(cfg)
+
+
+@pytest.mark.parametrize("marker_kind", ["restore", "lifecycle"])
+def test_managed_run_server_rejects_pending_recovery_markers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker_kind: str
+) -> None:
+    cfg = config(tmp_path)
+    data_dir = tmp_path / "data"
+    object.__setattr__(cfg, "data_dir", data_dir)
+    marker = (
+        runtime_restore_marker(data_dir, cfg.db_name)
+        if marker_kind == "restore"
+        else runtime_readiness_marker(data_dir, cfg.db_name)
+    )
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    if marker_kind == "lifecycle":
+        marker.write_text(
+            '{"schema_version":2,"database":"db-a","outcome":"unknown",'
+            '"pending_phase":"initialize","plan":{"identity":{},"diagnostics":{}}}',
+            encoding="utf-8",
+        )
+    else:
+        marker.write_text("{}", encoding="utf-8")
+    paths: OdooCommandPaths = {
+        "odoo_main_path": cfg.odoo_install_folder,
+        "workspace_addon_path": cfg.workspace_addon_path,
+        "odoo_conf_path": cfg.odoo_conf_path,
+    }
+    monkeypatch.setattr("godoo_cli.commands.run.resolve_command_config", lambda **_kwargs: cfg)
+    callbacks: list[str] = []
+    monkeypatch.setattr(
+        "godoo_cli.commands.run.preflight_for_config", lambda *_args, **_kwargs: callbacks.append("preflight")
+    )
+    monkeypatch.setattr("godoo_cli.commands.run.run_odoo_command", lambda *_args, **_kwargs: callbacks.append("run"))
+
+    with pytest.raises(RuntimeError, match=r"pending restore|pending lifecycle|unfinished"):
+        run_odoo(["server"], data_dir=data_dir, db_name=cfg.db_name, **paths)
+
+    assert callbacks == []
+
+
+def test_diagnostic_shell_allows_matching_database_during_pending_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = config(tmp_path)
+    data_dir = tmp_path / "data"
+    object.__setattr__(cfg, "data_dir", data_dir)
+    marker = runtime_readiness_marker(data_dir, cfg.db_name)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("{}", encoding="utf-8")
+    object.__setattr__(cfg, "db_connection", FakeConnection())
+    monkeypatch.setattr("godoo_cli.commands.run.resolve_command_config", lambda **_kwargs: cfg)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.classify_bootstrap_state",
+        lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
+    )
+    monkeypatch.setattr("godoo_cli.runtime.odoo.base_module_major", lambda _connection: 19)
+    monkeypatch.setattr("godoo_cli.commands.run.preflight_for_config", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "godoo_cli.commands.run.run_odoo_command", lambda *_args, **_kwargs: SimpleNamespace(returncode=0)
+    )
+    paths: OdooCommandPaths = {
+        "odoo_main_path": cfg.odoo_install_folder,
+        "workspace_addon_path": cfg.workspace_addon_path,
+        "odoo_conf_path": cfg.odoo_conf_path,
+    }
+
+    assert run_odoo(["shell"], data_dir=data_dir, db_name=cfg.db_name, **paths) == 0

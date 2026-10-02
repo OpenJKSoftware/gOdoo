@@ -166,6 +166,7 @@ def duplicate_cow_runtime(
     db_sslmode: str | None = None,
     odoo_loader: Callable[..., ModuleType] = _configure_odoo_runtime,
     reflink_runner: ReflinkRunner = _run_reflink_copy,
+    lifecycle_owner: str | None = None,
 ) -> int:
     """Create a strict CoW clone of an Odoo database and its filestore."""
     # Freeze both names while validating source compatibility and target replacement rules.
@@ -231,6 +232,7 @@ def duplicate_cow_runtime(
                 target_filestore=target_filestore,
                 database_cleaner=cleanup_database,
                 database_rollback=rollback_database_swap,
+                lifecycle_owner=lifecycle_owner,
             )
         except Exception:
             LOGGER.exception("CoW clone failed: %s", target)

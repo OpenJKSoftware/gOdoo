@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
+from configparser import ConfigParser
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -15,7 +17,13 @@ from ..models import GodooConfig
 from .archive import _validate_native_runtime_archive, _ValidatedNativeArchive, load_runtime_archive
 from .cow import duplicate_cow_runtime
 from .lifecycle import ensure_runtime
-from .locks import begin_runtime_lifecycle, finish_runtime_lifecycle, runtime_locks, write_runtime_lifecycle
+from .locks import (
+    begin_runtime_lifecycle,
+    finish_runtime_lifecycle,
+    runtime_locks,
+    runtime_preparation_identity,
+    write_runtime_lifecycle,
+)
 from .odoo import require_supported_odoo_runtime
 from .restore import restore_custom_runtime, validate_custom_dump, validate_filestore
 
@@ -144,6 +152,16 @@ def _cow_capability_available(config: GodooConfig, source_db: str) -> bool:
     return version >= 180000 and method == "clone" and exists
 
 
+def _bootstrap_database_template(config: GodooConfig, odoo_major: int) -> str:
+    """Resolve the database template supported by this Odoo version."""
+    configured = os.environ.get("PGDATABASE_TEMPLATE") if odoo_major >= 19 else None
+    if configured is not None:
+        return configured
+    parser = ConfigParser(interpolation=None)
+    parser.read(config.odoo_conf_path)
+    return parser.get("options", "db_template", fallback="template0")
+
+
 def prepare_runtime_pair(
     *,
     data_dir: Path,
@@ -157,6 +175,7 @@ def prepare_runtime_pair(
     bootstrap: PrepareCallback | None = None,
     completion: PrepareCallback | None = None,
     source_db: str | None = None,
+    preparation: dict[str, object] | None = None,
     **kwargs: Any,
 ) -> PreparePlan:
     """Select a plan, mark lifecycle work, and run its one mutation callback.
@@ -192,8 +211,10 @@ def prepare_runtime_pair(
         msg = "The CoW strategy requires a source database for lock ownership."
         raise ValueError(msg)
     lock_names = (db_name, source_db) if source_db is not None else (db_name,)
+    if preparation is None:
+        preparation = {"strategy": plan.strategy.value, "source_db": source_db or ""}
     with runtime_locks(data_dir, *lock_names):
-        marker = begin_runtime_lifecycle(data_dir, db_name)
+        marker = begin_runtime_lifecycle(data_dir, db_name, owner="prepare", preparation=preparation)
         try:
             result = callback(**kwargs)
         except BaseException:
@@ -207,7 +228,15 @@ def prepare_runtime_pair(
             raise RuntimeError(msg)
         outcome = "bootstrapped" if plan.strategy is PrepareStrategy.BOOTSTRAP else "restored"
         pending_phase = "after-bootstrap" if outcome == "bootstrapped" else "after-restore"
-        write_runtime_lifecycle(marker, db_name, outcome=outcome, pending_phase=pending_phase)
+        write_runtime_lifecycle(
+            marker,
+            db_name,
+            outcome=outcome,
+            pending_phase=pending_phase,
+            owner="prepare",
+            preparation=preparation,
+            preparation_complete=True,
+        )
         if completion is None:
             return plan
         completion_result = completion()
@@ -218,7 +247,8 @@ def prepare_runtime_pair(
         return plan
 
 
-def prepare_runtime(
+# Keep strategy validation, routing, and bound preparation inputs in one operation.
+def prepare_runtime(  # noqa: C901
     config: GodooConfig,
     *,
     strategy: str,
@@ -241,8 +271,9 @@ def prepare_runtime(
     odoo = archive_path is not None and not postgres
     cow = _cow_capability_available(config, source_db) if source_db and original_filestore is None else False
     plan = select_prepare_strategy(strategy, cow_available=cow, postgres_archive=postgres, odoo_archive=odoo)
+    runtime_version = None
     if plan.strategy is not PrepareStrategy.POSTGRES:
-        require_supported_odoo_runtime(config.odoo_install_folder)
+        runtime_version = require_supported_odoo_runtime(config.odoo_install_folder)
     if plan.strategy is PrepareStrategy.POSTGRES:
         if archive_path is None or filestore_path is None:
             msg = "The PostgreSQL strategy requires --archive and --filestore."
@@ -264,6 +295,7 @@ def prepare_runtime(
                 filestore_source=filestore_path,
                 data_dir=config.data_dir,
                 force=force,
+                lifecycle_owner="prepare",
             )
         assert archive_path is not None
         return load_runtime_archive(
@@ -276,6 +308,8 @@ def prepare_runtime(
             connection=config.db_connection,
             original_filestore=original_filestore,
             _validated_archive=validated_archive,
+            lifecycle_owner="prepare",
+            require_same_archive_identity=True,
         )
 
     def clone() -> int:
@@ -291,8 +325,30 @@ def prepare_runtime(
             db_user=config.db_user,
             db_password=config.db_password,
             db_sslmode=config.db_connection.sslmode,
+            lifecycle_owner="prepare",
         )
 
+    preparation = runtime_preparation_identity(
+        strategy=plan.strategy.value,
+        source_db=source_db,
+        archive_path=archive_path,
+        filestore_path=filestore_path,
+        original_filestore=original_filestore,
+        target={
+            "runtime_path": str(config.odoo_install_folder.resolve()),
+            "database": config.db_name,
+            "data_dir": str(config.data_dir.resolve()),
+            "connection": {
+                "host": config.db_connection.hostname,
+                "port": config.db_connection.port,
+                "user": config.db_connection.username,
+                "sslmode": config.db_connection.sslmode,
+            },
+        },
+    )
+    if plan.strategy is PrepareStrategy.BOOTSTRAP:
+        assert runtime_version is not None
+        preparation["bootstrap_db_template"] = _bootstrap_database_template(config, runtime_version.major)
     return prepare_runtime_pair(
         data_dir=config.data_dir,
         db_name=config.db_name,
@@ -304,4 +360,5 @@ def prepare_runtime(
         restore=restore,
         bootstrap=lambda: ensure_runtime(config, allow_lifecycle_retry=True),
         source_db=source_db or None,
+        preparation=preparation,
     )

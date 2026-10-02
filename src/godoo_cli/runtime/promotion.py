@@ -10,6 +10,7 @@ from pathlib import Path
 from psycopg2 import sql
 
 from ..database.connection import DBConnection
+from .locks import retire_runtime_lifecycle
 
 LOGGER = logging.getLogger(__name__)
 
@@ -184,6 +185,7 @@ def complete_runtime_promotion(
     database_cleaner: DatabaseCleaner,
     database_rollback: DatabaseRollback,
     filestore_replacer: FilestoreReplacer | None = None,
+    lifecycle_owner: str | None = None,
 ) -> None:
     """Complete promotion, rolling the database back if filestore replacement fails."""
     try:
@@ -215,4 +217,5 @@ def complete_runtime_promotion(
         database_cleaner(connection.with_db(backup_database))
     # The marker is the recovery authority: clear it only after both old-pair
     # cleanup steps have completed successfully.
+    retire_runtime_lifecycle(marker.parent.parent.parent, connection.db_name, owner=lifecycle_owner)
     marker.unlink()

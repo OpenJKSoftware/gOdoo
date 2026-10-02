@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from ..database.connection import DBConnection
 from ..database.state import DbBootstrapStatus, classify_bootstrap_state
@@ -243,27 +244,54 @@ def deployment_init(  # noqa: C901
     after_restore_dirs: list[Path] | None = None,
     after_reconcile_dirs: list[Path] | None = None,
     hook_runner: HookRunner | None = None,
+    lifecycle_plan: dict[str, object] | None = None,
+    adopt_legacy_plan: bool = False,
 ) -> tuple[LifecycleOutcome, int]:
     """Run lock-owned lifecycle phases, persisting each pending phase before entry."""
     # Serialize recovery and reconciliation so every marker describes one complete attempt.
     with runtime_locks(config.data_dir, config.db_name):
         require_runtime_database_major(config)
+        plan = lifecycle_plan or build_runtime_lifecycle_plan(
+            config,
+            runtime_version=None,
+            expected_odoo_major=None,
+            seed=None,
+            seed_requested=seed_requested,
+            original_filestore=None,
+            update_modules=None,
+            install_modules=None,
+            upgrade_paths=None,
+            pre_upgrade_scripts=None,
+            after_bootstrap_dirs=after_bootstrap_dirs,
+            after_restore_dirs=after_restore_dirs,
+            after_reconcile_dirs=after_reconcile_dirs,
+            install_base_modules=True,
+            install_workspace_modules=True,
+            odoo_demo=False,
+        )
+        marker = begin_runtime_lifecycle(
+            config.data_dir,
+            config.db_name,
+            plan=plan,
+            adopt_legacy_plan=adopt_legacy_plan,
+        )
+        state = read_runtime_lifecycle(marker, config.db_name)
+        assert state is not None
+        phase = cast(str, state["pending_phase"])
+        outcome_value = cast(str, state["outcome"])
+        initial_status = status_getter(config.db_connection)
         if preparer:
             preparer(config)
         if preflight:
             preflight(config)
-        marker = begin_runtime_lifecycle(config.data_dir, config.db_name)
-        state = read_runtime_lifecycle(marker, config.db_name)
-        assert state is not None
-        phase, outcome_value = state["pending_phase"], state["outcome"]
         outcome = (
             LifecycleOutcome(outcome_value) if outcome_value in {item.value for item in LifecycleOutcome} else None
         )
         if phase == "initialize":
-            status = status_getter(config.db_connection)
+            status = initial_status
             if outcome is None and status is not DbBootstrapStatus.BOOTSTRAPPED:
                 outcome = LifecycleOutcome.RESTORED if seed_requested else LifecycleOutcome.BOOTSTRAPPED
-                write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase)
+                write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
             if outcome is not None and status is DbBootstrapStatus.BOOTSTRAPPED:
                 phase = "after-restore" if outcome is LifecycleOutcome.RESTORED else "after-bootstrap"
             else:
@@ -276,7 +304,7 @@ def deployment_init(  # noqa: C901
                     allow_lifecycle_retry=True,
                 )
                 phase = "after-restore" if outcome is LifecycleOutcome.RESTORED else "after-bootstrap"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase)
+            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
         assert outcome is not None
         if phase == "after-bootstrap":
             if outcome is LifecycleOutcome.BOOTSTRAPPED:
@@ -290,7 +318,7 @@ def deployment_init(  # noqa: C901
                 if result:
                     return outcome, result
             phase = "reconcile"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase)
+            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
         if phase == "after-restore":
             if outcome is LifecycleOutcome.RESTORED:
                 if post_restore_preflight:
@@ -305,13 +333,13 @@ def deployment_init(  # noqa: C901
                 if result:
                     return outcome, result
             phase = "reconcile"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase)
+            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
         if phase == "reconcile":
             result = reconciler(config)
             if result:
                 return outcome, result
             phase = "after-reconcile"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase)
+            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
         if phase == "after-reconcile" and hook_runner:
             result = run_hook_directories(config, after_reconcile_dirs or [], hook_runner)
             if result:
@@ -345,6 +373,117 @@ def split_upgrade_paths(values: list[Path] | Path | None) -> list[Path]:
                 selected.append(path)
                 seen.add(path)
     return selected
+
+
+def _path_identity(path: Path | None) -> dict[str, object] | None:
+    if path is None:
+        return None
+    resolved = path.expanduser().resolve()
+    stat = resolved.stat()
+    return {
+        "path": str(resolved),
+        "device": stat.st_dev,
+        "inode": stat.st_ino,
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def build_runtime_lifecycle_plan(
+    config: GodooConfig,
+    *,
+    runtime_version: str | None,
+    expected_odoo_major: int | None,
+    seed: Path | None,
+    seed_requested: bool,
+    original_filestore: Path | None,
+    update_modules: list[str] | None,
+    install_modules: list[str] | None,
+    upgrade_paths: list[Path] | Path | None,
+    pre_upgrade_scripts: list[Path] | None,
+    after_bootstrap_dirs: list[Path] | None,
+    after_restore_dirs: list[Path] | None,
+    after_reconcile_dirs: list[Path] | None,
+    install_base_modules: bool,
+    install_workspace_modules: bool,
+    odoo_demo: bool,
+) -> dict[str, object]:
+    """Build a nonsecret semantic identity for resumable runtime initialization."""
+    hook_dirs = {
+        "after_bootstrap": after_bootstrap_dirs or [],
+        "after_restore": after_restore_dirs or [],
+        "after_reconcile": after_reconcile_dirs or [],
+    }
+    selected_hooks: dict[str, list[dict[str, object]]] = {}
+    script_diagnostics: dict[str, list[dict[str, object]]] = {}
+    for phase, directories in hook_dirs.items():
+        phase_directories: list[dict[str, object]] = []
+        phase_diagnostics: list[dict[str, object]] = []
+        for directory in directories:
+            resolved = directory.expanduser().resolve()
+            if not resolved.is_dir():
+                message = f"Lifecycle hook directory does not exist: {resolved}"
+                raise ValueError(message)
+            scripts = sorted(resolved.glob("*.py"))
+            phase_directories.append({"directory": str(resolved), "scripts": [script.name for script in scripts]})
+            phase_diagnostics.extend(
+                {
+                    "path": str(script.resolve()),
+                    "size": script.stat().st_size,
+                    "mtime_ns": script.stat().st_mtime_ns,
+                }
+                for script in scripts
+            )
+        selected_hooks[phase] = phase_directories
+        script_diagnostics[phase] = phase_diagnostics
+
+    normalized_pre_scripts = [path.expanduser().resolve() for path in pre_upgrade_scripts or []]
+    for script in normalized_pre_scripts:
+        if not script.is_file():
+            message = f"Pre-upgrade script does not exist: {script}"
+            raise ValueError(message)
+    script_diagnostics["pre_upgrade"] = [
+        {"path": str(script), "size": script.stat().st_size, "mtime_ns": script.stat().st_mtime_ns}
+        for script in normalized_pre_scripts
+    ]
+
+    connection = config.db_connection
+    upgrade_roots = split_upgrade_paths(upgrade_paths)
+    identity: dict[str, object] = {
+        "runtime": {
+            "install_path": str(config.odoo_install_folder.resolve()),
+            "addon_paths": [str(path.expanduser().resolve()) for path in config.addon_paths],
+            "version": runtime_version,
+            "expected_major": expected_odoo_major,
+        },
+        "database": {
+            "name": config.db_name,
+            "filter": config.db_filter,
+            "data_dir": str(config.data_dir.resolve()),
+            "connection": {
+                "host": connection.hostname,
+                "port": connection.port,
+                "user": connection.username,
+                "sslmode": connection.sslmode,
+            },
+        },
+        "seed_requested": seed_requested,
+        "artifacts": {
+            "seed": _path_identity(seed),
+            "original_filestore": _path_identity(original_filestore),
+        },
+        "modules": {
+            "update": split_lifecycle_values(update_modules),
+            "install": split_lifecycle_values(install_modules),
+            "install_base": install_base_modules,
+            "install_workspace": install_workspace_modules,
+            "demo": odoo_demo,
+        },
+        "upgrade_roots": [str(path) for path in upgrade_roots],
+        "pre_upgrade_scripts": [str(path) for path in normalized_pre_scripts],
+        "hooks": selected_hooks,
+    }
+    return {"identity": identity, "diagnostics": {"script_stats": script_diagnostics}}
 
 
 def preflight_reconcile_dependencies(

@@ -23,6 +23,7 @@ from packaging.specifiers import SpecifierSet
 
 from ..database.state import DbBootstrapStatus, base_module_major, classify_bootstrap_state
 from ..models import GodooConfig, GodooModules, OdooVersion
+from .locks import runtime_inconsistency_reason
 
 LOGGER = logging.getLogger(__name__)
 OdooCommand = str | Sequence[str]
@@ -449,6 +450,18 @@ def require_runtime_database_major(config: GodooConfig) -> int | None:
             detail = f"contains Odoo {database_major}."
             raise RuntimeError(_database_load_guidance(db_name, runtime_major, detail))
     return runtime_major
+
+
+def require_runtime_launch_ready(config: GodooConfig) -> None:
+    """Reject Odoo server starts while selected databases have pending recovery."""
+    for db_name in _runtime_database_names(config):
+        reason = runtime_inconsistency_reason(config.data_dir, db_name, missing_or_empty=False)
+        if reason is not None:
+            message = (
+                f"Cannot start Odoo for database '{db_name}' because it has {reason}. "
+                "Complete or recover the pending restore or lifecycle operation first."
+            )
+            raise RuntimeError(message)
 
 
 def _database_modules(config: GodooConfig) -> dict[str, bool]:

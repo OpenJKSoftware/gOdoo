@@ -5,12 +5,43 @@ from pathlib import Path
 import pytest
 
 from godoo_cli.database.connection import DBConnection
-from godoo_cli.runtime.locks import runtime_restore_marker
+from godoo_cli.runtime.locks import (
+    begin_runtime_restore,
+    runtime_readiness_marker,
+    runtime_restore_marker,
+)
+from godoo_cli.runtime.promotion import complete_runtime_promotion
 from godoo_cli.runtime.restore import RuntimeRestoreError, restore_custom_runtime, runtime_filestore_path
 
 
 def _connection() -> DBConnection:
     return DBConnection("db", 5432, "odoo", "secret", "runtime")
+
+
+@pytest.mark.parametrize("owner", ["init", "prepare"])
+def test_lifecycle_owned_promotion_preserves_current_marker(tmp_path: Path, owner: str) -> None:
+    data_dir = tmp_path / "data"
+    promotion_marker = begin_runtime_restore(data_dir, "runtime", "staged")
+    lifecycle_marker = runtime_readiness_marker(data_dir, "runtime")
+    lifecycle_marker.parent.mkdir(parents=True)
+    lifecycle_marker.write_text("pending", encoding="utf-8")
+    staged = tmp_path / "staged-filestore"
+    staged.mkdir()
+    target = tmp_path / "runtime-filestore"
+
+    complete_runtime_promotion(
+        connection=_connection(),
+        marker=promotion_marker,
+        backup_database=None,
+        staged_filestore=staged,
+        target_filestore=target,
+        database_cleaner=lambda _connection: None,
+        database_rollback=lambda _connection, _backup: None,
+        lifecycle_owner=owner,
+    )
+
+    assert lifecycle_marker.read_text(encoding="utf-8") == "pending"
+    assert not promotion_marker.exists()
 
 
 @pytest.fixture(autouse=True)
@@ -37,13 +68,17 @@ def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path:
     created: list[tuple[str, str]] = []
     swapped: list[tuple[str, str]] = []
     cleaned: list[str] = []
+    data_dir = tmp_path / "data"
+    lifecycle_marker = runtime_readiness_marker(data_dir, "runtime")
+    lifecycle_marker.parent.mkdir(parents=True)
+    lifecycle_marker.write_text("pending", encoding="utf-8")
 
     restore_custom_runtime(
         connection=_connection(),
         db_template="template0",
         dump_path=dump,
         filestore_source=source,
-        data_dir=tmp_path / "data",
+        data_dir=data_dir,
         runner=lambda command: calls.append(list(command)) or 0,
         database_creator=lambda connection, template: created.append((connection.db_name, template)),
         database_swapper=lambda connection, staged: swapped.append((connection.db_name, staged)) or "previous",
@@ -68,6 +103,7 @@ def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path:
     }
     assert calls[1][-1] == str(dump)
     assert created == [(staged_database, "template0")]
+    assert not lifecycle_marker.exists()
     assert swapped == [("runtime", staged_database)]
     assert cleaned == ["previous"]
     assert (tmp_path / "data" / "filestore" / "runtime" / "blob").read_text() == "data"
@@ -166,6 +202,10 @@ def test_filestore_swap_failure_restores_previous_database(tmp_path: Path, monke
     dump.write_bytes(b"dump")
     source = tmp_path / "source"
     source.mkdir()
+    data_dir = tmp_path / "data"
+    lifecycle_marker = runtime_readiness_marker(data_dir, "runtime")
+    lifecycle_marker.parent.mkdir(parents=True)
+    lifecycle_marker.write_text("pending", encoding="utf-8")
     rollback: list[tuple[str, str | None]] = []
 
     def fail_filestore_swap(_stage: Path, _target: Path) -> None:
@@ -188,6 +228,7 @@ def test_filestore_swap_failure_restores_previous_database(tmp_path: Path, monke
         )
 
     assert rollback == [("runtime", "previous")]
+    assert lifecycle_marker.read_text(encoding="utf-8") == "pending"
 
 
 def test_filestore_swap_and_database_rollback_failure_retains_recovery_artifacts(

@@ -13,13 +13,55 @@ from godoo_cli.runtime.archive import (
     _reuse_or_validate_archive,
     _validate_native_runtime_archive,
 )
-from godoo_cli.runtime.locks import runtime_readiness_marker
+from godoo_cli.runtime.locks import read_runtime_lifecycle, runtime_readiness_marker
 from godoo_cli.runtime.prepare import (
     PrepareStrategy,
+    _bootstrap_database_template,
     prepare_runtime,
     prepare_runtime_pair,
     select_prepare_strategy,
 )
+
+
+@pytest.mark.parametrize("odoo_major", [16, 17, 18])
+def test_bootstrap_template_ignores_environment_before_odoo_19(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    odoo_major: int,
+) -> None:
+    config_path = tmp_path / "odoo.conf"
+    config_path.write_text("[options]\ndb_template = configured_template\n", encoding="utf-8")
+    config = SimpleNamespace(odoo_conf_path=config_path)
+    monkeypatch.setenv("PGDATABASE_TEMPLATE", "unsupported_environment_template")
+
+    assert _bootstrap_database_template(config, odoo_major) == "configured_template"
+
+
+def test_bootstrap_template_prefers_environment_in_odoo_19(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "odoo.conf"
+    config_path.write_text("[options]\ndb_template = configured_template\n", encoding="utf-8")
+    config = SimpleNamespace(odoo_conf_path=config_path)
+    monkeypatch.setenv("PGDATABASE_TEMPLATE", "environment_template")
+
+    assert _bootstrap_database_template(config, 19) == "environment_template"
+
+
+def test_bootstrap_template_observes_config_changes_before_odoo_19(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "odoo.conf"
+    config_path.write_text("[options]\ndb_template = first_template\n", encoding="utf-8")
+    config = SimpleNamespace(odoo_conf_path=config_path)
+    monkeypatch.setenv("PGDATABASE_TEMPLATE", "ignored_environment_template")
+
+    first_template = _bootstrap_database_template(config, 16)
+    config_path.write_text("[options]\ndb_template = second_template\n", encoding="utf-8")
+
+    assert _bootstrap_database_template(config, 16) != first_template
 
 
 def test_auto_strategy_uses_documented_order() -> None:
@@ -179,6 +221,53 @@ def test_prepare_keeps_marker_when_callback_returns_failure(tmp_path: Path) -> N
             bootstrap=lambda: 7,
         )
     assert runtime_readiness_marker(tmp_path, "runtime").exists()
+
+
+def test_bootstrap_retry_rejects_changed_database_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "odoo.conf"
+    config_path.write_text("[options]\ndb_template = template_file\n", encoding="utf-8")
+    config = SimpleNamespace(
+        db_name="runtime",
+        data_dir=tmp_path / "data",
+        db_connection=SimpleNamespace(hostname="db", port=5432, username="odoo", sslmode=None),
+        db_host="db",
+        db_port=5432,
+        db_user="odoo",
+        db_password="",
+        odoo_install_folder=tmp_path / "odoo",
+        odoo_conf_path=config_path,
+    )
+    monkeypatch.setattr(
+        "godoo_cli.runtime.prepare._cow_capability_available",
+        lambda _config, _source_db: False,
+    )
+    monkeypatch.setattr(
+        "godoo_cli.runtime.prepare.require_supported_odoo_runtime",
+        lambda _path: SimpleNamespace(major=19),
+    )
+    monkeypatch.setenv("PGDATABASE_TEMPLATE", "template_env_a")
+    monkeypatch.setattr("godoo_cli.runtime.prepare.ensure_runtime", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError, match="Bootstrap preparation did not create"):
+        prepare_runtime(config, strategy="bootstrap")
+
+    marker = runtime_readiness_marker(config.data_dir, config.db_name)
+    state = read_runtime_lifecycle(marker, config.db_name)
+    assert state is not None
+    assert state["preparation"]["bootstrap_db_template"] == "template_env_a"
+
+    calls: list[bool] = []
+    monkeypatch.setenv("PGDATABASE_TEMPLATE", "template_env_b")
+    monkeypatch.setattr(
+        "godoo_cli.runtime.prepare.ensure_runtime",
+        lambda *_args, **_kwargs: calls.append(True) or True,
+    )
+    with pytest.raises(RuntimeError, match="preparation inputs differ"):
+        prepare_runtime(config, strategy="bootstrap")
+    assert calls == []
 
 
 def test_prepare_clears_marker_after_successful_completion(tmp_path: Path) -> None:

@@ -18,7 +18,13 @@ from godoo_cli.commands.runtime.shell import (
 )
 from godoo_cli.commands.test.load_data import odoo_load_test_data
 from godoo_cli.database.state import DbBootstrapStatus
-from godoo_cli.runtime.odoo import execution_python, odoo_command_argv, preflight_for_config, run_odoo_command
+from godoo_cli.runtime.locks import runtime_readiness_marker, runtime_restore_marker
+from godoo_cli.runtime.odoo import (
+    execution_python,
+    odoo_command_argv,
+    preflight_for_config,
+    run_odoo_command,
+)
 from godoo_cli.workspace.types import ResolvedSource, WorkspaceSettings
 
 
@@ -416,6 +422,51 @@ def test_run_odoo_command_forwards_stdin_without_a_shell():
 
     assert result.returncode == 7
     assert result.stdout == "env['res.users']\n"
+
+
+@pytest.mark.parametrize("marker_kind", ["restore", "lifecycle"])
+def test_launch_rejects_pending_recovery_markers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker_kind: str
+) -> None:
+    paths = _command_paths(tmp_path)
+    data_dir = tmp_path / "data"
+    marker = (
+        runtime_restore_marker(data_dir, "runtime")
+        if marker_kind == "restore"
+        else runtime_readiness_marker(data_dir, "runtime")
+    )
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    if marker_kind == "lifecycle":
+        marker.write_text(
+            '{"schema_version":2,"database":"runtime","outcome":"unknown",'
+            '"pending_phase":"initialize","plan":{"identity":{},"diagnostics":{}}}',
+            encoding="utf-8",
+        )
+    else:
+        marker.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("godoo_cli.commands.runtime.launch.require_cli_odoo_version", lambda *_args: None)
+    callbacks: list[str] = []
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.preflight_for_config",
+        lambda *_args, **_kwargs: callbacks.append("preflight"),
+    )
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.build_launch_command", lambda *_args, **_kwargs: callbacks.append("build")
+    )
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.run_odoo_command", lambda *_args, **_kwargs: callbacks.append("run")
+    )
+
+    with pytest.raises(RuntimeError, match=r"pending restore|pending lifecycle|unfinished"):
+        launch_odoo(
+            **paths,
+            db_filter="runtime",
+            db_name="runtime",
+            db_user="odoo",
+            data_dir=data_dir,
+        )
+
+    assert callbacks == []
 
 
 def test_shell_major_guard_uses_the_effective_cli_selected_database(

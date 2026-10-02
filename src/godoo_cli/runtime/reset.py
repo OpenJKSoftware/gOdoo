@@ -10,7 +10,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..database.connection import DBConnection
-from .locks import begin_runtime_restore, runtime_data_directory, runtime_locks
+from .locks import begin_runtime_restore, retire_runtime_lifecycle, runtime_data_directory, runtime_locks
 from .odoo import run_odoo_command
 from .promotion import (
     cleanup_database,
@@ -166,6 +166,7 @@ def reset_empty_runtime(
             return 1
         if backup is not None and backup.exists():
             shutil.rmtree(backup)
+        retire_runtime_lifecycle(runtime_data, db_name)
         if marker is not None:
             marker.unlink(missing_ok=True)
         return 0

@@ -20,7 +20,7 @@ from godoo_cli.runtime.archive import (
     load_legacy_runtime_dump,
     load_runtime_archive,
 )
-from godoo_cli.runtime.locks import runtime_restore_marker
+from godoo_cli.runtime.locks import runtime_readiness_marker, runtime_restore_marker
 from godoo_cli.runtime.reset import reset_empty_runtime, reset_runtime_from_template
 from godoo_cli.workspace.types import ResolvedSource, WorkspaceSettings
 
@@ -208,6 +208,9 @@ def test_default_drop_success_removes_filestore(tmp_path: Path, monkeypatch: pyt
     target = data_dir / "filestore" / "runtime"
     target.mkdir(parents=True)
     (target / "old").write_text("old")
+    lifecycle_marker = runtime_readiness_marker(data_dir, "runtime")
+    lifecycle_marker.parent.mkdir(parents=True)
+    lifecycle_marker.write_text("pending", encoding="utf-8")
     dropped: list[str] = []
     monkeypatch.setattr(
         "godoo_cli.runtime.reset.drop_database_strict",
@@ -225,6 +228,7 @@ def test_default_drop_success_removes_filestore(tmp_path: Path, monkeypatch: pyt
     )
     assert dropped == ["runtime"]
     assert not target.exists()
+    assert not lifecycle_marker.exists()
 
 
 @pytest.mark.parametrize(("major", "expected"), [(18, False), (19, True), (20, True), (25, True)])

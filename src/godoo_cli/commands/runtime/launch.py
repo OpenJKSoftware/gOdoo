@@ -13,6 +13,7 @@ from ...runtime.odoo import (
     execution_python,
     odoo_debugger_attached,
     preflight_for_config,
+    require_runtime_launch_ready,
     run_odoo_command,
 )
 from ..common import CommonCLI
@@ -80,6 +81,7 @@ def launch_odoo(
         raise typer.BadParameter(message)
     if dev_mode:
         launch_args.extend(["--dev", "xml,qweb" if debug_listen or parent_debugger else "xml,qweb,reload"])
+    require_runtime_launch_ready(godoo_conf)
     preflight_for_config(godoo_conf, launch_args)
     launch_cmd = build_launch_command(godoo_conf, launch_args, upgrade_workspace_modules=False)
     if debug_listen and not parent_debugger:
