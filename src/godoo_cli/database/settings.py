@@ -13,7 +13,7 @@ class DatabaseSettings:
     db_user: str = ""
     db_password: str = ""
     db_host: str = ""
-    db_port: int = 0
+    db_port: int | None = 0
     db_name: str = ""
     db_filter: str = ""
     db_sslmode: str | None = None
@@ -23,7 +23,7 @@ class DatabaseSettings:
         """Return the DBConnection adapter for these settings."""
         return DBConnection(
             hostname=self.db_host,
-            port=self.db_port,
+            port=self.db_port or 0,
             username=self.db_user,
             password=self.db_password,
             db_name=self.db_name,

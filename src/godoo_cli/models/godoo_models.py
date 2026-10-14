@@ -123,7 +123,7 @@ class GodooConfig:
     db_user: str = ""
     db_password: str = ""
     db_host: str = ""
-    db_port: int = 0
+    db_port: int | None = 0
     db_name: str = ""
     db_filter: str = ""
     db_sslmode: str | None = None

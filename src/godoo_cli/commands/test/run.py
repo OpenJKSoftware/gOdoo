@@ -2,6 +2,7 @@
 
 import logging
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -9,7 +10,13 @@ import typer
 
 from ...helpers.modules_git import get_changed_modules_and_depends
 from ...models import GodooModule, GodooModules
-from ...runtime.odoo import bootstrap_and_prep_launch_cmd, run_odoo_command
+from ...runtime.odoo import (
+    _config_values,
+    _parse_db_port,
+    bootstrap_and_prep_launch_cmd,
+    prepare_runtime,
+    run_odoo_command,
+)
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_command_config
 
@@ -90,7 +97,7 @@ def odoo_run_tests(
     db_name: Annotated[str, CLI.database.db_name],
     data_dir: Annotated[Path | None, CLI.odoo_paths.data_dir] = None,
     db_host: Annotated[str, CLI.database.db_host] = "",
-    db_port: Annotated[int, CLI.database.db_port] = 0,
+    db_port: Annotated[int | None, CLI.database.db_port] = None,
     db_password: Annotated[str, CLI.database.db_password] = "",
     odoo_log_level: Annotated[str, typer.Option(help="Log level")] = "test",
     extra_launch_args: Annotated[list[str] | None, CLI.odoo_launch.extra_cmd_args] = None,
@@ -110,7 +117,7 @@ def odoo_run_tests(
         ),
     ] = None,
 ):
-    """Run Odoo tests to completion without starting the web server."""
+    """Prepare the selected configuration and run Odoo tests to completion."""
     test_module_names = _resolve_test_module_names(test_module_names, workspace_addon_path)
     if not test_module_names:
         LOGGER.info("No Modules to Test. Skipping.")
@@ -138,6 +145,12 @@ def odoo_run_tests(
     if not module_names:
         LOGGER.info("Nothing to Test. Skipping.")
         return
+
+    if db_port is None and godoo_conf.db_port == 0:
+        godoo_conf = replace(
+            godoo_conf, db_port=_parse_db_port(_config_values(godoo_conf.odoo_conf_path).get("db_port"))
+        )
+    prepare_runtime(godoo_conf, x_sendfile=False)
 
     test_module_list = ",".join(["/" + m for m in module_names])
     module_list = ",".join(module_names)

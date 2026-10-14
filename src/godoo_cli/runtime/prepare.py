@@ -321,7 +321,7 @@ def prepare_runtime(  # noqa: C901
             odoo_conf_path=config.odoo_conf_path,
             data_dir=config.data_dir,
             db_host=config.db_host,
-            db_port=config.db_port,
+            db_port=config.db_connection.port,
             db_user=config.db_user,
             db_password=config.db_password,
             db_sslmode=config.db_connection.sslmode,
