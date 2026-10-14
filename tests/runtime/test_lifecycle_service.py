@@ -188,8 +188,8 @@ def test_deployment_init_bootstraps_then_reconciles(tmp_path: Path):
     assert calls == ["bootstrap", "reconcile"]
 
 
-def test_deployment_init_refreshes_config_before_dependency_preflight(tmp_path: Path) -> None:
-    """Run preparation before preflight can inspect configuration."""
+def test_deployment_init_preflights_before_refreshing_config(tmp_path: Path) -> None:
+    """Check dependencies before preparation changes the configuration."""
     calls: list[str] = []
 
     result = deployment_init(
@@ -204,7 +204,32 @@ def test_deployment_init_refreshes_config_before_dependency_preflight(tmp_path: 
     )
 
     assert result == (LifecycleOutcome.READY, 0)
-    assert calls == ["prepare", "preflight", "reconcile"]
+    assert calls == ["preflight", "prepare", "reconcile"]
+
+
+def test_deployment_init_preflight_failure_preserves_runtime_state(tmp_path: Path) -> None:
+    """A failed dependency check prevents preparation and every execution phase."""
+    calls: list[str] = []
+
+    def fail_preflight(_config: GodooConfig) -> None:
+        calls.append("preflight")
+        message = "Missing migration dependency"
+        raise RuntimeError(message)
+
+    with pytest.raises(RuntimeError, match="Missing migration dependency"):
+        deployment_init(
+            _config(tmp_path),
+            seed_requested=True,
+            seeder=lambda _config: calls.append("seed"),
+            ensure=lambda _config: calls.append("bootstrap") or True,
+            reconciler=lambda _config: calls.append("reconcile") or 0,
+            preparer=lambda _config: calls.append("prepare"),
+            preflight=fail_preflight,
+            status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
+            hook_runner=lambda _config, _script: calls.append("hook") or 0,
+        )
+
+    assert calls == ["preflight"]
 
 
 def test_deployment_init_seeds_then_reconciles_without_bootstrap(tmp_path: Path):

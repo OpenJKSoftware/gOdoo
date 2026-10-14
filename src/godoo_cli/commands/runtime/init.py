@@ -1,6 +1,7 @@
 """High-level, testable gOdoo runtime lifecycle commands."""
 
 import logging
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -20,6 +21,7 @@ from ...runtime.lifecycle import (
     run_lifecycle_hook,
     split_lifecycle_values,
 )
+from ...runtime.migration import resolve_migration_directory
 from ...runtime.odoo import (
     SUPPORTED_ODOO_VERSION_SPECIFIER,
     OdooVersionError,
@@ -51,6 +53,38 @@ def _validate_pre_upgrade_options(
         raise typer.BadParameter(message, param_hint="--update")
 
 
+def _validate_migration_overrides(
+    update_modules: list[str] | None,
+    install_modules: list[str] | None,
+    pre_upgrade_scripts: list[Path] | None,
+    after_bootstrap_dirs: list[Path] | None,
+    after_restore_dirs: list[Path] | None,
+) -> None:
+    """Prevent generic defaults from changing a selected migration."""
+    for variable in (
+        "GODOO_RECONCILE_UPDATE",
+        "GODOO_RECONCILE_INSTALL",
+        "GODOO_RECONCILE_PRE_UPGRADE_SCRIPTS",
+        "GODOO_RECONCILE_UPGRADE_PATH",
+        "GODOO_AFTER_BOOTSTRAP_DIRS",
+        "GODOO_AFTER_RESTORE_DIRS",
+        "GODOO_AFTER_RECONCILE_DIRS",
+    ):
+        if os.environ.get(variable, "").strip():
+            message = f"Unset {variable} when selecting --migration-dir; the transition supplies those inputs."
+            raise typer.BadParameter(message, param_hint="--migration-dir")
+    for option, value in (
+        ("--update", update_modules),
+        ("--install", install_modules),
+        ("--pre-upgrade-script", pre_upgrade_scripts),
+        ("--after-bootstrap-dir", after_bootstrap_dirs),
+        ("--after-restore-dir", after_restore_dirs),
+    ):
+        if value:
+            message = f"{option} cannot be combined with --migration-dir."
+            raise typer.BadParameter(message, param_hint=option)
+
+
 # Keep validation and execution ordering visible at this public command boundary.
 def deployment_init_odoo_runtime(  # noqa: C901
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
@@ -68,6 +102,14 @@ def deployment_init_odoo_runtime(  # noqa: C901
     seed: Annotated[
         Path | None,
         typer.Option("--seed", envvar="GODOO_RUNTIME_SEED", help="Native Odoo ZIP archive."),
+    ] = None,
+    migration_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--migration-dir",
+            envvar="GODOO_MIGRATION_DIR",
+            help="Migration transition directory; relative paths start at the workspace working directory.",
+        ),
     ] = None,
     original_filestore: Annotated[
         Path | None,
@@ -127,6 +169,44 @@ def deployment_init_odoo_runtime(  # noqa: C901
     extra_bootstrap_args: Annotated[list[str] | None, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
 ) -> int:
     """One-shot init: seed or bootstrap, reconcile, run phase hooks, then exit."""
+    migration = None
+    if migration_dir is not None:
+        _validate_migration_overrides(
+            update_modules, install_modules, pre_upgrade_scripts, after_bootstrap_dirs, after_restore_dirs
+        )
+        if odoo_demo:
+            message = "--migration-dir cannot be combined with demo data."
+            raise typer.BadParameter(message, param_hint="--odoo-demo")
+        if seed is None:
+            message = "--migration-dir requires an explicit seed ZIP archive."
+            raise typer.BadParameter(message, param_hint="--seed")
+        if original_filestore is None:
+            message = "--migration-dir requires a nonempty original filestore directory."
+            raise typer.BadParameter(message, param_hint="--original-filestore")
+        try:
+            filestore_nonempty = original_filestore.is_dir() and any(
+                path.is_file() for path in original_filestore.rglob("*")
+            )
+        except OSError as error:
+            raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
+        if not filestore_nonempty:
+            message = f"Original filestore directory is missing or empty: {original_filestore}"
+            raise typer.BadParameter(message, param_hint="--original-filestore")
+        try:
+            migration = resolve_migration_directory(
+                migration_dir, workspace_root=Path.cwd(), additional_upgrade_paths=upgrade_path
+            )
+        except (OSError, ValueError) as error:
+            raise typer.BadParameter(str(error), param_hint="--migration-dir") from error
+        if expected_odoo_major is not None and expected_odoo_major != migration.target_major:
+            message = f"Migration transition {migration.directory.name} requires Odoo {migration.target_major}.x."
+            raise typer.BadParameter(message, param_hint="--expected-odoo-major")
+        expected_odoo_major = migration.target_major
+        update_modules = list(migration.update_modules)
+        install_modules = list(migration.install_modules)
+        pre_upgrade_scripts = [migration.pre_upgrade_script] if update_modules else None
+        upgrade_path = list(migration.upgrade_paths) if update_modules else None
+        after_reconcile_dirs = [migration.after_reconcile_dir, *(after_reconcile_dirs or [])]
     if report_url is not None:
         report_url = report_url.strip()
     config = resolve_command_config(
@@ -167,24 +247,31 @@ def deployment_init_odoo_runtime(  # noqa: C901
         raise typer.BadParameter(message, param_hint="--report-url")
     runtime_seed = seed
 
-    lifecycle_plan = build_runtime_lifecycle_plan(
-        config,
-        runtime_version=runtime_version.raw,
-        expected_odoo_major=expected_odoo_major,
-        seed=runtime_seed,
-        seed_requested=runtime_seed is not None,
-        original_filestore=original_filestore,
-        update_modules=update_modules,
-        install_modules=install_modules,
-        upgrade_paths=upgrade_path,
-        pre_upgrade_scripts=pre_upgrade_scripts,
-        after_bootstrap_dirs=after_bootstrap_dirs,
-        after_restore_dirs=after_restore_dirs,
-        after_reconcile_dirs=after_reconcile_dirs,
-        install_base_modules=install_base_modules,
-        install_workspace_modules=install_workspace_modules,
-        odoo_demo=odoo_demo,
-    )
+    try:
+        lifecycle_plan = build_runtime_lifecycle_plan(
+            config,
+            runtime_version=runtime_version.raw,
+            expected_odoo_major=expected_odoo_major,
+            seed=runtime_seed,
+            seed_requested=runtime_seed is not None,
+            original_filestore=original_filestore,
+            update_modules=update_modules,
+            install_modules=install_modules,
+            upgrade_paths=upgrade_path,
+            pre_upgrade_scripts=pre_upgrade_scripts,
+            after_bootstrap_dirs=after_bootstrap_dirs,
+            after_restore_dirs=after_restore_dirs,
+            after_reconcile_dirs=after_reconcile_dirs,
+            install_base_modules=install_base_modules,
+            install_workspace_modules=install_workspace_modules,
+            odoo_demo=odoo_demo,
+        )
+    except (OSError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    if migration is not None:
+        identity = lifecycle_plan["identity"]
+        assert isinstance(identity, dict)
+        identity["migration"] = migration.plan_identity()
 
     def already_prepared(_conf: GodooConfig) -> None:
         """Skip preparation already completed by init."""

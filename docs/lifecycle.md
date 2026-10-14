@@ -45,6 +45,55 @@ godoo runtime init \
 - Hook directories run in configured order; each directory's `*.py` files run lexically, one Odoo shell session per
   file. Phases are at-least-once, so scripts must be safe to rerun. Contents may change at a selected path.
 
+## Migration directories
+
+Run init from the downstream workspace root to select a transition directory:
+
+```bash
+godoo runtime init --migration-dir migration/transitions/16-19 \
+  --seed /restore/upgraded.zip --original-filestore /restore/original-filestore
+```
+
+`GODOO_MIGRATION_DIR` is the environment fallback. Relative directories resolve from the current working directory;
+absolute mounted directories work too. The basename must be an increasing version pair such as `16-19`. Init derives the
+target major and checks the configured Odoo runtime before changing configuration, database, or filestore state. A
+matching `--expected-odoo-major` is allowed; a different major is rejected.
+
+The directory must contain `pre-upgrade.py` and at least one direct `after-reconcile/*.py` file. Init requires an
+explicit native seed ZIP and a nonempty original filestore directory. Demo data cannot be combined with a migration.
+
+Directory names and files, module lists, hook entrypoints, selected roots, seed and filestore inputs, the configured
+runtime target, and dependencies known before restore are checked before mutation. Init checks dependencies again after
+restoring the seed, when restored database state may reveal additional requirements. If that check fails, the restore
+has already completed and the existing bound plan remains pending at `after-restore`. Fix the dependency and retry the
+same inputs; init resumes that phase without restoring the seed again.
+
+| Transition input               | Init behavior                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Missing `update_modules.txt`   | Update `all`.                                                                                    |
+| Empty `update_modules.txt`     | Skip native updates, pre-upgrade scripts, and upgrade roots; installs and final hooks still run. |
+| Nonempty `update_modules.txt`  | Update the listed modules.                                                                       |
+| Optional `install_modules.txt` | Install the listed modules.                                                                      |
+
+Module files accept one module per line and comma-separated values; whitespace and duplicates are removed. Upgrade roots
+run in this order: workspace `migration/upgrade` if present, transition `upgrades` if present, then explicit
+`--upgrade-path` additions. Selected roots must exist. Transition final hooks run first, followed by explicit
+`--after-reconcile-dir` additions. Each directory's Python files run lexically through the existing hook runner.
+
+Generic `--update`, `--install`, `--pre-upgrade-script`, `--after-bootstrap-dir`, and `--after-restore-dir` options
+cannot be combined with migration selection. Unset `GODOO_RECONCILE_UPDATE`, `GODOO_RECONCILE_INSTALL`,
+`GODOO_RECONCILE_PRE_UPGRADE_SCRIPTS`, `GODOO_RECONCILE_UPGRADE_PATH`, and the `GODOO_AFTER_*_DIRS` phase defaults;
+nonempty values are rejected even when a CLI option would override them. Use explicit CLI options for additional upgrade
+roots and final project hooks.
+
+The existing pending plan binds the selected directory, target, module lists, roots, pre-upgrade script, and hook
+entrypoints, including inputs skipped by an empty update list. Resume the same selection after a failure. Script
+contents retain the existing at-least-once retry policy. Ordinary init without a migration directory keeps its direct
+flags and environment defaults.
+
+An already bound pending plan started with direct init flags must be resumed with those original flags before switching
+to migration-directory selection. Selecting a directory does not rebind an existing pending plan.
+
 ## Official and major-version upgrades
 
 `godoo upgrade` fetches Odoo's official client and forwards its arguments.

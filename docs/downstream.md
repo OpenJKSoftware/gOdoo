@@ -64,3 +64,21 @@ For Odoo's upgrade client and restore workflow, see the [runtime lifecycle guide
 | `ODOO_ENTERPRISE_SUBCODE`     | `-c` contract          |
 
 The wrapper also passes `-x` to suppress the official client's local restore.
+
+## Select a migration transition
+
+gOdoo owns transition-directory validation and converts `--migration-dir` (`GODOO_MIGRATION_DIR`) into existing init
+inputs. Run from the downstream workspace root for relative paths, or provide an absolute mounted directory. Mount the
+selected transition, native seed ZIP, and nonempty original filestore into the init environment. See
+[migration directories](lifecycle.md#migration-directories) for the required files and reconciliation rules.
+
+A downstream wrapper may forward its positional scripts directory as `--migration-dir`. It should leave version, script,
+module-list, archive, and filestore checks to gOdoo. Pass intentional project hooks with explicit
+`--after-reconcile-dir` options; they run after the transition's final hooks. Generic reconcile and phase-hook
+environment defaults must be unset in migration mode, because init rejects conflicting defaults before mutation.
+Downstream still owns Compose mounts, service ordering, and project shell scripts.
+
+Selected inputs and dependency checks that can run before restore fail before mutation. Dependencies discovered only
+from the restored database are checked afterward; a failure leaves the bound `after-restore` phase pending. Repair the
+dependency and rerun the same selection to resume without reseeding. Finish any pending init started with direct flags
+using those original flags before adopting `--migration-dir`.

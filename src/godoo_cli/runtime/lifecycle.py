@@ -280,10 +280,10 @@ def deployment_init(  # noqa: C901
         phase = cast(str, state["pending_phase"])
         outcome_value = cast(str, state["outcome"])
         initial_status = status_getter(config.db_connection)
-        if preparer:
-            preparer(config)
         if preflight:
             preflight(config)
+        if preparer:
+            preparer(config)
         outcome = (
             LifecycleOutcome(outcome_value) if outcome_value in {item.value for item in LifecycleOutcome} else None
         )
@@ -425,6 +425,10 @@ def build_runtime_lifecycle_plan(
                 message = f"Lifecycle hook directory does not exist: {resolved}"
                 raise ValueError(message)
             scripts = sorted(resolved.glob("*.py"))
+            for script in scripts:
+                if not script.is_file():
+                    message = f"Lifecycle hook is not a Python file: {script}"
+                    raise ValueError(message)
             phase_directories.append({"directory": str(resolved), "scripts": [script.name for script in scripts]})
             phase_diagnostics.extend(
                 {
