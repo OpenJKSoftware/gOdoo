@@ -22,6 +22,7 @@ from ...runtime.lifecycle import (
     split_lifecycle_values,
 )
 from ...runtime.migration import resolve_migration_directory
+from ...runtime.nginx import write_nginx_static_config
 from ...runtime.odoo import (
     SUPPORTED_ODOO_VERSION_SPECIFIER,
     OdooVersionError,
@@ -167,6 +168,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
         ),
     ] = False,
     extra_bootstrap_args: Annotated[list[str] | None, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
+    nginx_config: Annotated[Path | None, CLI.odoo_paths.nginx_config] = None,
 ) -> int:
     """One-shot init: seed or bootstrap, reconcile, run phase hooks, then exit."""
     migration = None
@@ -277,6 +279,12 @@ def deployment_init_odoo_runtime(  # noqa: C901
         """Skip preparation already completed by init."""
         return None
 
+    def prepare(conf: GodooConfig) -> None:
+        """Prepare Odoo and the optional Nginx static-file lookup."""
+        if nginx_config is not None:
+            write_nginx_static_config(conf, nginx_config, runtime_version)
+        prepare_runtime(conf, x_sendfile=x_sendfile)
+
     def ensure(conf: GodooConfig) -> bool:
         """Bootstrap the runtime without repeating preparation."""
         return ensure_runtime(
@@ -316,7 +324,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
             seed_requested=runtime_seed is not None,
             seeder=seed_runtime,
             ensure=ensure,
-            preparer=lambda conf: prepare_runtime(conf, x_sendfile=x_sendfile),
+            preparer=prepare,
             preflight=lambda conf: preflight_reconcile_dependencies(
                 conf,
                 update_modules,

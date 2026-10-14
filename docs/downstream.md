@@ -28,15 +28,36 @@ maintenance and a 512 MiB shared-memory segment; tune both for larger datasets.
 
 ## HTTP and file delivery
 
-The example Nginx listens on host loopback port 8069 and proxies ordinary HTTP to Odoo. In production, Traefik routes
-`/websocket` directly to Odoo on port 8072; the development stack uses a separate WebSocket service. With
-`GODOO_X_SENDFILE=true`, Nginx serves file-backed attachments from the shared filestore. Keep its file-serving location
-internal. A separate filestore volume could narrow Nginx access, but would require migrating existing files. Disable
-X-Sendfile if the deployment removes Nginx.
+The launch commands read custom Odoo arguments from `ODOO_BIN_ARGS` in the host Compose `.env` file or shell. They
+append proxy mode, and development also appends `--workers=0`. For container-only overrides, provide an explicit launch
+command with the desired `--extra-args` values.
+
+The example Nginx listens on host loopback port 8069 and is the only HTTP ingress. It proxies ordinary HTTP to
+`app:8069` and `/websocket` to `app:8072`; development uses `app:8069` for both paths. Traefik routes all Odoo traffic
+to Nginx. With `GODOO_X_SENDFILE=true`, Nginx serves file-backed attachments from the shared filestore. Keep its
+file-serving location internal. A separate filestore volume could narrow Nginx access, but would require migrating
+existing files. Disable X-Sendfile if the deployment removes Nginx.
 
 Set `GODOO_REPORT_URL` to the file-serving proxy address as seen from Odoo (the example uses `http://nginx`). Init
-stores this as Odoo's `report.url` and requires it when X-Sendfile is enabled. Odoo serves module static files itself;
-they are outside the filestore. Do not mount host source trees into Nginx.
+stores this as Odoo's `report.url` and requires it when X-Sendfile is enabled.
+
+Nginx also serves `/MODULE/static/FILE` directly, following
+[Odoo's deployment guidance](https://www.odoo.com/documentation/19.0/administration/on_premise/deploy.html#serving-static-files-and-attachments).
+The example sets `GODOO_NGINX_CONFIG_PATH=/odoo/config/nginx-static.conf`. Runtime init and launch write a module lookup
+from the effective addon paths, including built-in and data-directory addons. The first matching module wins, even when
+a later copy has a file the first copy lacks. Missing files fall back to Odoo. Static responses expire after 24 hours;
+images receive `Content-Security-Policy: default-src 'none'`. Nginx enables sendfile and gzip for text assets.
+
+Development mounts the project and shared source root read-only into Nginx at the same paths used by Odoo. Production
+builds the `nginx` image target from the same materialized sources as the application; it needs no host source mounts.
+Both modes mount the shared configuration and Odoo data volumes read-only. This gives Nginx access to the source trees;
+only module static URLs and Odoo-authorized internal filestore redirects expose files over HTTP.
+
+Use `--nginx-config PATH` on runtime init or launch to select another output, and update Nginx's include and mounts to
+match. If you override addon paths, mount or copy those paths into Nginx too. Restart or reload Nginx after changing
+module directories or addon selection; edits to existing static files are visible immediately, subject to browser
+caching. When copying these examples downstream, include the Nginx template, image targets, and shared configuration
+mount together.
 
 ## Build and run production images
 

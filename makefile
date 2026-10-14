@@ -44,11 +44,11 @@ dev: check-env # Build and start the bind-mounted development stack.
 	@set -eu; \
 		eval "$$($(BIN)/godoo workspace runtime-env)"; \
 		export GODOO_SOURCES_ROOT GODOO_RUNTIME_ODOO_PATH GODOO_RUNTIME_ADDON_PATHS; \
-		GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED=false COMPOSE_PROFILES=dev docker compose $(DEV_COMPOSE_FILES) up --build $(DEV_UP_ARGS)
+		docker compose $(DEV_COMPOSE_FILES) up --build $(DEV_UP_ARGS)
 
 prod: check-env # Check selected sources, then build and start the production stack.
 	$(BIN)/godoo workspace check --sources-only
-	GODOO_PACKAGE=/build/project GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED=true COMPOSE_PROFILES= docker compose $(PROD_COMPOSE_FILES) up --build
+	GODOO_PACKAGE=/build/project docker compose $(PROD_COMPOSE_FILES) up --build
 
 stop: check-env # Stop every running container in this Compose project.
 	@set -eu; \

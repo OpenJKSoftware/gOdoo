@@ -1,0 +1,84 @@
+include /odoo/config/nginx-static.conf;
+
+map $sent_http_content_type $odoo_static_csp {
+    default "";
+    ~image/ "default-src 'none'";
+}
+
+map $http_x_forwarded_proto $odoo_forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+map $http_host $odoo_forwarded_host {
+    default $http_host;
+    ""      $host;
+}
+
+map $http_upgrade $odoo_connection_upgrade {
+    default upgrade;
+    ""      close;
+}
+
+server {
+    listen 80;
+
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    client_max_body_size 4g;
+    proxy_read_timeout 720s;
+    proxy_send_timeout 720s;
+
+    sendfile on;
+    gzip on;
+    gzip_types text/css text/plain text/xml application/xml application/json application/javascript image/svg+xml;
+
+    set $odoo_upstream app:8069;
+    proxy_http_version 1.1;
+    proxy_request_buffering off;
+    proxy_set_header Host $odoo_forwarded_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $odoo_forwarded_host;
+    proxy_set_header X-Forwarded-Proto $odoo_forwarded_proto;
+    proxy_hide_header X-Sendfile;
+
+    location /web/filestore/ {
+        internal;
+        alias /var/lib/odoo/filestore/;
+        add_header Content-Security-Policy $upstream_http_content_security_policy;
+        add_header X-Content-Type-Options nosniff;
+    }
+
+    location /websocket {
+        set $odoo_upstream ${GODOO_NGINX_WEBSOCKET_BACKEND};
+
+        proxy_pass http://$odoo_upstream;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $odoo_connection_upgrade;
+        proxy_set_header Host $odoo_forwarded_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $odoo_forwarded_host;
+        proxy_set_header X-Forwarded-Proto $odoo_forwarded_proto;
+        proxy_hide_header X-Sendfile;
+    }
+
+    location ~ ^/(?<odoo_static_module>[^/]+)/static/.+$ {
+        root $odoo_static_root;
+        try_files $uri @odoo;
+        expires 24h;
+        add_header Content-Security-Policy $odoo_static_csp;
+        add_header X-Content-Type-Options nosniff;
+    }
+
+    location / {
+        proxy_pass http://$odoo_upstream;
+    }
+
+    location @odoo {
+        proxy_pass http://$odoo_upstream;
+    }
+}

@@ -3,6 +3,7 @@ x-runtime: &runtime
   build:
     context: ..
     dockerfile: docker/Dockerfile
+    target: production
     additional_contexts:
       godoo-sources: ${GODOO_SOURCES_ROOT:?Set GODOO_SOURCES_ROOT}
     args:
@@ -27,6 +28,7 @@ x-runtime: &runtime
     GODOO_AFTER_RESTORE_DIRS: "${GODOO_AFTER_RESTORE_DIRS:-}"
     GODOO_AFTER_RECONCILE_DIRS: "${GODOO_AFTER_RECONCILE_DIRS:-}"
     GODOO_REPORT_URL: ${GODOO_REPORT_URL:-http://nginx}
+    GODOO_NGINX_CONFIG_PATH: /odoo/config/nginx-static.conf
   volumes:
     - odoo_data:/var/lib/odoo
     - odoo_config:/odoo/config
@@ -40,19 +42,28 @@ services:
         condition: service_healthy
   app:
     <<: *runtime
-    command: [godoo, runtime, launch]
+    command: [godoo, runtime, launch, "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--proxy-mode"]
     depends_on:
       init:
         condition: service_completed_successfully
   nginx:
-    image: nginx:stable-alpine
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: nginx
+      additional_contexts:
+        godoo-sources: ${GODOO_SOURCES_ROOT:?Set GODOO_SOURCES_ROOT}
     ports: ["127.0.0.1:8069:80"]
+    environment:
+      GODOO_NGINX_WEBSOCKET_BACKEND: ${GODOO_NGINX_WEBSOCKET_BACKEND:-app:8072}
+      NGINX_ENVSUBST_FILTER: "^GODOO_NGINX_WEBSOCKET_BACKEND$"
     depends_on:
       app:
         condition: service_started
     volumes:
-      - ../config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../config/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - odoo_data:/var/lib/odoo:ro
+      - odoo_config:/odoo/config:ro
   db:
     image: pgvector/pgvector:pg18-trixie
     command: [postgres, -c, config_file=/etc/postgresql/postgresql.conf]

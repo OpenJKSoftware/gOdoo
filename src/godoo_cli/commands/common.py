@@ -79,6 +79,12 @@ class OdooPathCLIArgs:
         help="Odoo data directory, including filestores",
         rich_help_panel="Path Options",
     )
+    nginx_config = Option(
+        "--nginx-config",
+        envvar="GODOO_NGINX_CONFIG_PATH",
+        help="Write Nginx's module static-file lookup at this path.",
+        rich_help_panel="Path Options",
+    )
 
 
 @dataclass

@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
+import pytest
 from ruamel.yaml import YAML
+
+from godoo_cli.models import GodooConfig
+from godoo_cli.runtime.odoo import _extra_args_argv, build_launch_command
 
 LOGGER = logging.getLogger(__name__)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +43,12 @@ def test_example_initializes_before_launching() -> None:
     ]
     postgresql_config = (REPOSITORY_ROOT / "config" / "postgresql.conf").read_text(encoding="utf-8")
     assert "listen_addresses = '*'" in postgresql_config
-    assert application["command"] == ["godoo", "runtime", "launch"]
+    assert application["command"] == [
+        "godoo",
+        "runtime",
+        "launch",
+        "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--proxy-mode",
+    ]
     assert "GODOO_DEV_MODE" not in application["environment"]
     assert application["depends_on"]["init"] == {"condition": "service_completed_successfully"}
     assert compose["x-runtime"]["environment"]["GODOO_X_SENDFILE"] == "${GODOO_X_SENDFILE:-true}"
@@ -47,7 +57,66 @@ def test_example_initializes_before_launching() -> None:
     assert nginx["ports"] == ["127.0.0.1:8069:80"]
     assert "ports" not in application
     assert "odoo_data:/var/lib/odoo:ro" in nginx["volumes"]
-    assert "../config/nginx.conf:/etc/nginx/conf.d/default.conf:ro" in nginx["volumes"]
+    assert "odoo_config:/odoo/config:ro" in nginx["volumes"]
+    assert "../config/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" in nginx["volumes"]
+    assert nginx["environment"] == {
+        "GODOO_NGINX_WEBSOCKET_BACKEND": "${GODOO_NGINX_WEBSOCKET_BACKEND:-app:8072}",
+        "NGINX_ENVSUBST_FILTER": "^GODOO_NGINX_WEBSOCKET_BACKEND$",
+    }
+
+
+@pytest.mark.parametrize("compose_file", ["docker-compose.base.yml", "docker-compose.dev.yml"])
+@pytest.mark.parametrize("user_args", ["", "--workers=5 --limit-time-real=180"])
+def test_nginx_launch_keeps_proxy_mode_with_zero_configured_workers(
+    tmp_path: Path, compose_file: str, user_args: str
+) -> None:
+    """Nginx-facing launches enable proxy mode with zero configured workers."""
+    launch = _compose(compose_file)["services"]["app"]["command"]
+    prefix = f"{user_args} " if user_args else ""
+    extra = [
+        argument.split("=", 1)[1].replace("${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }", prefix)
+        for argument in launch
+        if argument.startswith("--extra-args=")
+    ]
+    config = GodooConfig(
+        odoo_install_folder=tmp_path / "odoo",
+        odoo_conf_path=tmp_path / "odoo.conf",
+        workspace_addon_path=tmp_path / "addons",
+        thirdparty_addon_path=tmp_path / "thirdparty",
+        db_name="proxy_test",
+        db_user="odoo",
+        db_password="",
+        db_host="db",
+        db_port=5432,
+        db_filter="proxy_test",
+        multithread_worker_count=0,
+    )
+    command = build_launch_command(config, _extra_args_argv(extra), upgrade_workspace_modules=False, save_config=False)
+    assert "--proxy-mode" in command
+    assert "--save" not in command
+    assert "--update" not in command
+    assert command[-1] == "--proxy-mode"
+    if user_args:
+        assert "--workers=5" in command
+        assert "--limit-time-real=180" in command
+    if compose_file == "docker-compose.dev.yml":
+        assert command[-2:] == ["--workers=0", "--proxy-mode"]
+
+
+def test_nginx_template_filter_selects_only_its_backend_input() -> None:
+    """Template rendering leaves native Nginx variables untouched."""
+    environment = _compose("docker-compose.base.yml")["services"]["nginx"]["environment"]
+    pattern = re.compile(environment["NGINX_ENVSUBST_FILTER"])
+    names = [
+        "GODOO_NGINX_WEBSOCKET_BACKEND",
+        "PREFIX_GODOO_NGINX_WEBSOCKET_BACKEND",
+        "GODOO_NGINX_WEBSOCKET_BACKEND_SUFFIX",
+        "http_upgrade",
+        "scheme",
+        "host",
+        "odoo_upstream",
+    ]
+    assert [name for name in names if pattern.search(name)] == ["GODOO_NGINX_WEBSOCKET_BACKEND"]
 
 
 def test_base_compose_supplies_selected_sources_to_builds() -> None:
@@ -57,6 +126,11 @@ def test_base_compose_supplies_selected_sources_to_builds() -> None:
     assert runtime["build"]["additional_contexts"] == {"godoo-sources": "${GODOO_SOURCES_ROOT:?Set GODOO_SOURCES_ROOT}"}
     assert "GODOO_SOURCES_ROOT" not in runtime["environment"]
     assert runtime["build"]["args"]["GODOO_PACKAGE"] == "${GODOO_PACKAGE:-godoo-cli}"
+    assert runtime["build"]["target"] == "production"
+    nginx_build = compose["services"]["nginx"]["build"]
+    assert nginx_build["target"] == "nginx"
+    assert nginx_build["additional_contexts"] == runtime["build"]["additional_contexts"]
+    assert runtime["environment"]["GODOO_NGINX_CONFIG_PATH"] == "/odoo/config/nginx-static.conf"
 
 
 def test_development_override_mounts_one_source_root() -> None:
@@ -64,7 +138,6 @@ def test_development_override_mounts_one_source_root() -> None:
     compose = _compose("docker-compose.dev.yml")
     initialization = compose["services"]["init"]
     app = compose["services"]["app"]
-    websocket = compose["services"]["websocket"]
     expected_volumes = [
         "..:/odoo/godoo_workspace",
         "${GODOO_SOURCES_ROOT}:${GODOO_SOURCES_ROOT}:ro",
@@ -77,7 +150,7 @@ def test_development_override_mounts_one_source_root() -> None:
         "PYTHONPATH": "/odoo/godoo_workspace/src",
     }
 
-    for service in (initialization, app, websocket):
+    for service in (initialization, app):
         assert service["build"]["target"] == "development"
         assert service["build"]["additional_contexts"] == {"odoo-source": "${GODOO_RUNTIME_ODOO_PATH}"}
         assert service["volumes"] == expected_volumes
@@ -90,33 +163,22 @@ def test_development_override_mounts_one_source_root() -> None:
         "godoo_cli",
         "runtime",
         "launch",
-        "--extra-args=--workers=0",
+        "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--workers=0 --proxy-mode",
     ]
     assert app["environment"]["GODOO_DEV_MODE"] == "1"
-    assert websocket["command"] == [
-        "sh",
-        "-c",
-        'exec "$$GODOO_RUNTIME_ODOO_PATH/odoo-bin" gevent --config "$$ODOO_CONF_PATH"',
-    ]
-    assert websocket["extends"] == {
-        "file": "docker-compose.base.yml",
-        "service": "init",
+    assert compose["services"]["nginx"]["environment"] == {
+        "GODOO_NGINX_WEBSOCKET_BACKEND": "${GODOO_NGINX_WEBSOCKET_BACKEND:-app:8069}"
     }
-    assert websocket["depends_on"]["init"] == {"condition": "service_completed_successfully"}
-    assert websocket["networks"] == ["default", "traefik"]
-    assert "GODOO_DEV_MODE" not in websocket["environment"]
-    assert "labels" not in app
-    assert "labels" not in websocket
-    traefik = _compose("docker-compose.traefik.yml")["services"]
-    assert traefik["app"]["labels"][0] == ("traefik.enable=${GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED:-true}")
-    assert traefik["websocket"]["profiles"] == ["dev"]
-    assert traefik["websocket"]["labels"] == [
-        "traefik.enable=true",
-        "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websocket.service=${COMPOSE_PROJECT_NAME}-websocket",
-        "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websocket.entrypoints=websecure",
-        "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websocket.rule=HostRegexp(`${TRAEFIK_HOST_REGEX}`) && PathPrefix(`/websocket`)",
-        "traefik.http.services.${COMPOSE_PROJECT_NAME}-websocket.loadbalancer.server.port=8072",
+    assert compose["services"]["nginx"]["build"]["target"] == "nginx-development"
+    assert compose["services"]["nginx"]["volumes"] == [
+        "..:/odoo/godoo_workspace:ro",
+        "${GODOO_SOURCES_ROOT}:${GODOO_SOURCES_ROOT}:ro",
     ]
+    assert "websocket" not in compose["services"]
+    assert "labels" not in app
+    assert "labels" not in compose["services"]["nginx"]
+    traefik = _compose("docker-compose.traefik.yml")["services"]
+    assert set(traefik) == {"nginx"}
 
 
 def test_development_target_uses_live_source_and_dependency_mounts() -> None:
@@ -171,26 +233,23 @@ def test_make_production_builds_compose_with_the_local_cli() -> None:
     """The production target uses Compose and installs the checked-out CLI."""
     makefile = (REPOSITORY_ROOT / "makefile").read_text(encoding="utf-8")
     assert (
-        "$(BIN)/godoo workspace check --sources-only\n\tGODOO_PACKAGE=/build/project GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED=true COMPOSE_PROFILES= docker compose $(PROD_COMPOSE_FILES) up --build"
+        "$(BIN)/godoo workspace check --sources-only\n\tGODOO_PACKAGE=/build/project docker compose $(PROD_COMPOSE_FILES) up --build"
         in makefile
     )
     assert "scripts/production.py" not in makefile
 
 
-def test_make_development_enables_the_development_websocket_profile() -> None:
-    """The development target routes WebSockets to its gevent service."""
+def test_make_development_uses_the_single_proxy_stack() -> None:
+    """The development target keeps websocket routing in the main proxy stack."""
     makefile = (REPOSITORY_ROOT / "makefile").read_text(encoding="utf-8")
-    assert "GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED=false COMPOSE_PROFILES=dev docker compose" in makefile
+    assert "GODOO_TRAEFIK_APP_WEBSOCKET_ENABLED" not in makefile
+    assert "COMPOSE_PROFILES=dev" not in makefile
 
 
 def test_traefik_override_routes_http_through_nginx() -> None:
-    """Traefik routes HTTP through Nginx and websockets to Odoo."""
+    """Traefik sends all Odoo traffic to Nginx."""
     compose = _compose("docker-compose.traefik.yml")
     nginx = compose["services"]["nginx"]
-    app = compose["services"]["app"]
-    assert "build" not in app
+    assert set(compose["services"]) == {"nginx"}
     assert nginx["networks"] == ["default", "traefik"]
     assert "traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=80" in nginx["labels"]
-    assert app["networks"] == ["default", "traefik"]
-    assert "traefik.http.services.${COMPOSE_PROJECT_NAME}-websocket.loadbalancer.server.port=8072" in app["labels"]
-    assert compose["services"]["websocket"]["profiles"] == ["dev"]

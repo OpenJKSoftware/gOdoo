@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from ...runtime.nginx import write_nginx_static_config
 from ...runtime.odoo import (
     SUPPORTED_ODOO_VERSION_SPECIFIER,
     _extra_args_argv,
@@ -14,6 +15,7 @@ from ...runtime.odoo import (
     odoo_debugger_attached,
     preflight_for_config,
     require_runtime_launch_ready,
+    resolve_odoo_config,
     run_odoo_command,
 )
 from ..common import CommonCLI
@@ -54,6 +56,7 @@ def launch_odoo(
             help="Wait for a debugger before executing Odoo (requires --debug-listen).",
         ),
     ] = False,
+    nginx_config: Annotated[Path | None, CLI.odoo_paths.nginx_config] = None,
 ):
     """Launch Odoo without initialization or reconciliation, after additive dependency preflight."""
     parent_debugger = odoo_debugger_attached()
@@ -72,7 +75,7 @@ def launch_odoo(
         arguments=launch_args,
         extra={"multithread_worker_count": multithread_worker_count, "languages": languages},
     )
-    require_cli_odoo_version(godoo_conf.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
+    runtime_version = require_cli_odoo_version(godoo_conf.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
     if log_file_path is not None:
         log_file_path.unlink(missing_ok=True)
         launch_args.extend(["--logfile", str(log_file_path.absolute())])
@@ -84,6 +87,8 @@ def launch_odoo(
     require_runtime_launch_ready(godoo_conf)
     preflight_for_config(godoo_conf, launch_args)
     launch_cmd = build_launch_command(godoo_conf, launch_args, upgrade_workspace_modules=False)
+    if nginx_config is not None:
+        write_nginx_static_config(resolve_odoo_config(godoo_conf, launch_cmd[1:]), nginx_config, runtime_version)
     if debug_listen and not parent_debugger:
         launch_cmd = [
             str(execution_python()),

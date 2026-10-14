@@ -67,6 +67,13 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv pip install --python "$VIRTUAL_ENV/bin/python" -r /tmp/odoo-requirements.txt \
     && chown -R odoo:odoo "$VIRTUAL_ENV"
 
+# Development reads the same mounted addon paths as Odoo.
+FROM nginx:stable-alpine AS nginx-development
+
+# Production serves the selected sources without host mounts.
+FROM nginx-development AS nginx
+COPY --from=materialized /image/odoo/ /odoo/
+
 # Install the CLI after dependency layers so application edits do not reinstall Odoo.
 FROM production-dependencies AS production
 ENV GODOO_RUNTIME_MATERIALIZED=1
