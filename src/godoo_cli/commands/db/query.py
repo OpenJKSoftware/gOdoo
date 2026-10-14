@@ -67,11 +67,10 @@ def query_database(
     db_password: Annotated[str, CLI.database.db_password] = "",
     readonly: Annotated[bool, typer.Option()] = True,
 ) -> None:
-    """Run SQL and delimit returned rows."""
+    """Run SQL in a development workspace and delimit returned rows."""
+    check_dangerous_command()
     if query == "-":
         query = typer.get_text_stream("stdin").read()
-    if not readonly:
-        check_dangerous_command()
     try:
         with _connection(db_name, db_user, db_host, db_port, db_password, readonly=readonly).connect() as cursor:
             cursor.execute(query)
