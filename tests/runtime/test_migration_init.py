@@ -8,6 +8,7 @@ from typing import cast
 
 import pytest
 import typer
+from click import unstyle
 from typer.testing import CliRunner
 
 from godoo_cli.commands.runtime import init as runtime_init
@@ -177,7 +178,7 @@ def test_migration_rejects_generic_cli_overrides_before_config(
     )
     result = CliRunner().invoke(_app(), ["--migration-dir", str(directory), option, "injected"], env=environment)
     assert result.exit_code == 2, result.output
-    assert option in result.output
+    assert option in unstyle(result.output)
 
 
 @pytest.mark.parametrize(
