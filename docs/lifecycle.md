@@ -36,7 +36,9 @@ godoo runtime init \
   && godoo runtime launch
 ```
 
-- Launch does not write configuration or database state; it checks the Odoo version and process dependencies.
+- Launch checks the Odoo version, pending recovery, and process dependencies before starting the server.
+- If `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, launch applies the bundled banner script first, in
+  either runtime mode. Unset or blank banner settings skip this update. A failed update prevents server startup.
 - Runtime commands require Odoo 16 or newer, with no upper-version limit. Archive commands default to native Odoo
   commands on 19 or newer and PostgreSQL tools on 16–18; restore options may require SQL staging.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.

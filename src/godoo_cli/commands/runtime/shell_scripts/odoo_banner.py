@@ -61,7 +61,7 @@ def remove_upgrade_test_ribbon():
 
 
 set_banner(
-    os.getenv("ODOO_BANNER_TEXT"),
+    os.getenv("ODOO_BANNER_TEXT") or "Development",
     os.getenv("ODOO_BANNER_BG_COLOR"),
 )
 remove_upgrade_test_ribbon()

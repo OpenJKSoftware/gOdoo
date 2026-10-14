@@ -18,6 +18,7 @@ from godoo_cli.commands.runtime.shell import (
 )
 from godoo_cli.commands.test.load_data import odoo_load_test_data
 from godoo_cli.database.state import DbBootstrapStatus
+from godoo_cli.models import GodooConfig
 from godoo_cli.runtime.locks import runtime_readiness_marker, runtime_restore_marker
 from godoo_cli.runtime.odoo import (
     execution_python,
@@ -429,6 +430,7 @@ def test_launch_rejects_pending_recovery_markers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker_kind: str
 ) -> None:
     paths = _command_paths(tmp_path)
+    monkeypatch.setenv("ODOO_BANNER_TEXT", "QA instance")
     data_dir = tmp_path / "data"
     marker = (
         runtime_restore_marker(data_dir, "runtime")
@@ -446,6 +448,10 @@ def test_launch_rejects_pending_recovery_markers(
         marker.write_text("{}", encoding="utf-8")
     monkeypatch.setattr("godoo_cli.commands.runtime.launch.require_cli_odoo_version", lambda *_args: None)
     callbacks: list[str] = []
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.run_lifecycle_hook",
+        lambda *_args: callbacks.append("banner"),
+    )
     monkeypatch.setattr(
         "godoo_cli.commands.runtime.launch.preflight_for_config",
         lambda *_args, **_kwargs: callbacks.append("preflight"),
@@ -496,3 +502,95 @@ def test_shell_major_guard_uses_the_effective_cli_selected_database(
         )
 
     assert selected_names == ["selected-runtime"]
+
+
+@pytest.mark.parametrize(
+    ("dev_mode", "banner_text", "banner_color", "applies"),
+    [
+        (False, "QA instance", "blue", True),
+        (True, "QA instance", "", True),
+        (False, "", "blue", True),
+        (True, "", "", False),
+        (False, "", "", False),
+        (True, "   ", "  ", False),
+    ],
+)
+def test_launch_applies_configured_banner_in_either_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dev_mode: bool,
+    banner_text: str,
+    banner_color: str,
+    applies: bool,
+) -> None:
+    """Banner settings opt into an update after readiness checks and before startup."""
+    paths = _command_paths(tmp_path)
+    events: list[str] = []
+    monkeypatch.setattr("godoo_cli.commands.runtime.launch.require_cli_odoo_version", lambda *_args: None)
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.require_runtime_launch_ready", lambda _config: events.append("ready")
+    )
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.preflight_for_config", lambda *_args: events.append("preflight")
+    )
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.build_launch_command", lambda *_args, **_kwargs: ["odoo-bin", "server"]
+    )
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.run_odoo_command",
+        lambda _command: events.append("launch") or SimpleNamespace(returncode=0),
+    )
+
+    def apply_banner(config: GodooConfig, script: Path) -> int:
+        assert config.db_name == "runtime"
+        assert script.name == "odoo_banner.py"
+        assert script.is_file()
+        events.append("banner")
+        return 0
+
+    monkeypatch.setattr("godoo_cli.commands.runtime.launch.run_lifecycle_hook", apply_banner)
+    app = typer.Typer()
+    app.command()(launch_odoo)
+    result = CliRunner().invoke(
+        app,
+        [
+            "--odoo-main-path",
+            str(paths["odoo_main_path"]),
+            "--workspace-addon-path",
+            str(paths["workspace_addon_path"]),
+            "--odoo-conf-path",
+            str(paths["odoo_conf_path"]),
+            "--db-name",
+            "runtime",
+            "--db-filter",
+            "runtime",
+            "--db-user",
+            "odoo",
+        ],
+        env={
+            "GODOO_DEV_MODE": "1" if dev_mode else "0",
+            "ODOO_BANNER_TEXT": banner_text,
+            "ODOO_BANNER_BG_COLOR": banner_color,
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    assert events == ["ready", "preflight", *(["banner"] if applies else []), "launch"]
+
+
+def test_launch_preserves_banner_failure_without_starting_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed banner update returns its exit code and prevents server startup."""
+    paths = _command_paths(tmp_path)
+    monkeypatch.setenv("ODOO_BANNER_TEXT", "QA instance")
+    monkeypatch.setattr("godoo_cli.commands.runtime.launch.require_cli_odoo_version", lambda *_args: None)
+    monkeypatch.setattr(
+        "godoo_cli.commands.runtime.launch.build_launch_command", lambda *_args, **_kwargs: ["odoo-bin", "server"]
+    )
+    monkeypatch.setattr("godoo_cli.commands.runtime.launch.run_lifecycle_hook", lambda *_args: 37)
+
+    with patch("godoo_cli.commands.runtime.launch.run_odoo_command") as server:
+        assert launch_odoo(**paths, db_filter="runtime", db_name="runtime", db_user="odoo") == 37
+
+    server.assert_not_called()

@@ -1,11 +1,13 @@
 """Prepare and launch Odoo processes."""
 
 import logging
+import os
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from ...runtime.lifecycle import run_lifecycle_hook
 from ...runtime.nginx import write_nginx_static_config
 from ...runtime.odoo import (
     SUPPORTED_ODOO_VERSION_SPECIFIER,
@@ -20,6 +22,7 @@ from ...runtime.odoo import (
 )
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_command_config
+from .shell import SHELL_SCRIPTS_PATH
 
 CLI = CommonCLI()
 
@@ -99,6 +102,13 @@ def launch_odoo(
             *(["--wait-for-client"] if debug_wait_for_client else []),
             *launch_cmd,
         ]
+
+    if any(os.environ.get(name, "").strip() for name in ("ODOO_BANNER_TEXT", "ODOO_BANNER_BG_COLOR")):
+        LOGGER.info("Applying the configured Odoo banner")
+        result = run_lifecycle_hook(godoo_conf, SHELL_SCRIPTS_PATH / "odoo_banner.py")
+        if result:
+            LOGGER.error("Odoo banner update failed (exit code %s)", result)
+            return CLI.returner(result)
 
     LOGGER.info("Launching Odoo on database '%s' using config %s", db_name, odoo_conf_path)
     return CLI.returner(run_odoo_command(launch_cmd).returncode)

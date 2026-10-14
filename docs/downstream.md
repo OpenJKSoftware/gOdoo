@@ -97,7 +97,8 @@ A downstream wrapper may forward its positional scripts directory as `--migratio
 module-list, archive, and filestore checks to gOdoo. Pass intentional project hooks with explicit
 `--after-reconcile-dir` options; they run after the transition's final hooks. Generic reconcile and phase-hook
 environment defaults must be unset in migration mode, because init rejects conflicting defaults before mutation.
-Downstream still owns Compose mounts, service ordering, and project shell scripts.
+Downstream still owns Compose mounts, service ordering, and project shell scripts. gOdoo launch applies the bundled
+banner when `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, independently of development mode.
 
 Selected inputs and dependency checks that can run before restore fail before mutation. Dependencies discovered only
 from the restored database are checked afterward; a failure leaves the bound `after-restore` phase pending. Repair the
