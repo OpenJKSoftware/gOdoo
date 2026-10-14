@@ -24,6 +24,6 @@ contracts.
 
 Configure removes retired `.godoo/docker-compose.sources.yml` and `.godoo/source-provenance.json` only when they are
 regular files. Check fails while either remains. Configure also generates the ignored project-root `pyrightconfig.json`
-for the project `.venv` (Python 3.11), including `src/`, `addons/`, `scripts/`, project addons, and resolved source
-paths. Run `make workspace` before `make typecheck`; typecheck runs `.venv/bin/pyright --project pyrightconfig.json` and
+including `src/`, `addons/`, `scripts/`, project addons, and resolved source paths. Run `make workspace` before
+`make typecheck`; typecheck runs `.venv/bin/pyright --pythonpath .venv/bin/python --project pyrightconfig.json` and
 fails if the generated file is missing. `make configure` remains a compatibility alias for `make workspace`.

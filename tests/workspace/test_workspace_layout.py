@@ -43,7 +43,6 @@ def test_workspace_uses_portable_project_paths_and_absolute_sources(tmp_path: Pa
     assert pyright == {
         "venvPath": ".",
         "venv": ".venv",
-        "pythonVersion": "3.11",
         "include": ["src", "addons", "scripts"],
         "extraPaths": ["addons", str(source.host_path)],
     }

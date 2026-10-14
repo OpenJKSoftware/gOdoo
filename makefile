@@ -24,7 +24,7 @@ lint: # Run repository quality checks on host.
 
 typecheck: # Run Pyright against the generated project configuration.
 	@test -f pyrightconfig.json || (echo "Missing pyrightconfig.json; run make workspace first." && exit 1)
-	$(BIN)/pyright --project pyrightconfig.json
+	$(BIN)/pyright --pythonpath $(BIN)/python --project pyrightconfig.json
 
 test: check-env # Run unit tests in current development environment.
 	$(BIN)/pytest $(PYTEST_ARGS)

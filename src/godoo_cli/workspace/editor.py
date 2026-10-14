@@ -79,7 +79,6 @@ def pyright_config_data(
     return {
         "venvPath": ".",
         "venv": ".venv",
-        "pythonVersion": "3.11",
         "include": ["src", "addons", "scripts"],
         "extraPaths": [
             "addons",
