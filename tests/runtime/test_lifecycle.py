@@ -70,6 +70,70 @@ def test_ensure_runtime_prepares_and_skips_existing_database(tmp_path: Path):
     assert calls == ["prepare"]
 
 
+@pytest.mark.parametrize(("expected_major", "exit_code"), [(19, 0), (18, 2)])
+def test_runtime_init_uses_effective_odoo_version_for_guards_and_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expected_major: int, exit_code: int
+) -> None:
+    """Mounted runtime sources determine the version guard and lifecycle plan."""
+    app = typer.Typer()
+    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+    sources_root = tmp_path / "sources"
+    effective_odoo = sources_root / "mounted-odoo"
+    mounted_addons = sources_root / "mounted-addons"
+    effective_odoo.mkdir(parents=True)
+    mounted_addons.mkdir()
+    observed: dict[str, object] = {}
+    original_build_plan = lifecycle_commands.build_runtime_lifecycle_plan
+
+    def require_version(path: Path, _specifier: str) -> SimpleNamespace:
+        if path != effective_odoo:
+            message = f"runtime init checked {path}, not the mounted Odoo source"
+            raise AssertionError(message)
+        observed["version_path"] = path
+        return SimpleNamespace(major=19, raw="19.0")
+
+    def build_plan(*args: object, **kwargs: object):
+        observed["runtime_version"] = kwargs["runtime_version"]
+        observed["expected_odoo_major"] = kwargs["expected_odoo_major"]
+        return original_build_plan(*args, **kwargs)
+
+    def run_deployment(*_args: object, **_kwargs: object) -> tuple[LifecycleOutcome, int]:
+        observed["deployed"] = True
+        return LifecycleOutcome.READY, 0
+
+    monkeypatch.setattr(lifecycle_commands, "require_odoo_version", require_version)
+    monkeypatch.setattr(lifecycle_commands, "build_runtime_lifecycle_plan", build_plan)
+    monkeypatch.setattr(lifecycle_commands, "deployment_init", run_deployment)
+
+    result = CliRunner().invoke(
+        app,
+        ["--expected-odoo-major", str(expected_major)],
+        env={
+            "ODOO_MAIN_FOLDER": "/unmounted/odoo",
+            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
+            "ODOO_CONF_PATH": "/tmp/odoo.conf",
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+            "GODOO_SOURCES_ROOT": str(sources_root),
+            "GODOO_RUNTIME_ODOO_PATH": str(effective_odoo),
+            "GODOO_RUNTIME_ADDON_PATHS": str(mounted_addons),
+        },
+    )
+
+    assert result.exit_code == exit_code, result.output
+    if expected_major == 19:
+        assert observed == {
+            "version_path": effective_odoo,
+            "runtime_version": "19.0",
+            "expected_odoo_major": 19,
+            "deployed": True,
+        }
+    else:
+        assert observed == {"version_path": effective_odoo}
+        assert "requires Odoo 18.x" in result.output
+
+
 def test_expected_odoo_major_rejects_before_deployment_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
     """Reject a transition target that disagrees with the configured Odoo runtime."""
     app = typer.Typer()

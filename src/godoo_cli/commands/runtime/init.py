@@ -129,8 +129,21 @@ def deployment_init_odoo_runtime(  # noqa: C901
     """One-shot init: seed or bootstrap, reconcile, run phase hooks, then exit."""
     if report_url is not None:
         report_url = report_url.strip()
+    config = resolve_command_config(
+        odoo_main_path=odoo_main_path,
+        workspace_addon_path=workspace_addon_path,
+        odoo_conf_path=odoo_conf_path,
+        data_dir=data_dir,
+        db_filter=db_filter,
+        db_name=db_name,
+        db_user=db_user,
+        db_host=db_host,
+        db_port=db_port,
+        db_password=db_password,
+        extra={"multithread_worker_count": multithread_worker_count, "languages": languages},
+    )
     try:
-        runtime_version = require_odoo_version(odoo_main_path, SUPPORTED_ODOO_VERSION_SPECIFIER)
+        runtime_version = require_odoo_version(config.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
     except OdooVersionError as error:
         raise typer.BadParameter(str(error), param_hint="--odoo-main-path") from error
     if expected_odoo_major is not None and runtime_version.major != expected_odoo_major:
@@ -149,19 +162,6 @@ def deployment_init_odoo_runtime(  # noqa: C901
             validated_archive = _validate_native_runtime_archive(seed)
         except (RuntimeError, OSError, ValueError) as error:
             raise typer.BadParameter(str(error), param_hint="--seed") from error
-    config = resolve_command_config(
-        odoo_main_path=odoo_main_path,
-        workspace_addon_path=workspace_addon_path,
-        odoo_conf_path=odoo_conf_path,
-        data_dir=data_dir,
-        db_filter=db_filter,
-        db_name=db_name,
-        db_user=db_user,
-        db_host=db_host,
-        db_port=db_port,
-        db_password=db_password,
-        extra={"multithread_worker_count": multithread_worker_count, "languages": languages},
-    )
     if x_sendfile_enabled(config, x_sendfile) and not report_url:
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")

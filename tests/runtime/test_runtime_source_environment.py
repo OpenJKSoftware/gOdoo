@@ -8,7 +8,11 @@ from unittest.mock import patch
 import pytest
 from typer import BadParameter
 
-from godoo_cli.commands.configuration import _resolve_development_source_config, resolve_command_config
+from godoo_cli.commands.configuration import (
+    _resolve_development_source_config,
+    resolve_command_config,
+    resolve_development_odoo_main_path,
+)
 
 
 def _resolve(tmp_path: Path):
@@ -42,6 +46,40 @@ def test_runtime_environment_bypasses_workspace_resolution_and_preserves_order(
 
     assert config.odoo_install_folder == odoo_path
     assert config.resolved_addon_paths == addon_paths
+
+
+def test_development_odoo_path_uses_runtime_environment_without_workspace_lookup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Archive and reset use the mounted Odoo source without workspace inspection."""
+    sources_root = tmp_path / "sources"
+    odoo_path = sources_root / "odoo"
+    addon_path = sources_root / "addon"
+    odoo_path.mkdir(parents=True)
+    addon_path.mkdir()
+    monkeypatch.setenv("GODOO_SOURCES_ROOT", str(sources_root))
+    monkeypatch.setenv("GODOO_RUNTIME_ODOO_PATH", str(odoo_path))
+    monkeypatch.setenv("GODOO_RUNTIME_ADDON_PATHS", str(addon_path))
+
+    with patch(
+        "godoo_cli.commands.configuration._development_sources",
+        side_effect=AssertionError("runtime must not inspect the workspace"),
+    ):
+        assert resolve_development_odoo_main_path(tmp_path / "configured-odoo") == odoo_path
+
+
+def test_materialized_development_odoo_path_skips_workspace_lookup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Materialized archive and reset commands keep their configured Odoo path."""
+    configured_odoo = tmp_path / "configured-odoo"
+    monkeypatch.setenv("GODOO_RUNTIME_MATERIALIZED", "1")
+
+    with patch(
+        "godoo_cli.commands.configuration._development_sources",
+        side_effect=AssertionError("materialized runtime must not inspect the workspace"),
+    ):
+        assert resolve_development_odoo_main_path(configured_odoo) == configured_odoo
 
 
 def test_materialized_runtime_discovers_canonical_addon_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

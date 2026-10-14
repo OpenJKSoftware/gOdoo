@@ -176,6 +176,11 @@ def _validate_runtime_source_path(
 
 def resolve_development_odoo_main_path(odoo_main_path: Path) -> Path:
     """Return the selected development Odoo worktree when available."""
+    runtime_paths = _runtime_source_paths()
+    if runtime_paths is not None:
+        return runtime_paths[0]
+    if os.getenv("GODOO_RUNTIME_MATERIALIZED") == "1":
+        return odoo_main_path
     resolved = _development_sources()
     if resolved is None:
         return odoo_main_path
