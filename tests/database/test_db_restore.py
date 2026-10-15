@@ -1,5 +1,6 @@
 """Tests for guarded custom PostgreSQL runtime restoration."""
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -281,10 +282,13 @@ def test_completed_restore_keeps_database_when_old_filestore_cleanup_fails(
     (target / "old").write_text("old")
     cleaned: list[bool] = []
 
+    remove_tree = shutil.rmtree
+
     def fail_backup_cleanup(path: Path) -> None:
-        assert path.name.startswith(".runtime.before-restore-")
-        message = "backup volume is read-only"
-        raise OSError(message)
+        if path.name.startswith(".runtime.before-restore-"):
+            message = "backup volume is read-only"
+            raise OSError(message)
+        remove_tree(path)
 
     monkeypatch.setattr("godoo_cli.runtime.restore.shutil.rmtree", fail_backup_cleanup)
 

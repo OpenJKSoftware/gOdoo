@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from godoo_cli.commands.db import archive as archive_commands
 from godoo_cli.commands.db.cli import db_cli_app
+from godoo_cli.runtime import archive as runtime_archive
 
 
 def test_restore_reads_original_filestore_from_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -20,15 +21,15 @@ def test_restore_reads_original_filestore_from_environment(tmp_path: Path, monke
     archive_path = tmp_path / "seed.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr("dump.sql", "-- seed")
-    original_testzip = zipfile.ZipFile.testzip
-    crc_checks = 0
+    original_validate = runtime_archive._validate_native_runtime_archive_contents
+    validation_runs = 0
 
-    def count_crc_checks(archive: zipfile.ZipFile) -> str | None:
-        nonlocal crc_checks
-        crc_checks += 1
-        return original_testzip(archive)
+    def count_validation_runs(archive_path: Path) -> runtime_archive._ValidatedNativeArchive:
+        nonlocal validation_runs
+        validation_runs += 1
+        return original_validate(archive_path)
 
-    monkeypatch.setattr(zipfile.ZipFile, "testzip", count_crc_checks)
+    monkeypatch.setattr(runtime_archive, "_validate_native_runtime_archive_contents", count_validation_runs)
     connection = SimpleNamespace(db_name="target")
     connection.with_overrides = lambda **_kwargs: connection
     observed: dict[str, object] = {}
@@ -65,7 +66,7 @@ def test_restore_reads_original_filestore_from_environment(tmp_path: Path, monke
     assert observed["archive_path"] == archive_path
     assert observed["original_filestore"] == original_filestore
     assert observed["_validated_archive"] is not None
-    assert crc_checks == 1
+    assert validation_runs == 1
 
 
 def test_restore_rejects_legacy_archive_directory_with_original_filestore(

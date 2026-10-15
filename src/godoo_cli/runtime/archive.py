@@ -6,13 +6,18 @@ import logging
 import os
 import posixpath
 import shutil
+import subprocess
 import tempfile
+import threading
+import time
 import uuid
 import zipfile
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import TracebackType
+from typing import Literal
 
 from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
@@ -48,6 +53,8 @@ CommandRunner = Callable[[Sequence[str]], int]
 
 LEGACY_DUMP_FILENAME = "odoo.dump"
 LEGACY_FILESTORE_DIRECTORY = "odoo_filestore"
+PROGRESS_INTERVAL_SECONDS = 5
+WAITING_INTERVAL_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -62,6 +69,48 @@ class _ArchiveFileIdentity:
 @dataclass(frozen=True)
 class _ValidatedNativeArchive:
     identity: _ArchiveFileIdentity
+
+
+@dataclass
+class _ProgressPhase:
+    """Report long archive operations without changing their subprocess output."""
+
+    name: str
+    heartbeat_seconds: float = WAITING_INTERVAL_SECONDS
+    heartbeat: bool = True
+    failed: bool = False
+    _started: float = field(init=False, repr=False)
+    _stop: threading.Event = field(init=False, repr=False)
+    _thread: threading.Thread = field(init=False, repr=False)
+
+    def __enter__(self) -> _ProgressPhase:
+        self._started = time.monotonic()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._heartbeat, daemon=True)
+        LOGGER.info("%s started", self.name)
+        self._thread.start()
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Literal[False]:
+        self._stop.set()
+        self._thread.join()
+        elapsed = time.monotonic() - self._started
+        if exception_type is not None or self.failed:
+            LOGGER.info("%s failed after %.1fs", self.name, elapsed)
+        else:
+            LOGGER.info("%s completed in %.1fs", self.name, elapsed)
+        return False
+
+    def _heartbeat(self) -> None:
+        if not self.heartbeat:
+            return
+        while not self._stop.wait(self.heartbeat_seconds):
+            LOGGER.info("%s still running after %.1fs", self.name, time.monotonic() - self._started)
 
 
 def _archive_identity(stat_result: os.stat_result) -> _ArchiveFileIdentity:
@@ -105,10 +154,77 @@ def _run_native_archive_load(command: Sequence[str], connection: DBConnection) -
             return run_odoo_command(command, env=environment).returncode
 
 
-def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> int:
+def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> int:  # noqa: C901
     """Run a PostgreSQL fallback with credentials outside argv."""
     with postgres_environment(connection, on_error_stop=True) as environment:
-        return run_odoo_command(command, env=environment).returncode
+        try:
+            file_index = command.index("--file")
+            dump_path = Path(command[file_index + 1])
+        except (ValueError, IndexError):
+            return run_odoo_command(command, env=environment).returncode
+        if not shutil.which("pv"):
+            return run_odoo_command(command, env=environment).returncode
+
+        psql_command = list(command)
+        psql_command[file_index + 1] = "-"
+        LOGGER.info("Sending SQL input from %s", dump_path)
+        producer = subprocess.Popen(
+            ["pv", "-n", "--interval", str(PROGRESS_INTERVAL_SECONDS), str(dump_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        def relay_progress() -> None:
+            assert producer.stderr is not None
+            for update in producer.stderr:
+                update = update.strip()
+                if update:
+                    try:
+                        percent = float(update)
+                    except ValueError:
+                        LOGGER.warning("pv: %s", update)
+                    else:
+                        LOGGER.info("Sending SQL input: %.1f%%", percent)
+
+        reporter = threading.Thread(target=relay_progress, daemon=True)
+        reporter.start()
+        try:
+            assert producer.stdout is not None
+            sql_result = run_odoo_command(psql_command, env=environment, stdin=producer.stdout).returncode
+        except BaseException:
+            if producer.stdout is not None:
+                producer.stdout.close()
+            if producer.poll() is None:
+                producer.terminate()
+            try:
+                producer.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                producer.kill()
+                producer.wait()
+            reporter.join()
+            raise
+        if producer.stdout is not None:
+            producer.stdout.close()
+        if sql_result and producer.poll() is None:
+            producer.terminate()
+        try:
+            producer.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            producer.terminate()
+            try:
+                producer.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                producer.kill()
+                producer.wait()
+        reporter.join()
+        if sql_result:
+            return sql_result
+        if producer.returncode:
+            LOGGER.error("SQL input failed with status %s", producer.returncode)
+            return producer.returncode
+        LOGGER.info("SQL input completed")
+        return 0
 
 
 def dump_runtime_archive(
@@ -170,7 +286,7 @@ def dump_runtime_archive(
             sql_temporary.unlink(missing_ok=True)
 
 
-def _validate_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArchive:
+def _validate_native_runtime_archive_contents(archive_path: Path) -> _ValidatedNativeArchive:  # noqa: C901
     """Validate an Odoo ZIP and retain the identity that was checked."""
     if not archive_path.is_file():
         message = f"Odoo runtime archive does not exist or is not a file: {archive_path}"
@@ -182,9 +298,28 @@ def _validate_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArch
                 if "dump.sql" not in archive.namelist():
                     message = f"Odoo runtime archive does not contain dump.sql: {archive_path}"
                     raise RuntimeRestoreError(message)
-                if bad_member := archive.testzip():
-                    message = f"Odoo runtime archive contains corrupt member '{bad_member}': {archive_path}"
-                    raise RuntimeRestoreError(message)
+                members = [info for info in archive.infolist() if not info.is_dir()]
+                total_bytes = sum(info.file_size for info in members)
+                read_bytes = 0
+                next_report = time.monotonic() + PROGRESS_INTERVAL_SECONDS
+                for info in members:
+                    try:
+                        with archive.open(info) as member:
+                            while chunk := member.read(1024 * 1024):
+                                read_bytes += len(chunk)
+                                if time.monotonic() >= next_report and total_bytes:
+                                    LOGGER.info(
+                                        "Validating runtime archive CRCs: %d%% (%d/%d bytes)",
+                                        read_bytes * 100 // total_bytes,
+                                        read_bytes,
+                                        total_bytes,
+                                    )
+                                    next_report = time.monotonic() + PROGRESS_INTERVAL_SECONDS
+                    except zipfile.BadZipFile as error:
+                        message = f"Odoo runtime archive contains corrupt member '{info.filename}': {archive_path}"
+                        raise RuntimeRestoreError(message) from error
+                if total_bytes:
+                    LOGGER.info("Validated runtime archive CRCs: 100%% (%d/%d bytes)", read_bytes, total_bytes)
                 for info in archive.infolist():
                     if not info.filename.startswith("filestore/"):
                         continue
@@ -192,9 +327,9 @@ def _validate_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArch
                     if "\\" in member or member.startswith("/") or posixpath.normpath(member) != member.rstrip("/"):
                         message = f"Odoo runtime archive contains unsafe filestore path: {member}"
                         raise RuntimeRestoreError(message)
-            if identity != _archive_identity(os.fstat(archive_file.fileno())):
-                message = f"Odoo runtime archive changed while it was being validated: {archive_path}"
-                raise RuntimeRestoreError(message)
+                if identity != _archive_identity(os.fstat(archive_file.fileno())):
+                    message = f"Odoo runtime archive changed while it was being validated: {archive_path}"
+                    raise RuntimeRestoreError(message)
     except zipfile.BadZipFile as error:
         message = f"Odoo runtime archive is not a valid ZIP file: {archive_path}"
         raise RuntimeRestoreError(message) from error
@@ -207,6 +342,12 @@ def _validate_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArch
 def validate_native_runtime_archive(archive_path: Path) -> None:
     """Validate Odoo's ZIP structure and CRCs before allowing a forced load."""
     _validate_native_runtime_archive(archive_path)
+
+
+def _validate_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArchive:
+    """Validate a native archive while reporting progress for CRC checks."""
+    with _ProgressPhase("Validating runtime archive", heartbeat=False):
+        return _validate_native_runtime_archive_contents(archive_path)
 
 
 def _reuse_or_validate_archive(
@@ -373,7 +514,10 @@ def load_runtime_archive(  # noqa: C901
             )
         else:
             extracted = tempfile.TemporaryDirectory(prefix="godoo-archive-")
-            with _open_validated_archive(archive_path, validated_archive) as source:
+            with (
+                _ProgressPhase("Extracting runtime database dump"),
+                _open_validated_archive(archive_path, validated_archive) as source,
+            ):
                 source.extract("dump.sql", extracted.name)
                 if original_filestore is None:
                     for member in source.namelist():
@@ -381,6 +525,7 @@ def load_runtime_archive(  # noqa: C901
                             source.extract(member, extracted.name)
             command = [
                 "psql",
+                "--quiet",
                 "--file",
                 str(Path(extracted.name) / "dump.sql"),
                 *postgres_argv(target_connection, database=staged_database),
@@ -389,20 +534,28 @@ def load_runtime_archive(  # noqa: C901
         marker = None
         try:
             if original_filestore is not None:
-                copy_filestore(original_filestore, stage)
-                with _open_validated_archive(archive_path, validated_archive) as source:
+                with _ProgressPhase("Copying original filestore"):
+                    copy_filestore(original_filestore, stage)
+                with (
+                    _ProgressPhase("Overlaying archive filestore"),
+                    _open_validated_archive(archive_path, validated_archive) as source,
+                ):
                     _overlay_filestore(source, stage)
             if not native:
                 database_creator(target_connection.with_db(staged_database), "template0")
-            if runner is not None:
-                result = runner(command)
-            elif native:
-                result = _run_native_archive_load(command, target_connection)
-            else:
-                result = _run_postgres_command(command, target_connection)
+            result = 0
+            with _ProgressPhase("Restoring runtime database") as progress:
+                if runner is not None:
+                    result = runner(command)
+                elif native:
+                    result = _run_native_archive_load(command, target_connection)
+                else:
+                    result = _run_postgres_command(command, target_connection)
+                progress.failed = result != 0
             if result:
                 return result
-            _validate_staged_base_version(target_connection.with_db(staged_database), target_major)
+            with _ProgressPhase("Validating restored runtime"):
+                _validate_staged_base_version(target_connection.with_db(staged_database), target_major)
             if extracted is None:
                 stage.mkdir(parents=True, exist_ok=True)
             elif original_filestore is None:
@@ -413,17 +566,18 @@ def load_runtime_archive(  # noqa: C901
                     stage.mkdir(parents=True, exist_ok=True)
             marker = begin_runtime_restore(runtime_data, db_name, staged_database)
             backup = database_swapper(target_connection, staged_database)
-            complete_runtime_promotion(
-                connection=target_connection,
-                marker=marker,
-                backup_database=backup,
-                staged_filestore=stage,
-                target_filestore=target,
-                database_cleaner=database_cleaner,
-                database_rollback=database_rollback,
-                filestore_replacer=replace_filestore,
-                lifecycle_owner=lifecycle_owner,
-            )
+            with _ProgressPhase("Promoting restored runtime"):
+                complete_runtime_promotion(
+                    connection=target_connection,
+                    marker=marker,
+                    backup_database=backup,
+                    staged_filestore=stage,
+                    target_filestore=target,
+                    database_cleaner=database_cleaner,
+                    database_rollback=database_rollback,
+                    filestore_replacer=replace_filestore,
+                    lifecycle_owner=lifecycle_owner,
+                )
             return 0
         finally:
             if extracted is not None:

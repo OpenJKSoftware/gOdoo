@@ -40,7 +40,12 @@ godoo runtime init \
 - If `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, launch applies the bundled banner script first, in
   either runtime mode. Unset or blank banner settings skip this update. A failed update prevents server startup.
 - Runtime commands require Odoo 16 or newer, with no upper-version limit. Archive commands default to native Odoo
-  commands on 19 or newer and PostgreSQL tools on 16–18; restore options may require SQL staging.
+  commands on 19 or newer and PostgreSQL tools on 16–18; restore options may require SQL staging. Archive validation
+  reports bytes checked, with updates at most every five seconds plus final measurements. Phases without measured
+  progress report elapsed time every ten seconds. Linux restores try filesystem cloning first; when cloning is
+  unavailable, rsync writes its progress and diagnostics directly to stdout when present, otherwise the existing Python
+  copy fallback reports elapsed phases. SQL staging reports input progress through `pv` when present. Input reaching 100%
+  means the dump has been sent; the restore phase continues reporting elapsed time until PostgreSQL finishes.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.

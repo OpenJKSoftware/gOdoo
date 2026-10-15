@@ -15,6 +15,7 @@ from godoo_cli.commands.runtime import init as lifecycle_commands
 from godoo_cli.database.connection import DBConnection
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
+from godoo_cli.runtime import archive as runtime_archive
 from godoo_cli.runtime import lifecycle as runtime_lifecycle
 from godoo_cli.runtime import prepare as runtime_prepare
 from godoo_cli.runtime.lifecycle import (
@@ -631,15 +632,15 @@ def test_deployment_init_passes_original_filestore_to_seed_loader(
     archive = tmp_path / "seed.zip"
     with zipfile.ZipFile(archive, "w") as seed:
         seed.writestr("dump.sql", "-- seed")
-    original_testzip = zipfile.ZipFile.testzip
-    crc_checks = 0
+    original_validate = runtime_archive._validate_native_runtime_archive_contents
+    validation_runs = 0
 
-    def count_crc_checks(native_archive: zipfile.ZipFile) -> str | None:
-        nonlocal crc_checks
-        crc_checks += 1
-        return original_testzip(native_archive)
+    def count_validation_runs(archive_path: Path) -> runtime_archive._ValidatedNativeArchive:
+        nonlocal validation_runs
+        validation_runs += 1
+        return original_validate(archive_path)
 
-    monkeypatch.setattr(zipfile.ZipFile, "testzip", count_crc_checks)
+    monkeypatch.setattr(runtime_archive, "_validate_native_runtime_archive_contents", count_validation_runs)
     observed: dict[str, object] = {}
     app = typer.Typer()
     app.command()(lifecycle_commands.deployment_init_odoo_runtime)
@@ -671,7 +672,7 @@ def test_deployment_init_passes_original_filestore_to_seed_loader(
     assert result.exit_code == 0, result.output
     assert observed["archive_path"] == archive
     assert observed["_validated_archive"] is not None
-    assert crc_checks == 1
+    assert validation_runs == 1
     assert observed["original_filestore"] == source
     assert observed["lifecycle_owner"] == "init"
     assert observed["require_same_archive_identity"] is True

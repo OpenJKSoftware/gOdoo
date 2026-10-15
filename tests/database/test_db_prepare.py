@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from godoo_cli.commands.db.cli import db_cli_app
+from godoo_cli.runtime import archive as runtime_archive
 from godoo_cli.runtime.archive import (
     RuntimeRestoreError,
     _reuse_or_validate_archive,
@@ -120,15 +121,15 @@ def test_original_filestore_auto_selects_native_archive(
     source.mkdir()
     archive = _native_archive(tmp_path / "seed.zip")
     observed: dict[str, object] = {}
-    original_testzip = zipfile.ZipFile.testzip
-    crc_checks = 0
+    original_validate = runtime_archive._validate_native_runtime_archive_contents
+    validation_runs = 0
 
-    def count_crc_checks(native_archive: zipfile.ZipFile) -> str | None:
-        nonlocal crc_checks
-        crc_checks += 1
-        return original_testzip(native_archive)
+    def count_validation_runs(archive_path: Path) -> runtime_archive._ValidatedNativeArchive:
+        nonlocal validation_runs
+        validation_runs += 1
+        return original_validate(archive_path)
 
-    monkeypatch.setattr(zipfile.ZipFile, "testzip", count_crc_checks)
+    monkeypatch.setattr(runtime_archive, "_validate_native_runtime_archive_contents", count_validation_runs)
     monkeypatch.setattr(
         "godoo_cli.runtime.prepare.require_supported_odoo_runtime",
         lambda *_args: SimpleNamespace(major=19),
@@ -163,7 +164,7 @@ def test_original_filestore_auto_selects_native_archive(
     assert observed["archive_path"] == archive
     assert observed["original_filestore"] == source
     assert observed["_validated_archive"] is not None
-    assert crc_checks == 1
+    assert validation_runs == 1
 
 
 @pytest.mark.parametrize(

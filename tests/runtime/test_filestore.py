@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
 import sys
+import threading
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -11,18 +14,125 @@ from pathlib import Path
 
 import pytest
 
+import godoo_cli.runtime.archive as runtime_archive
 from godoo_cli.database.connection import DBConnection
 from godoo_cli.runtime.archive import (
     RuntimeRestoreError,
     _overlay_filestore,
+    _ProgressPhase,
     _reuse_or_validate_archive,
+    _run_postgres_command,
     _validate_native_runtime_archive,
     _validate_staged_base_version,
     load_runtime_archive,
     validate_native_runtime_archive,
 )
-from godoo_cli.runtime.filestore import _copy_command, copy_filestore
+from godoo_cli.runtime.filestore import _copy_command, _copy_with_rsync, copy_filestore
 from godoo_cli.runtime.prepare import validate_original_filestore_source
+
+
+def _fake_progress_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, psql_status: int, pv_status: int, pv_delay: float = 0
+) -> Path:
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    monkeypatch.setenv("GODOO_PV_ARGS", str(tools / "pv-args"))
+    pv = tools / "pv"
+    pv.write_text(
+        f'#!/bin/sh\nprintf \'%s\\n\' "$@" > "$GODOO_PV_ARGS"\n'
+        f'cat "$4"\necho 100 >&2\nsleep {pv_delay}\nexit {pv_status}\n',
+        encoding="utf-8",
+    )
+    psql = tools / "psql"
+    psql.write_text(f"#!/bin/sh\ncat >/dev/null\necho fake psql diagnostic >&2\nexit {psql_status}\n", encoding="utf-8")
+    pv.chmod(0o755)
+    psql.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tools}{os.pathsep}{os.environ['PATH']}")
+    return tools
+
+
+def test_pv_failure_prevents_sql_restore_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tools = _fake_progress_tools(tmp_path, monkeypatch, psql_status=0, pv_status=7)
+    dump = tmp_path / "dump.sql"
+    dump.write_text("select 1;", encoding="utf-8")
+
+    result = _run_postgres_command(
+        ["psql", "--quiet", "--file", str(dump), "--dbname", "staged"],
+        DBConnection("host", 5432, "user", "pass", "runtime"),
+    )
+
+    assert result == 7
+    assert (tools / "pv-args").read_text(encoding="utf-8").splitlines() == [
+        "-n",
+        "--interval",
+        "5",
+        str(dump),
+    ]
+
+
+def test_pv_can_finish_after_psql_closes_stdin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_progress_tools(tmp_path, monkeypatch, psql_status=0, pv_status=0, pv_delay=0.1)
+    dump = tmp_path / "dump.sql"
+    dump.write_text("select 1;", encoding="utf-8")
+
+    result = _run_postgres_command(
+        ["psql", "--quiet", "--file", str(dump), "--dbname", "staged"],
+        DBConnection("host", 5432, "user", "pass", "runtime"),
+    )
+
+    assert result == 0
+
+
+def test_psql_failure_is_returned_after_pv_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    _fake_progress_tools(tmp_path, monkeypatch, psql_status=8, pv_status=0)
+    dump = tmp_path / "dump.sql"
+    dump.write_text("select 1;", encoding="utf-8")
+
+    result = _run_postgres_command(
+        ["psql", "--quiet", "--file", str(dump), "--dbname", "staged"],
+        DBConnection("host", 5432, "user", "pass", "runtime"),
+    )
+
+    captured = capfd.readouterr()
+    assert result == 8
+    assert "fake psql diagnostic" in captured.err
+
+
+def test_archive_progress_phase_reports_heartbeat_and_stops_after_failure(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reports a blocking archive phase and leaves no heartbeat worker behind."""
+    caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
+    heartbeat_seen = threading.Event()
+    logger_info = runtime_archive.LOGGER.info
+
+    def report_progress(message: str, *args: object) -> None:
+        if "still running" in message:
+            heartbeat_seen.set()
+        logger_info(message, *args)
+
+    monkeypatch.setattr(runtime_archive.LOGGER, "info", report_progress)
+    assert _ProgressPhase("Archive progress").heartbeat_seconds == 10.0
+
+    completed = _ProgressPhase("Completed archive progress", heartbeat_seconds=0.01)
+    with completed:
+        assert heartbeat_seen.wait(0.5)
+
+    phase = _ProgressPhase("Testing archive progress", heartbeat_seconds=0.01)
+
+    message = "restore failed"
+    with pytest.raises(RuntimeError, match=message), phase:
+        raise RuntimeError(message)
+
+    assert not completed._thread.is_alive()
+    assert not phase._thread.is_alive()
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Completed archive progress completed" in message for message in messages)
+    assert "Testing archive progress started" in messages
+    assert any("Completed archive progress still running" in message for message in messages)
+    assert any("Testing archive progress failed" in message for message in messages)
 
 
 def test_copy_command_selects_platform_specific_fast_paths(tmp_path: Path) -> None:
@@ -35,7 +145,7 @@ def test_copy_command_selects_platform_specific_fast_paths(tmp_path: Path) -> No
     assert _copy_command(source, destination, "linux") == [
         "cp",
         "-RLp",
-        "--reflink=auto",
+        "--reflink=always",
         f"{source}/.",
         str(destination),
     ]
@@ -96,6 +206,93 @@ def test_failed_fast_copy_discards_partial_stage_before_fallback(
     assert sorted(path.name for path in destination.iterdir()) == ["kept"]
 
 
+def _fake_rsync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, status: int) -> Path:
+    """Provide a small rsync substitute with controllable progress and status."""
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    rsync = tools / "rsync"
+    rsync.write_text(
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$GODOO_RSYNC_ARGS"\n'
+        "printf '12%%\\rdiagnostic one\\n34%%\\rdiagnostic two\\n56%%\\r78%%\\n'\n"
+        "printf 'rsync diagnostic\\n' >&2\n"
+        f"if [ {status} -ne 0 ]; then\n"
+        '    mkdir -p "$5"\n'
+        '    printf stale > "$5/stale"\n'
+        f"    exit {status}\n"
+        "fi\n"
+        'cp -RL "$4/." "$5"\n'
+        f"exit {status}\n",
+        encoding="utf-8",
+    )
+    rsync.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tools}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("GODOO_RSYNC_ARGS", str(tmp_path / "rsync-args"))
+    return rsync
+
+
+def test_rsync_copy_passes_output_directly_to_stdout_and_materializes_symlinks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capfdbinary: pytest.CaptureFixture[bytes],
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "kept").write_text("original")
+    (source / "alias").symlink_to(source / "kept")
+    destination = tmp_path / "stage"
+    destination.mkdir()
+    _fake_rsync(tmp_path, monkeypatch, status=0)
+    caplog.set_level(logging.INFO, logger="godoo_cli.runtime.filestore")
+
+    copied, error = _copy_with_rsync(source, destination)
+
+    assert (copied, error) == (True, None)
+    assert (destination / "kept").read_text() == "original"
+    assert (destination / "alias").read_text() == "original"
+    assert not (destination / "alias").is_symlink()
+    assert not (destination / source.name).exists()
+    assert (tmp_path / "rsync-args").read_text().splitlines() == [
+        "-rLpt",
+        "--human-readable",
+        "--info=progress2",
+        f"{source}/",
+        str(destination),
+    ]
+    assert "-a" not in (tmp_path / "rsync-args").read_text().splitlines()
+    captured = capfdbinary.readouterr()
+    assert captured.out == b"12%\rdiagnostic one\n34%\rdiagnostic two\n56%\r78%\nrsync diagnostic\n"
+    assert captured.err == b""
+    assert not caplog.records
+
+
+def test_failed_rsync_discards_partial_stage_before_python_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "kept").write_text("original")
+    destination = tmp_path / "stage"
+    rsync = _fake_rsync(tmp_path, monkeypatch, status=9)
+
+    def fail_copy(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        (destination / "clone-partial").write_text("partial")
+        return subprocess.CompletedProcess([], 1, "", "copy failed")
+
+    monkeypatch.setattr(
+        "godoo_cli.runtime.filestore.shutil.which",
+        lambda command: "/usr/bin/cp" if command == "cp" else str(rsync),
+    )
+    monkeypatch.setattr("godoo_cli.runtime.filestore.subprocess.run", fail_copy)
+
+    copy_filestore(source, destination, platform_name="linux")
+
+    assert (destination / "kept").read_text() == "original"
+    assert not (destination / "clone-partial").exists()
+    assert not (destination / "stale").exists()
+
+
 def test_archive_overlay_retains_original_and_zip_wins_collisions(tmp_path: Path) -> None:
     destination = tmp_path / "stage"
     destination.mkdir()
@@ -138,15 +335,16 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
         archive.writestr("dump.sql", "select 1")
         archive.writestr("filestore/collision", "new")
         archive.writestr("filestore/addition", "added")
-    original_testzip = zipfile.ZipFile.testzip
-    crc_checks = 0
+    original_open = zipfile.ZipFile.open
+    crc_reads = 0
 
-    def count_crc_checks(archive: zipfile.ZipFile) -> str | None:
-        nonlocal crc_checks
-        crc_checks += 1
-        return original_testzip(archive)
+    def count_crc_reads(archive: zipfile.ZipFile, name: str | zipfile.ZipInfo, *args: object, **kwargs: object):
+        nonlocal crc_reads
+        if getattr(name, "filename", name) == "dump.sql":
+            crc_reads += 1
+        return original_open(archive, name, *args, **kwargs)
 
-    monkeypatch.setattr(zipfile.ZipFile, "testzip", count_crc_checks)
+    monkeypatch.setattr(zipfile.ZipFile, "open", count_crc_reads)
 
     monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)
     monkeypatch.setattr("godoo_cli.runtime.archive._validate_staged_base_version", lambda *_args: None)
@@ -173,8 +371,9 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
 
     target = data_dir / "filestore" / "runtime"
     assert result == 0
-    assert crc_checks == 1
+    assert crc_reads >= 1
     assert commands[0][0] == "psql"
+    assert commands[0][1] == "--quiet"
     assert (target / "retained").read_text() == "old"
     assert (target / "collision").read_text() == "new"
     assert (target / "addition").read_text() == "added"
@@ -182,7 +381,10 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
     assert (source / "retained").read_text() == "old"
 
 
-def test_failed_staged_sql_restore_preserves_active_filestore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_failed_staged_sql_restore_preserves_active_filestore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
     data_dir = tmp_path / "data"
     target = data_dir / "filestore" / "runtime"
     target.mkdir(parents=True)
@@ -195,7 +397,18 @@ def test_failed_staged_sql_restore_preserves_active_filestore(tmp_path: Path, mo
         archive.writestr("dump.sql", "select 1")
         archive.writestr("filestore/addition", "new")
 
+    def fail_restore(command: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        assert command[:3] == ["psql", "--quiet", "--file"]
+        assert command[command.index("--host") + 1] == "host"
+        assert command[command.index("--username") + 1] == "user"
+        assert command[command.index("--dbname") + 1] != "runtime"
+        assert "pass" not in command
+        assert env["PGPASSWORD"] == "pass"
+        assert Path(env["PSQLRC"]).read_text() == "\\set ON_ERROR_STOP on\n"
+        return subprocess.CompletedProcess(command, 1)
+
     monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(runtime_archive, "run_odoo_command", fail_restore)
     result = load_runtime_archive(
         db_name="runtime",
         archive_path=archive_path,
@@ -206,7 +419,6 @@ def test_failed_staged_sql_restore_preserves_active_filestore(tmp_path: Path, mo
         force=True,
         odoo_version=19,
         use_native_db_load=True,
-        runner=lambda _command: 1,
         database_creator=lambda *_args: None,
         database_cleaner=lambda *_args: None,
     )
@@ -216,21 +428,25 @@ def test_failed_staged_sql_restore_preserves_active_filestore(tmp_path: Path, mo
     assert (target / "active").read_text() == "keep"
     assert (source / "retained").read_text() == "old"
     assert not list((data_dir / "filestore").glob("godoo_native_restore_*"))
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Restoring runtime database failed" in message for message in messages)
+    assert not any("Restoring runtime database completed" in message for message in messages)
 
 
 def test_replaced_archive_is_validated_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr("dump.sql", "select 1")
-    original_testzip = zipfile.ZipFile.testzip
-    crc_checks = 0
+    original_open = zipfile.ZipFile.open
+    crc_reads = 0
 
-    def count_crc_checks(archive: zipfile.ZipFile) -> str | None:
-        nonlocal crc_checks
-        crc_checks += 1
-        return original_testzip(archive)
+    def count_crc_reads(archive: zipfile.ZipFile, name: str | zipfile.ZipInfo, *args: object, **kwargs: object):
+        nonlocal crc_reads
+        if getattr(name, "filename", name) == "dump.sql":
+            crc_reads += 1
+        return original_open(archive, name, *args, **kwargs)
 
-    monkeypatch.setattr(zipfile.ZipFile, "testzip", count_crc_checks)
+    monkeypatch.setattr(zipfile.ZipFile, "open", count_crc_reads)
     validated = _validate_native_runtime_archive(archive_path)
     replacement_path = tmp_path / "replacement.zip"
     with zipfile.ZipFile(replacement_path, "w") as archive:
@@ -240,7 +456,29 @@ def test_replaced_archive_is_validated_again(tmp_path: Path, monkeypatch: pytest
     refreshed = _reuse_or_validate_archive(archive_path, validated)
 
     assert refreshed.identity != validated.identity
-    assert crc_checks == 2
+    assert crc_reads >= 2
+
+
+def test_archive_crc_progress_uses_five_second_interval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    archive_path = tmp_path / "runtime.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("dump.sql", b"x" * (3 * 1024 * 1024))
+
+    caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
+    monotonic_values = iter((0.0, 4.0, 5.0, 5.0, 6.0))
+    monkeypatch.setattr(runtime_archive.time, "monotonic", lambda: next(monotonic_values))
+
+    runtime_archive._validate_native_runtime_archive_contents(archive_path)
+
+    progress_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("Validating runtime archive CRCs:")
+    ]
+    assert progress_messages == ["Validating runtime archive CRCs: 66% (2097152/3145728 bytes)"]
+    assert "Validated runtime archive CRCs: 100% (3145728/3145728 bytes)" in caplog.messages
 
 
 def test_native_wrong_major_preserves_active_filestore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -363,7 +601,15 @@ def test_archive_rejects_corrupt_member_crc(tmp_path: Path, monkeypatch: pytest.
     archive_path = tmp_path / "corrupt.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr("dump.sql", "select 1")
-    monkeypatch.setattr(zipfile.ZipFile, "testzip", lambda _archive: "dump.sql")
+    original_open = zipfile.ZipFile.open
+
+    def corrupt_dump(archive: zipfile.ZipFile, name: str | zipfile.ZipInfo, *args: object, **kwargs: object):
+        if getattr(name, "filename", name) == "dump.sql":
+            message = "corrupt dump"
+            raise zipfile.BadZipFile(message)
+        return original_open(archive, name, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "open", corrupt_dump)
 
     with pytest.raises(RuntimeRestoreError, match=r"corrupt member 'dump\.sql'"):
         validate_native_runtime_archive(archive_path)

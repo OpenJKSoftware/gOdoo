@@ -115,11 +115,19 @@ def set_logging(verbose: bool = False, log_filter: str | None = None) -> None:
     """Set the logging configuration according to passed arguments.
 
     Args:
-        verbose: Enable DEBUG-level logging with rich tracebacks.
+        verbose: Enable DEBUG-level logging with rich tracebacks in terminals.
         log_filter: Optional regex pattern; only log records whose logger name
             matches the pattern will be emitted.
     """
-    if verbose:
+    if not sys.stderr.isatty():
+        logging.basicConfig(
+            level=logging.DEBUG if verbose else logging.INFO,
+            format="{asctime} {levelname:<8} {name}: {message}" if verbose else "{asctime} {levelname:<8} {message}",
+            style="{",
+            handlers=[logging.StreamHandler(sys.stderr)],
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    elif verbose:
         install_rich_traceback(suppress=[click])
         logging.basicConfig(
             level=logging.DEBUG,
