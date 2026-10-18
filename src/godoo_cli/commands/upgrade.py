@@ -17,6 +17,8 @@ from urllib.request import urlopen
 import typer
 from rich import print as rich_print
 
+from ..helpers.progress import ProgressPhase
+
 LOGGER = logging.getLogger(__name__)
 UPGRADE_CLIENT_URL = "https://upgrade.odoo.com/upgrade"
 
@@ -24,7 +26,10 @@ UPGRADE_CLIENT_URL = "https://upgrade.odoo.com/upgrade"
 def _run_upgrade_client(arguments: list[str]) -> int:
     """Download and run Odoo's official upgrade client with its arguments."""
     try:
-        with urlopen(UPGRADE_CLIENT_URL, timeout=60) as response:
+        with (
+            ProgressPhase("Downloading official Odoo upgrade client", logger=LOGGER),
+            urlopen(UPGRADE_CLIENT_URL, timeout=60) as response,
+        ):
             client = response.read()
     except (OSError, URLError):
         LOGGER.exception("Could not download the official Odoo upgrade client.")
@@ -49,7 +54,9 @@ def _run_process(command: list[str]) -> int:
     try:
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[signum] = cast(signal.Handlers, signal.signal(signum, forward))
-        returncode = process.wait()
+        with ProgressPhase("Running official Odoo upgrade client", logger=LOGGER) as progress:
+            returncode = process.wait()
+            progress.failed = returncode != 0
     finally:
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)

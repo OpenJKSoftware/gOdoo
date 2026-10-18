@@ -6,6 +6,7 @@ import logging
 import os
 import posixpath
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
@@ -13,15 +14,15 @@ import time
 import uuid
 import zipfile
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
-from dataclasses import dataclass, field
+from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from pathlib import Path
-from types import TracebackType
-from typing import Literal
+from typing import cast
 
 from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
 from ..database.state import base_module_major, database_exists
+from ..helpers.progress import ProgressPhase as _ProgressPhase
 from .filestore import copy_filestore
 from .locks import begin_runtime_restore, runtime_data_directory, runtime_locks
 from .odoo import (
@@ -54,7 +55,6 @@ CommandRunner = Callable[[Sequence[str]], int]
 LEGACY_DUMP_FILENAME = "odoo.dump"
 LEGACY_FILESTORE_DIRECTORY = "odoo_filestore"
 PROGRESS_INTERVAL_SECONDS = 5
-WAITING_INTERVAL_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -69,48 +69,6 @@ class _ArchiveFileIdentity:
 @dataclass(frozen=True)
 class _ValidatedNativeArchive:
     identity: _ArchiveFileIdentity
-
-
-@dataclass
-class _ProgressPhase:
-    """Report long archive operations without changing their subprocess output."""
-
-    name: str
-    heartbeat_seconds: float = WAITING_INTERVAL_SECONDS
-    heartbeat: bool = True
-    failed: bool = False
-    _started: float = field(init=False, repr=False)
-    _stop: threading.Event = field(init=False, repr=False)
-    _thread: threading.Thread = field(init=False, repr=False)
-
-    def __enter__(self) -> _ProgressPhase:
-        self._started = time.monotonic()
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._heartbeat, daemon=True)
-        LOGGER.info("%s started", self.name)
-        self._thread.start()
-        return self
-
-    def __exit__(
-        self,
-        exception_type: type[BaseException] | None,
-        exception: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> Literal[False]:
-        self._stop.set()
-        self._thread.join()
-        elapsed = time.monotonic() - self._started
-        if exception_type is not None or self.failed:
-            LOGGER.info("%s failed after %.1fs", self.name, elapsed)
-        else:
-            LOGGER.info("%s completed in %.1fs", self.name, elapsed)
-        return False
-
-    def _heartbeat(self) -> None:
-        if not self.heartbeat:
-            return
-        while not self._stop.wait(self.heartbeat_seconds):
-            LOGGER.info("%s still running after %.1fs", self.name, time.monotonic() - self._started)
 
 
 def _archive_identity(stat_result: os.stat_result) -> _ArchiveFileIdentity:
@@ -162,33 +120,17 @@ def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> i
             dump_path = Path(command[file_index + 1])
         except (ValueError, IndexError):
             return run_odoo_command(command, env=environment).returncode
-        if not shutil.which("pv"):
-            return run_odoo_command(command, env=environment).returncode
 
         psql_command = list(command)
         psql_command[file_index + 1] = "-"
+        if not shutil.which("pv"):
+            return _stream_sql_input(psql_command, dump_path, environment)
         LOGGER.info("Sending SQL input from %s", dump_path)
         producer = subprocess.Popen(
-            ["pv", "-n", "--interval", str(PROGRESS_INTERVAL_SECONDS), str(dump_path)],
+            ["pv", "--force", "--interval", str(PROGRESS_INTERVAL_SECONDS), str(dump_path)],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
         )
 
-        def relay_progress() -> None:
-            assert producer.stderr is not None
-            for update in producer.stderr:
-                update = update.strip()
-                if update:
-                    try:
-                        percent = float(update)
-                    except ValueError:
-                        LOGGER.warning("pv: %s", update)
-                    else:
-                        LOGGER.info("Sending SQL input: %.1f%%", percent)
-
-        reporter = threading.Thread(target=relay_progress, daemon=True)
-        reporter.start()
         try:
             assert producer.stdout is not None
             sql_result = run_odoo_command(psql_command, env=environment, stdin=producer.stdout).returncode
@@ -202,7 +144,6 @@ def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> i
             except subprocess.TimeoutExpired:
                 producer.kill()
                 producer.wait()
-            reporter.join()
             raise
         if producer.stdout is not None:
             producer.stdout.close()
@@ -217,14 +158,81 @@ def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> i
             except subprocess.TimeoutExpired:
                 producer.kill()
                 producer.wait()
-        reporter.join()
         if sql_result:
             return sql_result
         if producer.returncode:
             LOGGER.error("SQL input failed with status %s", producer.returncode)
             return producer.returncode
-        LOGGER.info("SQL input completed")
+        LOGGER.info("SQL input sent; PostgreSQL restore completed")
         return 0
+
+
+def _stream_sql_input(command: Sequence[str], dump_path: Path, environment: dict[str, str]) -> int:
+    """Send SQL through psql while reporting measured input bytes without pv."""
+    total_bytes = dump_path.stat().st_size
+    sent_bytes = 0
+    last_report = time.monotonic()
+    LOGGER.info("Sending SQL input: 0/%s bytes sent (0.0%%)", total_bytes)
+    process: subprocess.Popen[bytes] | None = None
+
+    def forward(signum: int, _frame: object) -> None:
+        if process is not None and process.poll() is None:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signum)
+
+    previous: dict[int, signal.Handlers] = {}
+    if threading.current_thread() is threading.main_thread():
+        previous = {
+            signum: cast(signal.Handlers, signal.signal(signum, forward)) for signum in (signal.SIGTERM, signal.SIGINT)
+        }
+    try:
+        process = subprocess.Popen(
+            command,
+            env=environment,
+            stdin=subprocess.PIPE,
+            start_new_session=True,
+        )
+        stdin = process.stdin
+        assert stdin is not None
+        try:
+            with suppress(BrokenPipeError), dump_path.open("rb") as dump_file:
+                while chunk := dump_file.read(1024 * 1024):
+                    stdin.write(chunk)
+                    sent_bytes += len(chunk)
+                    if time.monotonic() - last_report >= PROGRESS_INTERVAL_SECONDS:
+                        LOGGER.info(
+                            "Sending SQL input: %s/%s bytes sent (%.1f%%)",
+                            sent_bytes,
+                            total_bytes,
+                            (sent_bytes / total_bytes * 100) if total_bytes else 100,
+                        )
+                        last_report = time.monotonic()
+            with suppress(BrokenPipeError):
+                stdin.close()
+            LOGGER.info(
+                "Sending SQL input: %s/%s bytes sent (%.1f%%)",
+                sent_bytes,
+                total_bytes,
+                (sent_bytes / total_bytes * 100) if total_bytes else 100,
+            )
+            result = process.wait()
+        except BaseException:
+            forward(signal.SIGKILL, None)
+            with suppress(BrokenPipeError):
+                stdin.close()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                forward(signal.SIGKILL, None)
+                process.wait()
+            raise
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+    if result:
+        return result if result >= 0 else 128 - result
+    LOGGER.info("SQL input sent; PostgreSQL restore completed")
+    return 0
 
 
 def dump_runtime_archive(
@@ -263,12 +271,14 @@ def dump_runtime_archive(
                     str(sql_temporary),
                     *postgres_argv(target_connection),
                 ]
-            if runner is not None:
-                result = runner(command)
-            elif native:
-                result = _run_odoo_db(command)
-            else:
-                result = _run_postgres_command(command, target_connection)
+            with _ProgressPhase("Dumping runtime database", logger=LOGGER) as progress:
+                if runner is not None:
+                    result = runner(command)
+                elif native:
+                    result = _run_odoo_db(command)
+                else:
+                    result = _run_postgres_command(command, target_connection)
+                progress.failed = result != 0
             if result:
                 return result
             if not native:
@@ -346,7 +356,7 @@ def validate_native_runtime_archive(archive_path: Path) -> None:
 
 def _validate_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArchive:
     """Validate a native archive while reporting progress for CRC checks."""
-    with _ProgressPhase("Validating runtime archive", heartbeat=False):
+    with _ProgressPhase("Validating runtime archive", heartbeat=False, logger=LOGGER):
         return _validate_native_runtime_archive_contents(archive_path)
 
 
@@ -515,7 +525,7 @@ def load_runtime_archive(  # noqa: C901
         else:
             extracted = tempfile.TemporaryDirectory(prefix="godoo-archive-")
             with (
-                _ProgressPhase("Extracting runtime database dump"),
+                _ProgressPhase("Extracting runtime database dump", logger=LOGGER),
                 _open_validated_archive(archive_path, validated_archive) as source,
             ):
                 source.extract("dump.sql", extracted.name)
@@ -534,17 +544,17 @@ def load_runtime_archive(  # noqa: C901
         marker = None
         try:
             if original_filestore is not None:
-                with _ProgressPhase("Copying original filestore"):
+                with _ProgressPhase("Copying original filestore", logger=LOGGER):
                     copy_filestore(original_filestore, stage)
                 with (
-                    _ProgressPhase("Overlaying archive filestore"),
+                    _ProgressPhase("Overlaying archive filestore", logger=LOGGER),
                     _open_validated_archive(archive_path, validated_archive) as source,
                 ):
                     _overlay_filestore(source, stage)
             if not native:
                 database_creator(target_connection.with_db(staged_database), "template0")
             result = 0
-            with _ProgressPhase("Restoring runtime database") as progress:
+            with _ProgressPhase("Restoring runtime database", logger=LOGGER) as progress:
                 if runner is not None:
                     result = runner(command)
                 elif native:
@@ -554,7 +564,7 @@ def load_runtime_archive(  # noqa: C901
                 progress.failed = result != 0
             if result:
                 return result
-            with _ProgressPhase("Validating restored runtime"):
+            with _ProgressPhase("Validating restored runtime", logger=LOGGER):
                 _validate_staged_base_version(target_connection.with_db(staged_database), target_major)
             if extracted is None:
                 stage.mkdir(parents=True, exist_ok=True)
@@ -566,7 +576,7 @@ def load_runtime_archive(  # noqa: C901
                     stage.mkdir(parents=True, exist_ok=True)
             marker = begin_runtime_restore(runtime_data, db_name, staged_database)
             backup = database_swapper(target_connection, staged_database)
-            with _ProgressPhase("Promoting restored runtime"):
+            with _ProgressPhase("Promoting restored runtime", logger=LOGGER):
                 complete_runtime_promotion(
                     connection=target_connection,
                     marker=marker,

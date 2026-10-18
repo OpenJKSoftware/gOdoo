@@ -1,8 +1,14 @@
 """Tests for Odoo-native database lifecycle wrappers."""
 
 import logging
+import os
+import select
+import signal
+import subprocess
+import sys
 import zipfile
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -16,6 +22,7 @@ from godoo_cli.models import OdooVersion
 from godoo_cli.runtime import archive as runtime_archive
 from godoo_cli.runtime.archive import (
     RuntimeRestoreError,
+    _run_postgres_command,
     dump_runtime_archive,
     load_legacy_runtime_dump,
     load_runtime_archive,
@@ -684,3 +691,129 @@ def test_load_legacy_directory_requires_force(tmp_path: Path, monkeypatch: pytes
     )
 
     assert result == 2
+
+
+def test_postgres_restore_reports_streamed_sql_bytes_without_pv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """Keeps SQL input progress available when downstream omits pv."""
+    dump = tmp_path / "dump.sql"
+    dump.write_bytes(b"select 1;\n")
+    capture = tmp_path / "captured.sql"
+    psql = tmp_path / "psql"
+    psql.write_text('#!/bin/sh\ncat > "$GODOO_CAPTURE"\n', encoding="utf-8")
+    psql.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("GODOO_CAPTURE", str(capture))
+    monkeypatch.setattr(runtime_archive.shutil, "which", lambda _command: None)
+    caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
+
+    result = _run_postgres_command(
+        ["psql", "--quiet", "--file", str(dump), "--dbname", "staged"],
+        DBConnection("host", 5432, "user", "password", "runtime"),
+    )
+
+    assert result == 0
+    assert capture.read_bytes() == dump.read_bytes()
+    assert any("bytes sent (100.0%)" in record.message for record in caplog.records)
+    assert any("PostgreSQL restore completed" in record.message for record in caplog.records)
+
+
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
+def test_streamed_sql_input_forwards_shutdown_signals_to_psql(tmp_path: Path, signum: signal.Signals) -> None:
+    """Keep the psql fallback aligned with the Odoo command signal contract."""
+    dump = tmp_path / "dump.sql"
+    dump.write_bytes(b"select 1;\n")
+    marker = tmp_path / "signal"
+    child_code = (
+        "import os, signal, sys\n"
+        "from pathlib import Path\n"
+        "def stop(signum, _frame):\n"
+        "    Path(sys.argv[1]).write_text(f'{os.getpid()}:{signum}')\n"
+        "    sys.exit(9)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "signal.signal(signal.SIGINT, stop)\n"
+        "print(f'ready:{os.getpid()}', flush=True)\n"
+        "signal.pause()\n"
+    )
+    wrapper_code = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from godoo_cli.runtime.archive import _stream_sql_input\n"
+        "sys.exit(_stream_sql_input(\n"
+        "    [sys.executable, '-c', sys.argv[1], sys.argv[2]], Path(sys.argv[3]), {}\n"
+        "))\n"
+    )
+    wrapper = subprocess.Popen(
+        [sys.executable, "-c", wrapper_code, child_code, str(marker), str(dump)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    child_pid = None
+    assert wrapper.stdout is not None
+    try:
+        assert select.select([wrapper.stdout], [], [], 5)[0]
+        label, pid = wrapper.stdout.readline().strip().split(":", 1)
+        assert label == "ready"
+        child_pid = int(pid)
+        os.kill(wrapper.pid, signum)
+        assert wrapper.wait(timeout=5) == 9
+        marker_pid, received_signal = marker.read_text().split(":")
+        assert int(marker_pid) == child_pid
+        assert int(received_signal) == signum
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        if child_pid is not None:
+            with suppress(ProcessLookupError):
+                os.killpg(child_pid, signal.SIGKILL)
+        if wrapper.poll() is None:
+            wrapper.kill()
+            wrapper.wait()
+
+
+def test_postgres_restore_waits_after_consumer_closes_input(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Returns the consumer failure after its input pipe closes early."""
+    dump = tmp_path / "dump.sql"
+    dump.write_bytes(b"select 1;\n")
+
+    class ClosedInput:
+        def write(self, _data: bytes) -> int:
+            raise BrokenPipeError
+
+        def close(self) -> None:
+            raise BrokenPipeError
+
+    class FailedPsql:
+        stdin = ClosedInput()
+
+        def wait(self) -> int:
+            return 7
+
+    monkeypatch.setattr(runtime_archive.subprocess, "Popen", lambda *_args, **_kwargs: FailedPsql())
+
+    assert runtime_archive._stream_sql_input(["psql"], dump, {}) == 7
+
+
+@pytest.mark.parametrize("odoo_version", [18, 19])
+def test_failed_dump_reports_failure_and_preserves_destination(
+    tmp_path: Path, odoo_version: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Keep the previous archive and avoid a success message after dump failure."""
+    caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
+    destination = tmp_path / "runtime.zip"
+    destination.write_bytes(b"previous")
+
+    result = dump_runtime_archive(
+        db_name="runtime",
+        archive_path=destination,
+        odoo_bin_path=Path("/odoo/odoo-bin"),
+        data_dir=tmp_path / "data",
+        odoo_version=odoo_version,
+        runner=lambda _command: 7,
+    )
+
+    assert result == 7
+    assert destination.read_bytes() == b"previous"
+    assert any("Dumping runtime database failed" in record.message for record in caplog.records)
+    assert not any("Dumping runtime database completed" in record.message for record in caplog.records)

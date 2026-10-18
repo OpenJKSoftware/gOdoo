@@ -1,12 +1,16 @@
 """Tests managed Git workspace synchronization and recovery behavior."""
 
+import logging
 import os
 import subprocess
+import threading
 from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import pytest
 
+import godoo_cli.helpers.progress as progress_reporting
 import godoo_cli.workspace.git as workspace_git
 from godoo_cli.git import GitUrl, native_git_result, repository
 from godoo_cli.git.repository import Git
@@ -1016,3 +1020,32 @@ def test_invalid_pinned_commit_reports_workspace_error(tmp_path: Path) -> None:
             default_branch="19.0",
             role="odoo",
         )
+
+
+def test_quiet_fetch_reports_waiting_and_preserves_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Report a blocked fetch without losing Git's failure diagnostic."""
+    caplog.set_level(logging.INFO, logger=workspace_git.LOGGER.name)
+    waiting = threading.Event()
+    logger_info = workspace_git.LOGGER.info
+
+    def report_wait(message: str, *args: object) -> None:
+        if "still running" in message:
+            waiting.set()
+        logger_info(message, *args)
+
+    def fetch(*_arguments: str) -> tuple[int, str, str]:
+        assert waiting.wait(1), "Quiet Git fetch did not report its wait"
+        return 1, "", "fetch rejected"
+
+    monkeypatch.setattr(workspace_git.LOGGER, "info", report_wait)
+    monkeypatch.setattr(
+        workspace_git, "ProgressPhase", partial(progress_reporting.ProgressPhase, heartbeat_seconds=0.01)
+    )
+    monkeypatch.setattr(workspace_git, "native_git_result", fetch)
+
+    with pytest.raises(WorkspaceError, match="fetch rejected"):
+        workspace_git._fetch_without_fetch_head(tmp_path, "refs/heads/main")
+
+    assert any("Fetching Git objects failed" in record.message for record in caplog.records)

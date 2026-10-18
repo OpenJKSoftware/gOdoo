@@ -19,6 +19,7 @@ from gitdb import GitDB, LooseObjectDB
 
 from ..git import GitRepository, GitUrl, native_git_result, repository
 from ..helpers.hashing import fingerprint
+from ..helpers.progress import ProgressPhase
 from .specifications import GitMergeSource, GodooGitRepo
 from .types import ResolvedSource, WorkspaceError
 
@@ -108,10 +109,11 @@ def _fetch_without_fetch_head(
         remote,
         refspec,
     )
-    returncode, stdout, stderr = native_git_result(*arguments)
-    if returncode:
-        detail = stderr.strip() or stdout.strip()
-        workspace_fail(f"Git fetch failed ({' '.join(arguments)}): {detail}")
+    with ProgressPhase("Fetching Git objects", logger=LOGGER):
+        returncode, stdout, stderr = native_git_result(*arguments)
+        if returncode:
+            detail = stderr.strip() or stdout.strip()
+            workspace_fail(f"Git fetch failed ({' '.join(arguments)}): {detail}")
 
 
 def _merge_result(

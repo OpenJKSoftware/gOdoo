@@ -22,6 +22,7 @@ import psycopg2.errors
 from packaging.specifiers import SpecifierSet
 
 from ..database.state import DbBootstrapStatus, base_module_major, classify_bootstrap_state
+from ..helpers.progress import ProgressPhase
 from ..models import GodooConfig, GodooModules, OdooVersion
 from .locks import runtime_inconsistency_reason
 
@@ -675,7 +676,8 @@ def preflight_for_config(
     environment = (project_root or Path.cwd()).resolve() / ".venv"
     if not os.environ.get("VIRTUAL_ENV") and not environment.exists():
         environment.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["uv", "venv", str(environment)], check=True)
+        with ProgressPhase("Creating Python environment", logger=LOGGER):
+            subprocess.run(["uv", "venv", str(environment)], check=True)
     dependency_discovery_started_at = time.monotonic()
     requirements = (
         dependency_requirements(
@@ -708,7 +710,8 @@ def preflight_for_config(
         command.extend(["-r", str(source_requirements)])
     try:
         install_started_at = time.monotonic()
-        subprocess.run([*command, *requirements], check=True)
+        with ProgressPhase("Installing Python dependencies", logger=LOGGER):
+            subprocess.run([*command, *requirements], check=True)
         LOGGER.debug(
             "Odoo dependency preflight dependency installation completed: "
             "requirements=%d source_requirements=%s elapsed=%.3fs total_elapsed=%.3fs",

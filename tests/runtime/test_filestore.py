@@ -10,10 +10,12 @@ import threading
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 
 import pytest
 
+import godoo_cli.helpers.progress as progress_reporting
 import godoo_cli.runtime.archive as runtime_archive
 from godoo_cli.database.connection import DBConnection
 from godoo_cli.runtime.archive import (
@@ -40,7 +42,7 @@ def _fake_progress_tools(
     pv = tools / "pv"
     pv.write_text(
         f'#!/bin/sh\nprintf \'%s\\n\' "$@" > "$GODOO_PV_ARGS"\n'
-        f'cat "$4"\necho 100 >&2\nsleep {pv_delay}\nexit {pv_status}\n',
+        f'cat "$4"\nprintf "12%%\\r100%%\\n" >&2\nsleep {pv_delay}\nexit {pv_status}\n',
         encoding="utf-8",
     )
     psql = tools / "psql"
@@ -63,7 +65,7 @@ def test_pv_failure_prevents_sql_restore_success(tmp_path: Path, monkeypatch: py
 
     assert result == 7
     assert (tools / "pv-args").read_text(encoding="utf-8").splitlines() == [
-        "-n",
+        "--force",
         "--interval",
         "5",
         str(dump),
@@ -104,16 +106,16 @@ def test_archive_progress_phase_reports_heartbeat_and_stops_after_failure(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Reports a blocking archive phase and leaves no heartbeat worker behind."""
-    caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
+    caplog.set_level(logging.INFO, logger=progress_reporting.LOGGER.name)
     heartbeat_seen = threading.Event()
-    logger_info = runtime_archive.LOGGER.info
+    logger_info = progress_reporting.LOGGER.info
 
     def report_progress(message: str, *args: object) -> None:
         if "still running" in message:
             heartbeat_seen.set()
         logger_info(message, *args)
 
-    monkeypatch.setattr(runtime_archive.LOGGER, "info", report_progress)
+    monkeypatch.setattr(progress_reporting.LOGGER, "info", report_progress)
     assert _ProgressPhase("Archive progress").heartbeat_seconds == 10.0
 
     completed = _ProgressPhase("Completed archive progress", heartbeat_seconds=0.01)
@@ -384,7 +386,17 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
 def test_failed_staged_sql_restore_preserves_active_filestore(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
+    caplog.set_level(logging.INFO)
+    waiting = threading.Event()
+    logger_info = runtime_archive.LOGGER.info
+
+    def report_wait(message: str, *args: object) -> None:
+        if "still running" in message and args[0] == "Restoring runtime database":
+            waiting.set()
+        logger_info(message, *args)
+
+    monkeypatch.setattr(runtime_archive.LOGGER, "info", report_wait)
+    monkeypatch.setattr(runtime_archive, "_ProgressPhase", partial(_ProgressPhase, heartbeat_seconds=0.01))
     data_dir = tmp_path / "data"
     target = data_dir / "filestore" / "runtime"
     target.mkdir(parents=True)
@@ -397,18 +409,22 @@ def test_failed_staged_sql_restore_preserves_active_filestore(
         archive.writestr("dump.sql", "select 1")
         archive.writestr("filestore/addition", "new")
 
-    def fail_restore(command: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    def fail_restore(command: list[str], dump_path: Path, env: dict[str, str]) -> int:
         assert command[:3] == ["psql", "--quiet", "--file"]
+        assert command[3] == "-"
+        assert dump_path.is_file()
         assert command[command.index("--host") + 1] == "host"
         assert command[command.index("--username") + 1] == "user"
         assert command[command.index("--dbname") + 1] != "runtime"
         assert "pass" not in command
         assert env["PGPASSWORD"] == "pass"
         assert Path(env["PSQLRC"]).read_text() == "\\set ON_ERROR_STOP on\n"
-        return subprocess.CompletedProcess(command, 1)
+        assert waiting.wait(1), "Database restore stopped reporting while its child was quiet"
+        return 1
 
     monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(runtime_archive, "run_odoo_command", fail_restore)
+    monkeypatch.setattr(runtime_archive.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(runtime_archive, "_stream_sql_input", fail_restore)
     result = load_runtime_archive(
         db_name="runtime",
         archive_path=archive_path,
@@ -613,3 +629,23 @@ def test_archive_rejects_corrupt_member_crc(tmp_path: Path, monkeypatch: pytest.
 
     with pytest.raises(RuntimeRestoreError, match=r"corrupt member 'dump\.sql'"):
         validate_native_runtime_archive(archive_path)
+
+
+def test_pv_progress_preserves_carriage_returns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfdbinary: pytest.CaptureFixture[bytes]
+) -> None:
+    """Keep native progress and PostgreSQL diagnostics on stderr."""
+    _fake_progress_tools(tmp_path, monkeypatch, psql_status=0, pv_status=0)
+    dump = tmp_path / "dump.sql"
+    dump.write_text("select 1;", encoding="utf-8")
+
+    result = _run_postgres_command(
+        ["psql", "--quiet", "--file", str(dump), "--dbname", "staged"],
+        DBConnection("host", 5432, "user", "pass", "runtime"),
+    )
+
+    captured = capfdbinary.readouterr()
+    assert result == 0
+    assert b"12%\r100%\n" in captured.err
+    assert b"fake psql diagnostic\n" in captured.err
+    assert captured.out == b""

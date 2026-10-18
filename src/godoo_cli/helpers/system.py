@@ -137,13 +137,14 @@ def set_logging(verbose: bool = False, log_filter: str | None = None) -> None:
                 RichHandler(
                     console=Console(stderr=True),
                     level=logging.DEBUG,
+                    omit_repeated_times=False,
                     markup=True,
                     show_path=True,
                     rich_tracebacks=True,
                     tracebacks_show_locals=True,
                 )
             ],
-            datefmt="%Y-%m-%d %H:%M:%S",
+            datefmt="%H:%M:%S",
         )
     else:
         logging.basicConfig(
@@ -151,9 +152,15 @@ def set_logging(verbose: bool = False, log_filter: str | None = None) -> None:
             format="{message}",
             style="{",
             handlers=[
-                RichHandler(console=Console(stderr=True), level=logging.INFO, show_path=False, rich_tracebacks=False)
+                RichHandler(
+                    console=Console(stderr=True),
+                    level=logging.INFO,
+                    omit_repeated_times=False,
+                    show_path=False,
+                    rich_tracebacks=False,
+                )
             ],
-            datefmt="%Y-%m-%d %H:%M:%S",
+            datefmt="%H:%M:%S",
         )
 
     if log_filter:

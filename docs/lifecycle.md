@@ -44,13 +44,18 @@ godoo runtime init \
   reports bytes checked, with updates at most every five seconds plus final measurements. Phases without measured
   progress report elapsed time every ten seconds. Linux restores try filesystem cloning first; when cloning is
   unavailable, rsync writes its progress and diagnostics directly to stdout when present, otherwise the existing Python
-  copy fallback reports elapsed phases. SQL staging reports input progress through `pv` when present. Input reaching 100%
-  means the dump has been sent; the restore phase continues reporting elapsed time until PostgreSQL finishes.
+  copy fallback reports elapsed phases. SQL staging sends native `pv` progress to stderr when present and reports bytes
+  sent otherwise. Input reaching 100% means the dump has been sent; the restore phase continues reporting elapsed time
+  until PostgreSQL finishes.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.
 - Hook directories run in configured order; each directory's `*.py` files run lexically, one Odoo shell session per
   file. Phases are at-least-once, so scripts must be safe to rerun. Contents may change at a selected path.
+
+Dependency installation, custom dump checks and restores, strict filestore clones, and the official upgrade client
+report elapsed time every ten seconds. Child output keeps its native streams; interactive shells and the running Odoo
+server do not emit periodic waiting messages.
 
 ## Migration directories
 

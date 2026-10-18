@@ -12,6 +12,7 @@ from pathlib import Path
 from types import ModuleType
 
 from ..database.connection import DBConnection
+from ..helpers.progress import ProgressPhase
 from .locks import begin_runtime_restore, runtime_locks
 from .promotion import (
     cleanup_database,
@@ -75,7 +76,8 @@ def check_cow_preflight(
 
 def _run_reflink_copy(command: Sequence[str]) -> None:
     """Clone a filestore, refusing a regular-copy fallback."""
-    subprocess.run(list(command), check=True)
+    with ProgressPhase("Cloning runtime filestore", logger=LOGGER):
+        subprocess.run(list(command), check=True)
 
 
 def _configure_odoo_runtime(

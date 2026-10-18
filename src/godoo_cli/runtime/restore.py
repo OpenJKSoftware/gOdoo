@@ -2,6 +2,7 @@
 
 import logging
 import shutil
+import subprocess
 import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
 from ..database.state import database_exists
+from ..helpers.progress import ProgressPhase
 from .filestore import copy_filestore
 from .locks import begin_runtime_restore, runtime_locks
 from .odoo import run_odoo_command
@@ -43,7 +45,11 @@ def validate_custom_dump(dump_path: Path, runner: CommandRunner = _run) -> None:
     if not dump_path.is_file():
         message = f"PostgreSQL custom dump does not exist: {dump_path}"
         raise RuntimeRestoreError(message)
-    if runner(["pg_restore", "--format=custom", "--list", str(dump_path)]) != 0:
+    command = ["pg_restore", "--format=custom", "--list", str(dump_path)]
+    with ProgressPhase("Validating custom database dump", logger=LOGGER) as progress:
+        result = run_odoo_command(command, stdout=subprocess.DEVNULL).returncode if runner is _run else runner(command)
+        progress.failed = result != 0
+    if result != 0:
         message = f"PostgreSQL custom-format dump is invalid: {dump_path}"
         raise RuntimeRestoreError(message)
 
@@ -69,6 +75,7 @@ def _restore_database_dump(
         "pg_restore",
         "--no-owner",
         "--no-privileges",
+        "--verbose",
         *postgres_argv(connection, database=staged_database),
         str(dump_path),
     ]
@@ -120,10 +127,13 @@ def restore_custom_runtime(
         marker: Path | None = None
         staged_database_created = False
         try:
-            copy_filestore(filestore_source, stage)
+            with ProgressPhase("Copying restore filestore", logger=LOGGER):
+                copy_filestore(filestore_source, stage)
             database_creator(connection.with_db(staged_database), db_template)
             staged_database_created = True
-            result = _restore_database_dump(connection, staged_database, dump_path, runner)
+            with ProgressPhase("Restoring custom database", logger=LOGGER) as progress:
+                result = _restore_database_dump(connection, staged_database, dump_path, runner)
+                progress.failed = result != 0
             if result != 0:
                 _raise_restore_failure(connection.db_name, result)
             marker = begin_runtime_restore(data_dir, connection.db_name, staged_database)

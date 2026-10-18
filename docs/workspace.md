@@ -12,6 +12,8 @@ third-party repositories.
 | `godoo workspace check`       | Offline, read-only validation of sources, with no source-worktree or archive locks.                        |
 | `godoo workspace runtime-env` | Validates sources on the host and prints shell-safe resolved path assignments.                             |
 
+Git fetches report elapsed time every ten seconds while Git output is retained for failure diagnostics.
+
 For this repository, run `uv sync --locked` and `npm ci` to install the pinned Ruff and Prettier versions used by
 pre-commit and VS Code. Open `godoo.code-workspace` so the repository's editor settings apply; opening its files in
 another project's window does not load those settings. Python uses Ruff for formatting and safe fixes on save, with lint

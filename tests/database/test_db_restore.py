@@ -1,5 +1,6 @@
 """Tests for guarded custom PostgreSQL runtime restoration."""
 
+import os
 import shutil
 from pathlib import Path
 
@@ -12,7 +13,12 @@ from godoo_cli.runtime.locks import (
     runtime_restore_marker,
 )
 from godoo_cli.runtime.promotion import complete_runtime_promotion
-from godoo_cli.runtime.restore import RuntimeRestoreError, restore_custom_runtime, runtime_filestore_path
+from godoo_cli.runtime.restore import (
+    RuntimeRestoreError,
+    restore_custom_runtime,
+    runtime_filestore_path,
+    validate_custom_dump,
+)
 
 
 def _connection() -> DBConnection:
@@ -93,6 +99,7 @@ def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path:
     assert set(calls[1][1:-1]) == {
         "--no-owner",
         "--no-privileges",
+        "--verbose",
         "--dbname",
         staged_database,
         "--host",
@@ -308,3 +315,21 @@ def test_completed_restore_keeps_database_when_old_filestore_cleanup_fails(
     assert not cleaned
     assert (target / "new").read_text() == "new"
     assert list(target.parent.glob(".runtime.before-restore-*"))
+
+
+def test_custom_dump_validation_hides_catalog_and_preserves_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfdbinary: pytest.CaptureFixture[bytes]
+) -> None:
+    """Validate the dump without printing its entire table of contents."""
+    dump = tmp_path / "custom.dump"
+    dump.write_bytes(b"dump")
+    pg_restore = tmp_path / "pg_restore"
+    pg_restore.write_text('#!/bin/sh\nprintf "catalog contents\\n"\nprintf "restore diagnostic\\n" >&2\n')
+    pg_restore.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    validate_custom_dump(dump)
+
+    captured = capfdbinary.readouterr()
+    assert captured.out == b""
+    assert b"restore diagnostic\n" in captured.err
