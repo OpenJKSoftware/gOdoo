@@ -3,6 +3,7 @@
     "ms-python.python",
     "ms-python.pylint",
     "charliermarsh.ruff",
+    "esbenp.prettier-vscode",
     "redhat.vscode-xml",
     "mtxr.sqltools",
     "mtxr.sqltools-driver-pg",

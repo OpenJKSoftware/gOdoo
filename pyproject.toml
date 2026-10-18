@@ -55,7 +55,7 @@ dev = [
     "mock>=4.0.3",
     "pytest>=7.2.1",
     "pytest-cov>=4.0.0",
-    "ruff>=0.16.5",
+    "ruff==0.16.5",
     "pyright==1.1.414",
     "pylint-odoo>=9.3.2",
 ]

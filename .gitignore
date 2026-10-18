@@ -1,4 +1,6 @@
 .DS_Store
+node_modules/
+!.vscode/settings.json
 import
 remote_instance_data/
 config/odoo.conf

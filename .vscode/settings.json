@@ -1,0 +1,35 @@
+{
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": false,
+  "xml.symbols.enabled": false,
+  "python.languageServer": "Pylance",
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "ruff.path": ["${workspaceFolder}/.venv/bin/ruff"],
+  "ruff.configurationPreference": "filesystemFirst",
+  "prettier.prettierPath": "./node_modules/prettier",
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[dockercompose]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[github-actions-workflow]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}

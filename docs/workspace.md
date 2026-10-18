@@ -12,6 +12,11 @@ third-party repositories.
 | `godoo workspace check`       | Offline, read-only validation of sources, with no source-worktree or archive locks.                        |
 | `godoo workspace runtime-env` | Validates sources on the host and prints shell-safe resolved path assignments.                             |
 
+For this repository, run `uv sync --locked` and `npm ci` to install the pinned Ruff and Prettier versions used by
+pre-commit and VS Code. Open `godoo.code-workspace` so the repository's editor settings apply; opening its files in
+another project's window does not load those settings. Python uses Ruff for formatting and safe fixes on save, with lint
+rules from `pyproject.toml`, including C901. Supported text formats use Prettier and `.prettierrc.yml`.
+
 The generated `<project>.code-workspace` uses the fixed folder name `gOdoo` and `${workspaceFolder:gOdoo}` for project
 paths. Selected Odoo, addon, and archive paths remain absolute host paths. Pylance receives them through
 `python.analysis.extraPaths`; the generated `gOdoo: attach` configuration maps the project to `/odoo/godoo_workspace`
