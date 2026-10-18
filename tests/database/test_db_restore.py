@@ -204,6 +204,117 @@ def test_failed_restore_keeps_existing_filestore(tmp_path: Path):
     assert not (target / "new").exists()
 
 
+def test_staged_major_mismatch_cleans_staging_without_promoting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dump = tmp_path / "runtime.dump"
+    dump.write_bytes(b"dump")
+    source = tmp_path / "source"
+    source.mkdir()
+    target = tmp_path / "data" / "filestore" / "runtime"
+    target.mkdir(parents=True)
+    (target / "active").write_text("keep")
+    cleaned: list[str] = []
+    monkeypatch.setattr("godoo_cli.runtime.restore.base_module_major", lambda _connection: 18)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.restore.begin_runtime_restore", lambda *_args: pytest.fail("must not promote")
+    )
+
+    with pytest.raises(RuntimeRestoreError, match="does not match"):
+        restore_custom_runtime(
+            connection=_connection(),
+            db_template="template0",
+            dump_path=dump,
+            filestore_source=source,
+            data_dir=tmp_path / "data",
+            force=True,
+            target_major=19,
+            runner=lambda _command: 0,
+            database_creator=lambda *_args: None,
+            database_cleaner=lambda connection: cleaned.append(connection.db_name),
+            database_swapper=lambda *_args: pytest.fail("must not swap"),
+        )
+
+    assert len(cleaned) == 1
+    assert (target / "active").read_text() == "keep"
+
+
+def test_identity_change_before_restore_cleans_staging_without_sql_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dump = tmp_path / "runtime.dump"
+    dump.write_bytes(b"dump")
+    source = tmp_path / "source"
+    source.mkdir()
+    calls: list[list[str]] = []
+    cleaned: list[str] = []
+    identities = iter([(1, 2, 3, 4, 5), (1, 2, 4, 4, 5)])
+    monkeypatch.setattr("godoo_cli.runtime.restore.custom_dump_identity", lambda _path: next(identities))
+    monkeypatch.setattr(
+        "godoo_cli.runtime.restore.begin_runtime_restore", lambda *_args: pytest.fail("must not promote")
+    )
+
+    with pytest.raises(RuntimeRestoreError, match="changed before restore"):
+        restore_custom_runtime(
+            connection=_connection(),
+            db_template="template0",
+            dump_path=dump,
+            filestore_source=source,
+            data_dir=tmp_path / "data",
+            force=True,
+            expected_dump_identity=(1, 2, 3, 4, 5),
+            runner=lambda command: calls.append(list(command)) or 0,
+            database_creator=lambda *_args: None,
+            database_cleaner=lambda connection: cleaned.append(connection.db_name),
+            database_swapper=lambda *_args: pytest.fail("must not swap"),
+        )
+
+    assert calls == [["pg_restore", "--format=custom", "--list", str(dump)]]
+    assert len(cleaned) == 1
+
+
+def test_identity_change_during_restore_skips_promotion(tmp_path: Path) -> None:
+    dump = tmp_path / "runtime.dump"
+    dump.write_bytes(b"dump")
+    source = tmp_path / "source"
+    source.mkdir()
+    target = tmp_path / "data" / "filestore" / "runtime"
+    target.mkdir(parents=True)
+    (target / "active").write_text("keep")
+    initial_stat = dump.stat()
+    expected_identity = (
+        initial_stat.st_dev,
+        initial_stat.st_ino,
+        initial_stat.st_size,
+        initial_stat.st_mtime_ns,
+        initial_stat.st_ctime_ns,
+    )
+    cleaned: list[str] = []
+
+    def runner(command: list[str]) -> int:
+        if "--list" not in command:
+            dump.write_bytes(b"changed dump")
+        return 0
+
+    with pytest.raises(RuntimeRestoreError, match="changed during restore"):
+        restore_custom_runtime(
+            connection=_connection(),
+            db_template="template0",
+            dump_path=dump,
+            filestore_source=source,
+            data_dir=tmp_path / "data",
+            force=True,
+            expected_dump_identity=expected_identity,
+            runner=runner,
+            database_creator=lambda *_args: None,
+            database_cleaner=lambda connection: cleaned.append(connection.db_name),
+            database_swapper=lambda *_args: pytest.fail("must not swap"),
+        )
+
+    assert len(cleaned) == 1
+    assert (target / "active").read_text() == "keep"
+
+
 def test_filestore_swap_failure_restores_previous_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Guards the contract that filestore swap failure restores previous database."""
     dump = tmp_path / "runtime.dump"

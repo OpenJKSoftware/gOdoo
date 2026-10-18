@@ -10,6 +10,7 @@ import typer
 
 from ...models import GodooConfig
 from ...runtime.archive import _validate_native_runtime_archive, load_runtime_archive
+from ...runtime.dataset import resolve_runtime_dataset
 from ...runtime.lifecycle import (
     LifecycleBootstrapError,
     build_runtime_lifecycle_plan,
@@ -32,6 +33,7 @@ from ...runtime.odoo import (
     x_sendfile_enabled,
 )
 from ...runtime.prepare import validate_original_filestore_source
+from ...runtime.restore import restore_custom_runtime
 from ..common import CommonCLI
 from ..configuration import resolve_command_config
 
@@ -104,6 +106,14 @@ def deployment_init_odoo_runtime(  # noqa: C901
         Path | None,
         typer.Option("--seed", envvar="GODOO_RUNTIME_SEED", help="Native Odoo ZIP archive."),
     ] = None,
+    dump_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--dump-path",
+            envvar="GODOO_DUMP_PATH",
+            help="Fixed dataset directory containing odoo.dump and odoo_filestore.",
+        ),
+    ] = None,
     migration_dir: Annotated[
         Path | None,
         typer.Option(
@@ -119,28 +129,40 @@ def deployment_init_odoo_runtime(  # noqa: C901
     update_modules: Annotated[list[str] | None, typer.Option("--update", envvar="GODOO_RECONCILE_UPDATE")] = None,
     install_modules: Annotated[list[str] | None, typer.Option("--install", envvar="GODOO_RECONCILE_INSTALL")] = None,
     upgrade_path: Annotated[
-        list[Path] | None, typer.Option("--upgrade-path", envvar="GODOO_RECONCILE_UPGRADE_PATH")
+        list[Path] | None,
+        typer.Option("--upgrade-path", envvar="GODOO_RECONCILE_UPGRADE_PATH"),
     ] = None,
     pre_upgrade_scripts: Annotated[
         list[Path] | None,
         typer.Option("--pre-upgrade-script", envvar="GODOO_RECONCILE_PRE_UPGRADE_SCRIPTS"),
     ] = None,
     log_handlers: Annotated[
-        list[str] | None, typer.Option("--log-handler", envvar="GODOO_RECONCILE_LOG_HANDLERS")
+        list[str] | None,
+        typer.Option("--log-handler", envvar="GODOO_RECONCILE_LOG_HANDLERS"),
     ] = None,
-    x_sendfile: Annotated[bool | None, typer.Option("--x-sendfile/--no-x-sendfile", envvar="GODOO_X_SENDFILE")] = None,
+    x_sendfile: Annotated[
+        bool | None,
+        typer.Option("--x-sendfile/--no-x-sendfile", envvar="GODOO_X_SENDFILE"),
+    ] = None,
     report_url: Annotated[
         str | None,
-        typer.Option("--report-url", envvar="GODOO_REPORT_URL", help="URL Odoo uses to fetch PDF report assets."),
+        typer.Option(
+            "--report-url",
+            envvar="GODOO_REPORT_URL",
+            help="URL Odoo uses to fetch PDF report assets.",
+        ),
     ] = None,
     after_bootstrap_dirs: Annotated[
-        list[Path] | None, typer.Option("--after-bootstrap-dir", envvar="GODOO_AFTER_BOOTSTRAP_DIRS")
+        list[Path] | None,
+        typer.Option("--after-bootstrap-dir", envvar="GODOO_AFTER_BOOTSTRAP_DIRS"),
     ] = None,
     after_restore_dirs: Annotated[
-        list[Path] | None, typer.Option("--after-restore-dir", envvar="GODOO_AFTER_RESTORE_DIRS")
+        list[Path] | None,
+        typer.Option("--after-restore-dir", envvar="GODOO_AFTER_RESTORE_DIRS"),
     ] = None,
     after_reconcile_dirs: Annotated[
-        list[Path] | None, typer.Option("--after-reconcile-dir", envvar="GODOO_AFTER_RECONCILE_DIRS")
+        list[Path] | None,
+        typer.Option("--after-reconcile-dir", envvar="GODOO_AFTER_RECONCILE_DIRS"),
     ] = None,
     expected_odoo_major: Annotated[
         int | None,
@@ -158,29 +180,55 @@ def deployment_init_odoo_runtime(  # noqa: C901
         ),
     ] = False,
     install_base_modules: Annotated[
-        bool, typer.Option(envvar="GODOO_INSTALL_BASE_MODULES", help="Install base/web when bootstrapping.")
+        bool,
+        typer.Option(
+            envvar="GODOO_INSTALL_BASE_MODULES",
+            help="Install base/web when bootstrapping.",
+        ),
     ] = True,
     install_workspace_modules: Annotated[bool, CLI.odoo_launch.install_workspace_modules] = True,
     odoo_demo: Annotated[
         bool,
         typer.Option(
-            "--odoo-demo/--no-odoo-demo", envvar="GODOO_RUNTIME_DEMO", help="Load demo data when bootstrapping."
+            "--odoo-demo/--no-odoo-demo",
+            envvar="GODOO_RUNTIME_DEMO",
+            help="Load demo data when bootstrapping.",
         ),
     ] = False,
     extra_bootstrap_args: Annotated[list[str] | None, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
     nginx_config: Annotated[Path | None, CLI.odoo_paths.nginx_config] = None,
 ) -> int:
     """One-shot init: seed or bootstrap, reconcile, run phase hooks, then exit."""
+    if odoo_demo and dump_path is not None:
+        message = "--dump-path cannot be combined with demo data."
+        raise typer.BadParameter(message, param_hint="--odoo-demo")
+    try:
+        dataset = resolve_runtime_dataset(
+            dataset_root=dump_path,
+            seed=seed,
+            original_filestore=original_filestore,
+            migration_requested=migration_dir is not None,
+        )
+    except (RuntimeError, OSError, ValueError) as error:
+        raise typer.BadParameter(str(error), param_hint="--dump-path") from error
+    if dataset is not None:
+        seed = dataset.source
+        original_filestore = dataset.original_filestore
+
     migration = None
     if migration_dir is not None:
         _validate_migration_overrides(
-            update_modules, install_modules, pre_upgrade_scripts, after_bootstrap_dirs, after_restore_dirs
+            update_modules,
+            install_modules,
+            pre_upgrade_scripts,
+            after_bootstrap_dirs,
+            after_restore_dirs,
         )
         if odoo_demo:
             message = "--migration-dir cannot be combined with demo data."
             raise typer.BadParameter(message, param_hint="--odoo-demo")
         if seed is None:
-            message = "--migration-dir requires an explicit seed ZIP archive."
+            message = "--migration-dir requires a seed ZIP archive or --dump-path."
             raise typer.BadParameter(message, param_hint="--seed")
         if original_filestore is None:
             message = "--migration-dir requires a nonempty original filestore directory."
@@ -196,7 +244,9 @@ def deployment_init_odoo_runtime(  # noqa: C901
             raise typer.BadParameter(message, param_hint="--original-filestore")
         try:
             migration = resolve_migration_directory(
-                migration_dir, workspace_root=Path.cwd(), additional_upgrade_paths=upgrade_path
+                migration_dir,
+                workspace_root=Path.cwd(),
+                additional_upgrade_paths=upgrade_path,
             )
         except (OSError, ValueError) as error:
             raise typer.BadParameter(str(error), param_hint="--migration-dir") from error
@@ -208,7 +258,10 @@ def deployment_init_odoo_runtime(  # noqa: C901
         install_modules = list(migration.install_modules)
         pre_upgrade_scripts = [migration.pre_upgrade_script] if update_modules else None
         upgrade_path = list(migration.upgrade_paths) if update_modules else None
-        after_reconcile_dirs = [migration.after_reconcile_dir, *(after_reconcile_dirs or [])]
+        after_reconcile_dirs = [
+            migration.after_reconcile_dir,
+            *(after_reconcile_dirs or []),
+        ]
     if report_url is not None:
         report_url = report_url.strip()
     config = resolve_command_config(
@@ -222,7 +275,10 @@ def deployment_init_odoo_runtime(  # noqa: C901
         db_host=db_host,
         db_port=db_port,
         db_password=db_password,
-        extra={"multithread_worker_count": multithread_worker_count, "languages": languages},
+        extra={
+            "multithread_worker_count": multithread_worker_count,
+            "languages": languages,
+        },
     )
     try:
         runtime_version = require_odoo_version(config.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
@@ -235,11 +291,13 @@ def deployment_init_odoo_runtime(  # noqa: C901
         )
         raise typer.BadParameter(message, param_hint="--expected-odoo-major")
     _validate_pre_upgrade_options(seed, pre_upgrade_scripts, update_modules, after_restore_dirs)
-    try:
-        validated_archive = validate_original_filestore_source(seed, original_filestore)
-    except (RuntimeError, OSError, ValueError) as error:
-        raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
-    if seed is not None and validated_archive is None:
+    validated_archive = None
+    if dataset is None or dataset.kind == "archive":
+        try:
+            validated_archive = validate_original_filestore_source(seed, original_filestore)
+        except (RuntimeError, OSError, ValueError) as error:
+            raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
+    if seed is not None and (dataset is None or dataset.kind == "archive") and validated_archive is None:
         try:
             validated_archive = _validate_native_runtime_archive(seed)
         except (RuntimeError, OSError, ValueError) as error:
@@ -298,8 +356,22 @@ def deployment_init_odoo_runtime(  # noqa: C901
         )
 
     def seed_runtime(conf: GodooConfig) -> None:
-        """Load the selected native seed archive."""
+        """Load the selected runtime seed."""
         assert runtime_seed is not None
+        if dataset is not None and dataset.kind == "custom":
+            assert dataset.original_filestore is not None
+            restore_custom_runtime(
+                connection=conf.db_connection,
+                db_template="template0",
+                dump_path=runtime_seed,
+                filestore_source=dataset.original_filestore,
+                data_dir=conf.data_dir,
+                force=True,
+                lifecycle_owner="init",
+                target_major=runtime_version.major,
+                expected_dump_identity=dataset.dump_identity,
+            )
+            return
         result = load_runtime_archive(
             db_name=conf.db_name,
             archive_path=runtime_seed,

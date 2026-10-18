@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
-from ..database.state import database_exists
+from ..database.state import base_module_major, database_exists
 from ..helpers.progress import ProgressPhase
 from .filestore import copy_filestore
 from .locks import begin_runtime_restore, runtime_locks
@@ -32,6 +32,7 @@ from .promotion import (
 LOGGER = logging.getLogger(__name__)
 
 CommandRunner = Callable[[Sequence[str]], int]
+DumpIdentity = tuple[int, int, int, int, int]
 
 
 def _run(command: Sequence[str]) -> int:
@@ -40,11 +41,45 @@ def _run(command: Sequence[str]) -> int:
     return run_odoo_command(command).returncode
 
 
-def validate_custom_dump(dump_path: Path, runner: CommandRunner = _run) -> None:
+def _validate_custom_dump_exists(dump_path: Path) -> None:
     """Check that ``dump_path`` is readable by ``pg_restore`` before mutation."""
     if not dump_path.is_file():
         message = f"PostgreSQL custom dump does not exist: {dump_path}"
         raise RuntimeRestoreError(message)
+
+
+def custom_dump_identity(dump_path: Path) -> DumpIdentity:
+    """Return the file identity used to guard a validated custom dump."""
+    try:
+        stat = dump_path.stat()
+    except OSError as error:
+        message = f"Could not stat PostgreSQL custom dump: {dump_path}"
+        raise RuntimeRestoreError(message) from error
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+def _validate_staged_base_version(connection: DBConnection, target_major: int) -> None:
+    """Ensure the staged custom dump matches the configured Odoo major."""
+    try:
+        restored_major = base_module_major(connection)
+    except RuntimeError as error:
+        message = "Could not read a usable base module version from staged Odoo database."
+        raise RuntimeRestoreError(message) from error
+    if restored_major != target_major:
+        message = f"Staged Odoo database major {restored_major} does not match configured runtime major {target_major}."
+        raise RuntimeRestoreError(message)
+
+
+def _require_dump_identity(dump_path: Path, expected: DumpIdentity | None, phase: str) -> None:
+    """Reject a custom dump replaced after its initial validation."""
+    if expected is not None and custom_dump_identity(dump_path) != expected:
+        message = f"PostgreSQL custom dump changed {phase}: {dump_path}"
+        raise RuntimeRestoreError(message)
+
+
+def validate_custom_dump(dump_path: Path, runner: CommandRunner = _run) -> None:
+    """Check that ``dump_path`` is readable by ``pg_restore`` before mutation."""
+    _validate_custom_dump_exists(dump_path)
     command = ["pg_restore", "--format=custom", "--list", str(dump_path)]
     with ProgressPhase("Validating custom database dump", logger=LOGGER) as progress:
         result = run_odoo_command(command, stdout=subprocess.DEVNULL).returncode if runner is _run else runner(command)
@@ -99,6 +134,8 @@ def restore_custom_runtime(
     database_swapper: DatabaseSwapper = swap_database,
     database_rollback: DatabaseRollback = rollback_database_swap,
     lifecycle_owner: str | None = None,
+    target_major: int | None = None,
+    expected_dump_identity: DumpIdentity | None = None,
 ) -> None:
     """Restore custom PostgreSQL and filestore artifacts as one runtime pair.
 
@@ -111,6 +148,7 @@ def restore_custom_runtime(
             existing runtime requires ``force``.
     """
     validate_custom_dump(dump_path, runner)
+    _require_dump_identity(dump_path, expected_dump_identity, "after validation")
     validate_filestore(filestore_source)
 
     # Keep the live runtime stable until both staged artifacts are ready for promotion.
@@ -132,10 +170,14 @@ def restore_custom_runtime(
             database_creator(connection.with_db(staged_database), db_template)
             staged_database_created = True
             with ProgressPhase("Restoring custom database", logger=LOGGER) as progress:
+                _require_dump_identity(dump_path, expected_dump_identity, "before restore")
                 result = _restore_database_dump(connection, staged_database, dump_path, runner)
                 progress.failed = result != 0
             if result != 0:
                 _raise_restore_failure(connection.db_name, result)
+            _require_dump_identity(dump_path, expected_dump_identity, "during restore")
+            if target_major is not None:
+                _validate_staged_base_version(connection.with_db(staged_database), target_major)
             marker = begin_runtime_restore(data_dir, connection.db_name, staged_database)
             backup = database_swapper(connection, staged_database)
             complete_runtime_promotion(

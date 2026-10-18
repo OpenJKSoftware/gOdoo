@@ -36,6 +36,22 @@ godoo runtime init \
   && godoo runtime launch
 ```
 
+### Fixed runtime datasets
+
+Set `GODOO_DUMP_PATH` or pass `--dump-path` to a mounted dataset directory. The directory contains `odoo.dump` and the
+original source filestore at `odoo_filestore/filestore/odoo`. Init restores that plain pair into the configured runtime
+database, so the source directory name never becomes the target database name.
+
+With `--migration-dir`, init instead selects `upgraded.zip` from the same directory and overlays it on the original
+filestore. It does not select an upgrade merely because the ZIP exists. `--seed` remains authoritative; when it selects
+that paired `upgraded.zip`, init infers the original filestore unless `--original-filestore` names one explicitly.
+Invalid dumps, ZIPs, or required filestores fail before init changes the database or filestore.
+
+```bash
+godoo runtime init --dump-path /restore/dataset
+godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
+```
+
 - Launch checks the Odoo version, pending recovery, and process dependencies before starting the server.
 - If `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, launch applies the bundled banner script first, in
   either runtime mode. Unset or blank banner settings skip this update. A failed update prevents server startup.

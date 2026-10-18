@@ -84,6 +84,74 @@ def _app() -> typer.Typer:
     return app
 
 
+def test_dump_path_routes_plain_dataset_to_custom_restore(
+    migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, environment = migration_environment
+    dataset = workspace / "dataset"
+    filestore = dataset / "odoo_filestore" / "filestore" / "odoo"
+    filestore.mkdir(parents=True)
+    dump = dataset / "odoo.dump"
+    dump.write_bytes(b"custom dump")
+    environment.pop("GODOO_RUNTIME_SEED")
+    environment.pop("GODOO_ORIGINAL_FILESTORE")
+    environment["GODOO_DUMP_PATH"] = str(dataset)
+    monkeypatch.setattr("godoo_cli.runtime.dataset.validate_custom_dump", lambda _path: None)
+    restored: dict[str, object] = {}
+    observed: dict[str, object] = {}
+
+    def restore(**kwargs: object) -> None:
+        restored.update(kwargs)
+
+    def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
+        observed.update(kwargs)
+        cast(Callable[[GodooConfig], None], kwargs["seeder"])(config)
+        return LifecycleOutcome.RESTORED, 0
+
+    monkeypatch.setattr(runtime_init, "restore_custom_runtime", restore)
+    monkeypatch.setattr(runtime_init, "deployment_init", deployment)
+    result = CliRunner().invoke(_app(), [], env=environment)
+
+    assert result.exit_code == 0, result.output
+    assert restored["dump_path"] == dump.resolve()
+    assert restored["filestore_source"] == filestore
+    assert restored["lifecycle_owner"] == "init"
+    assert restored["target_major"] == 19
+    assert restored["expected_dump_identity"] is not None
+    assert str(dump.resolve()) in repr(observed["lifecycle_plan"])
+
+
+def test_migration_dump_path_selects_paired_upgrade_archive(
+    migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, environment = migration_environment
+    dataset = workspace / "dataset"
+    filestore = dataset / "odoo_filestore" / "filestore" / "odoo"
+    filestore.mkdir(parents=True)
+    (filestore / "attachment").write_text("data")
+    archive = dataset / "upgraded.zip"
+    with zipfile.ZipFile(archive, "w") as source:
+        source.writestr("dump.sql", "select 1")
+    environment.pop("GODOO_RUNTIME_SEED")
+    environment.pop("GODOO_ORIGINAL_FILESTORE")
+    environment["GODOO_DUMP_PATH"] = str(dataset)
+    loaded: dict[str, object] = {}
+
+    def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
+        cast(Callable[[GodooConfig], None], kwargs["seeder"])(config)
+        loaded["plan"] = kwargs["lifecycle_plan"]
+        return LifecycleOutcome.RESTORED, 0
+
+    monkeypatch.setattr(runtime_init, "deployment_init", deployment)
+    monkeypatch.setattr(runtime_init, "load_runtime_archive", lambda **kwargs: loaded.update(kwargs) or 0)
+    result = CliRunner().invoke(_app(), ["--migration-dir", "transitions/16-19"], env=environment)
+
+    assert result.exit_code == 0, result.output
+    assert loaded["archive_path"] == archive.resolve()
+    assert loaded["original_filestore"] == filestore
+    assert str(archive.resolve()) in repr(loaded["plan"])
+
+
 @pytest.mark.parametrize("modules", [None, "", "sale\nstock,sale\n"])
 def test_migration_resolves_native_inputs_and_preserves_output_hooks(
     migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch, modules: str | None

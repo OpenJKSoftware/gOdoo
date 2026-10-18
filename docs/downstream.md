@@ -75,6 +75,10 @@ The `init` service runs `godoo runtime init` after PostgreSQL is healthy. The `a
 only after init completes successfully (`service_completed_successfully`). Start downstream debug services before using
 the attach-only `gOdoo: attach` VS Code configuration.
 
+To seed an init service from a fixed dataset, mount its directory read-only and set `GODOO_DUMP_PATH` to that mount. The
+plain source is `odoo.dump` plus `odoo_filestore/filestore/odoo`; adding `--migration-dir` selects the paired
+`upgraded.zip`. Do not mount or rely on a stale `upgrade_extract` directory.
+
 For Odoo's upgrade client and restore workflow, see the [runtime lifecycle guide](lifecycle.md). The optional
 `scripts/odoo_instance_get_upgrade.sh` wrapper belongs to the downstream project, not gOdoo. It maps:
 
