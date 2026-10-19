@@ -66,10 +66,22 @@ Run `make prod` with Docker Compose 2.17 or newer. It checks selected worktrees 
 read-only materialization stage copies only selected repositories into `/image/odoo` and writes schema-2 source
 provenance. Builds do not create temporary host source trees or run Git against worktrees inside the image build.
 
-The requirements layer bind-mounts only `/image/odoo/odoo/requirements.txt`. The image includes the checked-out CLI and
-materialized runtime sources; it is self-contained. Runtime paths are `/odoo/odoo`, `/odoo/godoo_workspace`,
-`/odoo/thirdparty`, and `/odoo/config/odoo.conf`. Do not mount `GODOO_SOURCES_ROOT` into `init` or `app`, and do not
-bake database passwords into the image.
+The requirements layer bind-mounts only `/image/odoo/odoo/requirements.txt`. Install manifest-declared Python
+dependencies during an image build with the materialized source layout and an explicit target interpreter:
+
+```bash
+godoo runtime dependencies --odoo-path /odoo/odoo \
+  --workspace-addons /odoo/godoo_workspace/addons --install --python /odoo/venv/bin/python
+```
+
+Use repeated `--module` to select particular addons, or omit it to select installable workspace addons compatible with
+the selected Odoo major. Repeated `--requirements` adds migration or upgrade requirement files. Without `--install`, the
+command prints a deterministic requirements artifact. `GODOO_RUNTIME_ODOO_PATH`, path-separated
+`GODOO_RUNTIME_ADDON_PATHS`, and `GODOO_RUNTIME_WORKSPACE_ADDONS` provide the same source path inputs.
+
+The image includes the checked-out CLI and materialized runtime sources; it is self-contained. Runtime paths are
+`/odoo/odoo`, `/odoo/godoo_workspace`, `/odoo/thirdparty`, and `/odoo/config/odoo.conf`. Do not mount
+`GODOO_SOURCES_ROOT` into `init` or `app`, and do not bake database passwords into the image.
 
 The `init` service runs `godoo runtime init` after PostgreSQL is healthy. The `app` service runs `godoo runtime launch`
 only after init completes successfully (`service_completed_successfully`). Start downstream debug services before using

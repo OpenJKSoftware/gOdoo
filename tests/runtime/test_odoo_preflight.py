@@ -532,6 +532,7 @@ def test_preflight_skips_core_requirements_preinstalled_by_image(tmp_path: Path,
 
     command = run.call_args.args[0]
     assert "-r" not in command
+    assert command[command.index("-c") + 1] == str(cfg.odoo_install_folder / "requirements.txt")
     assert "addon-package" in command
 
 

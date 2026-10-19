@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import configparser
 import contextlib
 import logging
@@ -23,7 +24,7 @@ from packaging.specifiers import SpecifierSet
 
 from ..database.state import DbBootstrapStatus, base_module_major, classify_bootstrap_state
 from ..helpers.progress import ProgressPhase
-from ..models import GodooConfig, GodooModules, OdooVersion
+from ..models import AddonPathResolver, GodooConfig, GodooModules, OdooVersion, WorkspaceLayout
 from .locks import runtime_inconsistency_reason
 
 LOGGER = logging.getLogger(__name__)
@@ -383,6 +384,36 @@ def odoo_bin_get_version(path: Path) -> OdooVersion:
     return OdooVersion(text=match.group("text"), major=int(match.group("major")), minor=int(match.group("minor")))
 
 
+def odoo_source_get_version(path: Path) -> OdooVersion:
+    """Read an Odoo source version from ``odoo/release.py`` without importing it."""
+    source = path / "odoo" / "release.py"
+    try:
+        release = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    except (OSError, SyntaxError) as error:
+        raise OdooVersionError(source, None, parse_failure=str(error)) from error
+    for statement in release.body:
+        value: ast.expr | None = None
+        targets: list[ast.expr] = []
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign):
+            targets, value = [statement.target], statement.value
+        if not any(isinstance(target, ast.Name) and target.id == "version_info" for target in targets):
+            continue
+        if not isinstance(value, (ast.Tuple, ast.List)) or len(value.elts) < 2:
+            break
+        first, second = value.elts[:2]
+        if (
+            isinstance(first, ast.Constant)
+            and isinstance(first.value, int)
+            and isinstance(second, ast.Constant)
+            and isinstance(second.value, int)
+        ):
+            return OdooVersion(text=f"{first.value}.{second.value}", major=first.value, minor=second.value)
+        break
+    raise OdooVersionError(source, None, parse_failure="release.py has no integer version_info major and minor")
+
+
 def require_odoo_version(path: Path, version_specifier: str) -> OdooVersion:
     """Return a compatible Odoo version or raise a domain version error."""
     try:
@@ -605,25 +636,98 @@ def _dependency_requirements(
         options,
         ignore_missing_installed_modules=ignore_missing_installed_modules,
     )
-    requirements: list[str] = []
-    manifest_count = 0
-    for module in registry.get_modules(selected):
-        manifest_count += 1
-        requirements.extend(
-            "python-ldap" if requirement == "ldap" else requirement
-            for requirement in module.manifest.get("external_dependencies", {}).get("python", [])
-        )
-    result = list(dict.fromkeys(requirements))
+    result = _manifest_dependency_requirements(registry, selected)
     LOGGER.debug(
         "Odoo dependency preflight external dependency manifest discovery completed: "
         "selected=%d manifests=%d requirements=%d addon_paths=%d elapsed=%.3fs",
         len(selected),
-        manifest_count,
+        len(selected),
         len(result),
         len(registry.addon_paths),
         time.monotonic() - discovery_started_at,
     )
     return result
+
+
+def _manifest_dependency_requirements(registry: GodooModules, selected: Sequence[str]) -> list[str]:
+    """Return stable external Python requirements for already selected modules."""
+    requirements: list[str] = []
+    for module in registry.get_modules(list(selected)):
+        requirements.extend(
+            "python-ldap" if requirement == "ldap" else requirement
+            for requirement in module.manifest.get("external_dependencies", {}).get("python", [])
+        )
+    return list(dict.fromkeys(requirements))
+
+
+def source_dependency_requirements(addon_paths: Sequence[Path], module_names: Sequence[str]) -> list[str]:
+    """Resolve manifest Python requirements for explicit source module seeds."""
+    if not module_names:
+        return []
+    registry = GodooModules(list(dict.fromkeys(addon_paths)))
+    selected = list(registry.get_modules(list(dict.fromkeys(module_names))))
+    closure = registry.get_module_dependencies(selected, strict=True)
+    names = [*(module.name for module in selected), *(module.name for module in closure)]
+    return _manifest_dependency_requirements(registry, names)
+
+
+def dependency_addon_paths(
+    odoo_path: Path,
+    workspace_addons: Path,
+    thirdparty_addons: Path,
+) -> list[Path]:
+    """Resolve conventional source addon paths without database configuration."""
+    layout = WorkspaceLayout(
+        odoo_install_folder=odoo_path,
+        odoo_conf_path=odoo_path / "odoo.conf",
+        workspace_addon_path=workspace_addons,
+        thirdparty_addon_path=thirdparty_addons,
+    )
+    return AddonPathResolver(layout).resolve()
+
+
+def workspace_module_names(workspace_addons: Path, odoo_major: int) -> list[str]:
+    """Return installable workspace modules compatible with the selected Odoo major."""
+    modules = GodooModules([workspace_addons])
+    prefix = f"{odoo_major}."
+    return sorted(
+        module.name
+        for module in modules.get_modules()
+        if module.manifest.get("installable", True)
+        and (
+            module.version == "unknown"
+            or module.version.startswith(prefix)
+            or (
+                len(version_parts := module.version.split(".")) in (2, 3)
+                and all(part.isdigit() for part in version_parts)
+            )
+        )
+    )
+
+
+def install_dependency_requirements(
+    python: Path,
+    requirements: Sequence[str],
+    *,
+    odoo_requirements: Path | None = None,
+    extra_requirement_files: Sequence[Path] = (),
+    no_cache: bool = False,
+) -> None:
+    """Install source dependency requirements in one additive uv invocation."""
+    has_requirements = (
+        bool(requirements) or bool(extra_requirement_files) or bool(odoo_requirements and odoo_requirements.is_file())
+    )
+    if not has_requirements:
+        return
+    command = ["uv", "pip", "install", "--python", str(python)]
+    if no_cache:
+        command.append("--no-cache")
+    if odoo_requirements and odoo_requirements.is_file():
+        command.extend(["-r", str(odoo_requirements)])
+    command.extend(requirements)
+    for requirement_file in extra_requirement_files:
+        command.extend(["-r", str(requirement_file)])
+    subprocess.run(command, check=True)
 
 
 def dependency_requirements(
@@ -696,9 +800,8 @@ def preflight_for_config(
         time.monotonic() - dependency_discovery_started_at,
     )
     source_requirements = effective.odoo_install_folder / "requirements.txt"
-    install_source_requirements = source_requirements.is_file() and (
-        os.environ.get("GODOO_ODOO_REQUIREMENTS_PREINSTALLED") != "1"
-    )
+    core_requirements_preinstalled = os.environ.get("GODOO_ODOO_REQUIREMENTS_PREINSTALLED") == "1"
+    install_source_requirements = source_requirements.is_file() and not core_requirements_preinstalled
     if not requirements and not install_source_requirements:
         LOGGER.debug(
             "Odoo dependency preflight completed without installation: elapsed=%.3fs",
@@ -708,6 +811,8 @@ def preflight_for_config(
     command = ["uv", "pip", "install", "--python", str(execution_python(project_root))]
     if install_source_requirements:
         command.extend(["-r", str(source_requirements)])
+    elif requirements and source_requirements.is_file():
+        command.extend(["-c", str(source_requirements)])
     try:
         install_started_at = time.monotonic()
         with ProgressPhase("Installing Python dependencies", logger=LOGGER):
