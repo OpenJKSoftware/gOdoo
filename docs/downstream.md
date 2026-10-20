@@ -13,8 +13,8 @@ From the downstream project directory, set the absolute `GODOO_SOURCES_ROOT`, th
 The representative development stack combines `docker-compose.base.yml` and `docker-compose.dev.yml`. Before Compose
 starts, resolve selected source paths on the host with `godoo workspace runtime-env`. The development override mounts
 the project read-write and the complete source root read-only at its existing absolute `GODOO_SOURCES_ROOT` path.
-`GODOO_RUNTIME_ODOO_PATH` names the selected Odoo subpath; `GODOO_RUNTIME_ADDON_PATHS` carries selected addon paths.
-Containers do not inspect or manage Git worktrees.
+`GODOO_RUNTIME_ODOO_PATH` names the selected Odoo subpath; `GODOO_RUNTIME_ADDON_PATHS` carries selected addon paths. Git
+inspection and worktree management run on the host.
 
 ## PostgreSQL
 
@@ -49,9 +49,9 @@ a later copy has a file the first copy lacks. Missing files fall back to Odoo. S
 images receive `Content-Security-Policy: default-src 'none'`. Nginx enables sendfile and gzip for text assets.
 
 Development mounts the project and shared source root read-only into Nginx at the same paths used by Odoo. Production
-builds the `nginx` image target from the same materialized sources as the application; it needs no host source mounts.
-Both modes mount the shared configuration and Odoo data volumes read-only. This gives Nginx access to the source trees;
-only module static URLs and Odoo-authorized internal filestore redirects expose files over HTTP.
+builds the `nginx` image target from the same materialized sources as the application. Both modes mount the shared
+configuration and Odoo data volumes read-only. This gives Nginx access to the source trees; only module static URLs and
+Odoo-authorized internal filestore redirects expose files over HTTP.
 
 Use `--nginx-config PATH` on runtime init or launch to select another output, and update Nginx's include and mounts to
 match. If you override addon paths, mount or copy those paths into Nginx too. Restart or reload Nginx after changing
@@ -64,7 +64,7 @@ mount together.
 Run `make prod` with Docker Compose 2.17 or newer. It checks selected worktrees on the host with
 `godoo workspace check --sources-only`, then passes `GODOO_SOURCES_ROOT` as the BuildKit `godoo-sources` context. A
 read-only materialization stage copies only selected repositories into `/image/odoo` and writes schema-2 source
-provenance. Builds do not create temporary host source trees or run Git against worktrees inside the image build.
+provenance.
 
 The requirements layer bind-mounts only `/image/odoo/odoo/requirements.txt`. Install manifest-declared Python
 dependencies during an image build with the materialized source layout and an explicit target interpreter:
@@ -92,7 +92,7 @@ plain source is `odoo.dump` plus `odoo_filestore/filestore/odoo`; adding `--migr
 `upgraded.zip`. Do not mount or rely on a stale `upgrade_extract` directory.
 
 For Odoo's upgrade client and restore workflow, see the [runtime lifecycle guide](lifecycle.md). The optional
-`scripts/odoo_instance_get_upgrade.sh` wrapper belongs to the downstream project, not gOdoo. It maps:
+`scripts/odoo_instance_get_upgrade.sh` wrapper belongs to the downstream project. It maps:
 
 | Downstream variable           | Official client option |
 | ----------------------------- | ---------------------- |
@@ -118,5 +118,5 @@ banner when `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, independe
 
 Selected inputs and dependency checks that can run before restore fail before mutation. Dependencies discovered only
 from the restored database are checked afterward; a failure leaves the bound `after-restore` phase pending. Repair the
-dependency and rerun the same selection to resume without reseeding. Finish any pending init started with direct flags
+dependency and rerun the same selection to resume the pending phase. Finish any pending init started with direct flags
 using those original flags before adopting `--migration-dir`.

@@ -1,9 +1,9 @@
 # Source workspaces
 
-Run workspace commands from the downstream project directory. gOdoo reads that project's `.env` without overriding
-exported values. `GODOO_SOURCES_ROOT` must be an absolute shared-source path outside the project. `ODOO_MANIFEST`
-defaults to `odoo_manifest.yml` there; the manifest is the source-selection authority and must declare Odoo plus any
-third-party repositories.
+Run workspace commands from the downstream project directory. Exported values take precedence over the project's `.env`.
+`GODOO_SOURCES_ROOT` must be an absolute shared-source path outside the project. `ODOO_MANIFEST` defaults to
+`odoo_manifest.yml` there; the manifest is the source-selection authority and must declare Odoo plus any third-party
+repositories.
 
 | Command                       | Effect                                                                                                     |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -25,9 +25,8 @@ paths. Selected Odoo, addon, and archive paths remain absolute host paths. Pylan
 and uses the selected source paths inside the development container.
 
 Downstream Compose owns bind mounts and service configuration. Development resolves paths on the host and mounts the
-source root read-only; runtime commands do not inspect Git. Production builds check sources on the host, then
-materialize selected files from a read-only BuildKit context. See [downstream runtime setup](downstream.md) for those
-contracts.
+source root read-only. Production builds check sources on the host, then materialize selected files from a read-only
+BuildKit context. See [downstream runtime setup](downstream.md) for those contracts.
 
 Configure removes retired `.godoo/docker-compose.sources.yml` and `.godoo/source-provenance.json` only when they are
 regular files. Check fails while either remains. Configure also generates the ignored project-root `pyrightconfig.json`

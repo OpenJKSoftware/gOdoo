@@ -3,9 +3,8 @@
 gOdoo provides host-side Odoo tooling for source workspaces, database lifecycle, automation, and RPC operations.
 Downstream projects own Docker, system packages, runtime users, service startup, and debugger startup.
 
-Commands read the project `.env` without overriding exported variables. Explicit CLI values take precedence over the
-environment, which takes precedence over `.env`. Run `godoo --help` or `godoo <command> --help` for the command
-reference.
+Commands read the project `.env`. Explicit CLI values take precedence over the environment, which takes precedence over
+`.env`. Run `godoo --help` or `godoo <command> --help` for the command reference.
 
 ## Start a development environment
 

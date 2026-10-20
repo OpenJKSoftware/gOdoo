@@ -5,7 +5,7 @@ restore, clone, or replacement; gOdoo locks coordinate gOdoo operations only.
 
 - Configuration precedence: CLI, exported environment, project `.env`. A Compose database target remains the target.
 - `runtime init` prepares and reconciles once, then exits. `runtime launch` starts Odoo after init succeeds.
-- Seed archives apply only to missing or empty databases; they never replace a ready database.
+- Seed archives apply only to missing or empty databases.
 - A missing or empty database with a nonempty filestore is inconsistent and needs matching-pair recovery.
 
 ```mermaid
@@ -40,12 +40,12 @@ godoo runtime init \
 
 Set `GODOO_DUMP_PATH` or pass `--dump-path` to a mounted dataset directory. The directory contains `odoo.dump` and the
 original source filestore at `odoo_filestore/filestore/odoo`. Init restores that plain pair into the configured runtime
-database, so the source directory name never becomes the target database name.
+database.
 
 With `--migration-dir`, init instead selects `upgraded.zip` from the same directory and overlays it on the original
-filestore. It does not select an upgrade merely because the ZIP exists. `--seed` remains authoritative; when it selects
-that paired `upgraded.zip`, init infers the original filestore unless `--original-filestore` names one explicitly.
-Invalid dumps, ZIPs, or required filestores fail before init changes the database or filestore.
+filestore. `--seed` remains authoritative; when it selects that paired `upgraded.zip`, init infers the original
+filestore unless `--original-filestore` names one explicitly. Invalid dumps, ZIPs, or required filestores fail before
+init changes the database or filestore.
 
 ```bash
 godoo runtime init --dump-path /restore/dataset
@@ -55,15 +55,15 @@ godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
 - Launch checks the Odoo version, pending recovery, and process dependencies before starting the server.
 - If `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, launch applies the bundled banner script first, in
   either runtime mode. Unset or blank banner settings skip this update. A failed update prevents server startup.
-- Runtime commands require Odoo 16 or newer, with no upper-version limit. Archive commands default to native Odoo
-  commands on 19 or newer and PostgreSQL tools on 16–18; restore options may require SQL staging. Archive validation
-  reports bytes checked, with updates at most every five seconds plus final measurements. Phases without measured
-  progress report elapsed time every ten seconds. Linux restores try filesystem cloning first; when cloning is
-  unavailable, rsync writes its progress and diagnostics directly to stdout when present, otherwise the existing Python
-  copy fallback reports elapsed phases. SQL staging sends native `pv` progress to stderr when present and reports bytes
-  sent otherwise. SQL restore discards query-result tables while keeping PostgreSQL diagnostics on stderr. Input
-  reaching 100% means the dump has been sent; PostgreSQL may still be working. The original-filestore copy and database
-  restore report start and completion or failure.
+- Runtime commands require Odoo 16 or newer. Archive commands default to native Odoo commands on 19 or newer and
+  PostgreSQL tools on 16–18; restore options may require SQL staging. Archive validation reports bytes checked, with
+  updates at most every five seconds plus final measurements. Phases without measured progress report elapsed time every
+  ten seconds. Linux restores try filesystem cloning first; when cloning is unavailable, rsync writes its progress and
+  diagnostics directly to stdout when present, otherwise the existing Python copy fallback reports elapsed phases. SQL
+  staging sends native `pv` progress to stderr when present and reports bytes sent otherwise. SQL restore discards
+  query-result tables while keeping PostgreSQL diagnostics on stderr. Input reaching 100% means the dump has been sent;
+  PostgreSQL may still be working. The original-filestore copy and database restore report start and completion or
+  failure.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.
@@ -71,8 +71,8 @@ godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
   file. Phases are at-least-once, so scripts must be safe to rerun. Contents may change at a selected path.
 
 Dependency installation, custom dump checks and restores, strict filestore clones, and the official upgrade client
-report elapsed time every ten seconds. Child output keeps its native streams; interactive shells and the running Odoo
-server do not emit periodic waiting messages.
+report elapsed time every ten seconds. Child output, including interactive shells and the running Odoo server, keeps its
+native streams.
 
 ## Migration directories
 
@@ -95,7 +95,7 @@ Directory names and files, module lists, hook entrypoints, selected roots, seed 
 runtime target, and dependencies known before restore are checked before mutation. Init checks dependencies again after
 restoring the seed, when restored database state may reveal additional requirements. If that check fails, the restore
 has already completed and the existing bound plan remains pending at `after-restore`. Fix the dependency and retry the
-same inputs; init resumes that phase without restoring the seed again.
+same inputs; init resumes that phase.
 
 | Transition input               | Init behavior                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
@@ -121,14 +121,14 @@ contents retain the existing at-least-once retry policy. Ordinary init without a
 flags and environment defaults.
 
 An already bound pending plan started with direct init flags must be resumed with those original flags before switching
-to migration-directory selection. Selecting a directory does not rebind an existing pending plan.
+to migration-directory selection.
 
 ## Official and major-version upgrades
 
 `godoo upgrade` fetches Odoo's official client and forwards its arguments.
 
 - Operations: `test`, `production`, `restore`, `status`, `log`, and `wipe`.
-- The wrapper does not add `-x`; pass it to keep a test result from restoring locally. Review the report before restore.
+- Pass `-x` to suppress the official client's local restore of a test result. Review the report before restore.
 - Use `production` only when the upgrade is ready.
 
 ```bash
