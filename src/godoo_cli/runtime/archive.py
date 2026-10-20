@@ -133,7 +133,9 @@ def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> i
 
         try:
             assert producer.stdout is not None
-            sql_result = run_odoo_command(psql_command, env=environment, stdin=producer.stdout).returncode
+            sql_result = run_odoo_command(
+                psql_command, env=environment, stdin=producer.stdout, stdout=subprocess.DEVNULL
+            ).returncode
         except BaseException:
             if producer.stdout is not None:
                 producer.stdout.close()
@@ -190,6 +192,7 @@ def _stream_sql_input(command: Sequence[str], dump_path: Path, environment: dict
             command,
             env=environment,
             stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             start_new_session=True,
         )
         stdin = process.stdin
@@ -544,7 +547,7 @@ def load_runtime_archive(  # noqa: C901
         marker = None
         try:
             if original_filestore is not None:
-                with _ProgressPhase("Copying original filestore", logger=LOGGER):
+                with _ProgressPhase("Copying original filestore", heartbeat=False, logger=LOGGER):
                     copy_filestore(original_filestore, stage)
                 with (
                     _ProgressPhase("Overlaying archive filestore", logger=LOGGER),
@@ -554,7 +557,7 @@ def load_runtime_archive(  # noqa: C901
             if not native:
                 database_creator(target_connection.with_db(staged_database), "template0")
             result = 0
-            with _ProgressPhase("Restoring runtime database", logger=LOGGER) as progress:
+            with _ProgressPhase("Restoring runtime database", heartbeat=False, logger=LOGGER) as progress:
                 if runner is not None:
                     result = runner(command)
                 elif native:

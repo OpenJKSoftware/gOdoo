@@ -46,7 +46,10 @@ def _fake_progress_tools(
         encoding="utf-8",
     )
     psql = tools / "psql"
-    psql.write_text(f"#!/bin/sh\ncat >/dev/null\necho fake psql diagnostic >&2\nexit {psql_status}\n", encoding="utf-8")
+    psql.write_text(
+        f"#!/bin/sh\ncat >/dev/null\necho setval\necho 1\necho fake psql diagnostic >&2\nexit {psql_status}\n",
+        encoding="utf-8",
+    )
     pv.chmod(0o755)
     psql.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tools}{os.pathsep}{os.environ['PATH']}")
@@ -85,10 +88,18 @@ def test_pv_can_finish_after_psql_closes_stdin(tmp_path: Path, monkeypatch: pyte
     assert result == 0
 
 
-def test_psql_failure_is_returned_after_pv_input(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("use_pv", [False, True])
+@pytest.mark.parametrize("psql_status", [0, 8])
+def test_sql_restore_suppresses_results_and_preserves_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    use_pv: bool,
+    psql_status: int,
 ) -> None:
-    _fake_progress_tools(tmp_path, monkeypatch, psql_status=8, pv_status=0)
+    _fake_progress_tools(tmp_path, monkeypatch, psql_status=psql_status, pv_status=0)
+    if not use_pv:
+        monkeypatch.setattr(runtime_archive.shutil, "which", lambda _command: None)
     dump = tmp_path / "dump.sql"
     dump.write_text("select 1;", encoding="utf-8")
 
@@ -98,7 +109,8 @@ def test_psql_failure_is_returned_after_pv_input(
     )
 
     captured = capfd.readouterr()
-    assert result == 8
+    assert result == psql_status
+    assert captured.out == ""
     assert "fake psql diagnostic" in captured.err
 
 
@@ -419,7 +431,7 @@ def test_failed_staged_sql_restore_preserves_active_filestore(
         assert "pass" not in command
         assert env["PGPASSWORD"] == "pass"
         assert Path(env["PSQLRC"]).read_text() == "\\set ON_ERROR_STOP on\n"
-        assert waiting.wait(1), "Database restore stopped reporting while its child was quiet"
+        assert not waiting.wait(0.05), "Database restore emitted a redundant heartbeat"
         return 1
 
     monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)

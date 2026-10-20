@@ -61,8 +61,9 @@ godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
   progress report elapsed time every ten seconds. Linux restores try filesystem cloning first; when cloning is
   unavailable, rsync writes its progress and diagnostics directly to stdout when present, otherwise the existing Python
   copy fallback reports elapsed phases. SQL staging sends native `pv` progress to stderr when present and reports bytes
-  sent otherwise. Input reaching 100% means the dump has been sent; the restore phase continues reporting elapsed time
-  until PostgreSQL finishes.
+  sent otherwise. SQL restore discards query-result tables while keeping PostgreSQL diagnostics on stderr. Input
+  reaching 100% means the dump has been sent; PostgreSQL may still be working. The original-filestore copy and database
+  restore report start and completion or failure.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.

@@ -733,7 +733,7 @@ def test_streamed_sql_input_forwards_shutdown_signals_to_psql(tmp_path: Path, si
         "    sys.exit(9)\n"
         "signal.signal(signal.SIGTERM, stop)\n"
         "signal.signal(signal.SIGINT, stop)\n"
-        "print(f'ready:{os.getpid()}', flush=True)\n"
+        "print(f'ready:{os.getpid()}', file=sys.stderr, flush=True)\n"
         "signal.pause()\n"
     )
     wrapper_code = (
@@ -746,14 +746,14 @@ def test_streamed_sql_input_forwards_shutdown_signals_to_psql(tmp_path: Path, si
     )
     wrapper = subprocess.Popen(
         [sys.executable, "-c", wrapper_code, child_code, str(marker), str(dump)],
-        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
     child_pid = None
-    assert wrapper.stdout is not None
+    assert wrapper.stderr is not None
     try:
-        assert select.select([wrapper.stdout], [], [], 5)[0]
-        label, pid = wrapper.stdout.readline().strip().split(":", 1)
+        assert select.select([wrapper.stderr], [], [], 5)[0]
+        label, pid = wrapper.stderr.readline().strip().split(":", 1)
         assert label == "ready"
         child_pid = int(pid)
         os.kill(wrapper.pid, signum)
