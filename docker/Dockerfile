@@ -9,7 +9,7 @@ COPY --from=postgres /usr/local/share/keyrings/postgres.gpg.asc /usr/local/share
 RUN echo "deb [signed-by=/usr/local/share/keyrings/postgres.gpg.asc] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main 18" \
     > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update && apt-get install -y --no-install-recommends \
-    build-essential ca-certificates libpq-dev postgresql-client-18 \
+    build-essential ca-certificates libpq-dev postgresql-client-18 rsync \
     libldap2-dev libsasl2-dev libssl-dev libxml2-dev libxslt1-dev \
     libjpeg-dev zlib1g-dev libffi-dev liblcms2-dev libopenjp2-7-dev wkhtmltopdf \
     && rm -rf /var/lib/apt/lists/*
