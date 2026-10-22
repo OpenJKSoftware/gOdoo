@@ -91,16 +91,10 @@ To seed an init service from a fixed dataset, mount its directory read-only and 
 plain source is `odoo.dump` plus `odoo_filestore/filestore/odoo`; adding `--migration-dir` selects the paired
 `upgraded.zip`. Do not mount or rely on a stale `upgrade_extract` directory.
 
-For Odoo's upgrade client and restore workflow, see the [runtime lifecycle guide](lifecycle.md). The optional
-`scripts/odoo_instance_get_upgrade.sh` wrapper belongs to the downstream project. It maps:
-
-| Downstream variable           | Official client option |
-| ----------------------------- | ---------------------- |
-| `ODOO_DUMP_SQL_PATH`          | `-i` input dump        |
-| `ODOO_UPGRADE_TARGET_VERSION` | `-t` target version    |
-| `ODOO_ENTERPRISE_SUBCODE`     | `-c` contract          |
-
-The wrapper also passes `-x` to suppress the official client's local restore.
+For Odoo's upgrade client and restore workflow, see [the runtime lifecycle guide](lifecycle.md). The downstream
+`make upgrade` target calls `godoo upgrade` directly. It passes `GODOO_DUMP_PATH/odoo.dump` to `--dump`,
+`ODOO_UPGRADE_TARGET_VERSION` to `--target`, and `ODOO_ENTERPRISE_SUBCODE` to `--contract`. It also passes `-x` to
+suppress the official client's local restore.
 
 ## Select a migration transition
 

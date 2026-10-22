@@ -73,9 +73,9 @@ godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
 - Hook directories run in configured order; each directory's `*.py` files run lexically, one Odoo shell session per
   file. Phases are at-least-once, so scripts must be safe to rerun. Contents may change at a selected path.
 
-Dependency installation, custom dump checks and restores, filestore copies, and the official upgrade client report
-elapsed time every ten seconds. Child output, including interactive shells and the running Odoo server, keeps its native
-streams.
+Dependency installation, custom dump checks and restores, and filestore copies report elapsed time every ten seconds.
+The official upgrade client records phase start, completion, or failure without a heartbeat, while its native output is
+unchanged. Child output, including interactive shells and the running Odoo server, keeps its native streams.
 
 ## Migration directories
 
@@ -122,7 +122,9 @@ Ordinary init without a migration directory keeps its direct flags and environme
 
 ## Official and major-version upgrades
 
-`godoo upgrade` fetches Odoo's official client and forwards its arguments.
+`godoo upgrade` fetches Odoo's official client and forwards its arguments. HTTPS certificate and hostname verification
+is enabled by default. Set `GODOO_UPGRADE_SSL=0` only for an upgrade endpoint with a certificate your host cannot
+verify; gOdoo keeps HTTPS encryption but disables verification for its download and the official client it runs.
 
 - Operations: `test`, `production`, `restore`, `status`, `log`, and `wipe`.
 - Pass `-x` to suppress the official client's local restore of a test result. Review the report before restore.

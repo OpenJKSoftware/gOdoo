@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -25,10 +26,12 @@ UPGRADE_CLIENT_URL = "https://upgrade.odoo.com/upgrade"
 
 def _run_upgrade_client(arguments: list[str]) -> int:
     """Download and run Odoo's official upgrade client with its arguments."""
+    ssl_disabled = os.getenv("GODOO_UPGRADE_SSL") == "0"
+    context = ssl._create_unverified_context() if ssl_disabled else None
     try:
         with (
             ProgressPhase("Downloading official Odoo upgrade client", logger=LOGGER),
-            urlopen(UPGRADE_CLIENT_URL, timeout=60) as response,
+            urlopen(UPGRADE_CLIENT_URL, timeout=60, context=context) as response,
         ):
             client = response.read()
     except (OSError, URLError):
@@ -39,12 +42,14 @@ def _run_upgrade_client(arguments: list[str]) -> int:
     with tempfile.TemporaryDirectory(prefix="godoo-upgrade-") as directory:
         client_path = Path(directory) / "upgrade.py"
         client_path.write_bytes(client)
-        return _run_process([sys.executable, str(client_path), *arguments])
+        child_environment = os.environ.copy()
+        child_environment["SSL_VERIFICATION"] = "0" if ssl_disabled else "1"
+        return _run_process([sys.executable, str(client_path), *arguments], env=child_environment)
 
 
-def _run_process(command: list[str]) -> int:
+def _run_process(command: list[str], *, env: dict[str, str] | None = None) -> int:
     """Run the client while forwarding stop signals to its process group."""
-    process = subprocess.Popen(command, start_new_session=True)
+    process = subprocess.Popen(command, start_new_session=True, env=env)
     previous_handlers: dict[int, signal.Handlers] = {}
 
     def forward(signum: int, _frame: object) -> None:
