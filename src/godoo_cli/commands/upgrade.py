@@ -54,7 +54,7 @@ def _run_process(command: list[str]) -> int:
     try:
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[signum] = cast(signal.Handlers, signal.signal(signum, forward))
-        with ProgressPhase("Running official Odoo upgrade client", logger=LOGGER) as progress:
+        with ProgressPhase("Running official Odoo upgrade client", heartbeat=False, logger=LOGGER) as progress:
             returncode = process.wait()
             progress.failed = returncode != 0
     finally:
