@@ -7,7 +7,7 @@ BASE_COMPOSE_FILES := -f docker/docker-compose.base.yml
 DEV_COMPOSE_FILES := $(BASE_COMPOSE_FILES) -f docker/docker-compose.traefik.yml -f docker/docker-compose.dev.yml
 PROD_COMPOSE_FILES := $(BASE_COMPOSE_FILES) -f docker/docker-compose.traefik.yml
 
-.PHONY: setup check-env lint typecheck test pre-commit sync workspace configure dev prod stop reset test-odoo-integration
+.PHONY: setup check-env lint typecheck test pre-commit sync workspace configure dev prod stop reset reset-hard test-odoo-integration
 
 setup: # Install native development tools without replacing existing environment.
 	uv sync --locked
@@ -55,7 +55,15 @@ stop: check-env # Stop every running container in this Compose project.
 		containers="$$(docker compose $(BASE_COMPOSE_FILES) ps --quiet --orphans)"; \
 		if [ -n "$$containers" ]; then docker stop $$containers; fi
 
-reset: check-env # Remove the active stack and all database, filestore, and configuration volumes.
+reset: check-env # Restore the saved baseline and leave Odoo stopped.
+	@set -eu; \
+	eval "$$($(BIN)/godoo workspace runtime-env)"; \
+	export GODOO_SOURCES_ROOT GODOO_RUNTIME_ODOO_PATH GODOO_RUNTIME_ADDON_PATHS; \
+	containers="$$(docker compose $(DEV_COMPOSE_FILES) ps --quiet --orphans)"; \
+	if [ -n "$$containers" ]; then docker stop $$containers; fi; \
+	docker compose $(DEV_COMPOSE_FILES) run --rm init godoo db reset
+
+reset-hard: check-env # Remove the active stack and all database, filestore, and configuration volumes.
 	docker compose $(BASE_COMPOSE_FILES) down --volumes --remove-orphans
 
 

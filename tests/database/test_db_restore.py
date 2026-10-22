@@ -7,14 +7,11 @@ from pathlib import Path
 import pytest
 
 from godoo_cli.database.connection import DBConnection
-from godoo_cli.runtime.locks import (
-    begin_runtime_restore,
-    runtime_readiness_marker,
-    runtime_restore_marker,
-)
+from godoo_cli.runtime.locks import begin_runtime_restore, runtime_readiness_marker, runtime_restore_marker
 from godoo_cli.runtime.promotion import complete_runtime_promotion
 from godoo_cli.runtime.restore import (
     RuntimeRestoreError,
+    _restore_database_dump,
     restore_custom_runtime,
     runtime_filestore_path,
     validate_custom_dump,
@@ -25,8 +22,25 @@ def _connection() -> DBConnection:
     return DBConnection("db", 5432, "odoo", "secret", "runtime")
 
 
-@pytest.mark.parametrize("owner", ["init", "prepare"])
-def test_lifecycle_owned_promotion_preserves_current_marker(tmp_path: Path, owner: str) -> None:
+def test_custom_dump_restore_uses_requested_parallel_jobs(tmp_path: Path) -> None:
+    """Custom-format restores pass the configured worker count to pg_restore."""
+    dump = tmp_path / "custom.dump"
+    dump.write_bytes(b"custom dump")
+    commands: list[list[str]] = []
+
+    result = _restore_database_dump(
+        _connection(),
+        "staged",
+        dump,
+        runner=lambda command: commands.append(list(command)) or 0,
+        restore_jobs=4,
+    )
+
+    assert result == 0
+    assert "--jobs=4" in commands[0]
+
+
+def test_lifecycle_owned_promotion_preserves_current_marker(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     promotion_marker = begin_runtime_restore(data_dir, "runtime", "staged")
     lifecycle_marker = runtime_readiness_marker(data_dir, "runtime")
@@ -44,7 +58,7 @@ def test_lifecycle_owned_promotion_preserves_current_marker(tmp_path: Path, owne
         target_filestore=target,
         database_cleaner=lambda _connection: None,
         database_rollback=lambda _connection, _backup: None,
-        lifecycle_owner=owner,
+        lifecycle_owner="init",
     )
 
     assert lifecycle_marker.read_text(encoding="utf-8") == "pending"
@@ -64,7 +78,10 @@ def test_runtime_filestore_path_rejects_names_outside_data_directory(tmp_path: P
         runtime_filestore_path(tmp_path, db_name)
 
 
-def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path: Path):
+@pytest.mark.parametrize("keep_reset_baseline", [False, True])
+def test_custom_restore_validates_then_restores_database_and_filestore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, keep_reset_baseline: bool
+):
     """Guards the contract that custom restore validates then restores database and filestore."""
     dump = tmp_path / "runtime.dump"
     dump.write_bytes(b"custom dump")
@@ -75,6 +92,18 @@ def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path:
     created: list[tuple[str, str]] = []
     swapped: list[tuple[str, str]] = []
     cleaned: list[str] = []
+    saved: list[str] = []
+
+    def save_baseline(**kwargs: object) -> None:
+        assert not swapped
+        assert len(calls) == 2
+        assert kwargs["source_database"] == created[0][0]
+        source_filestore = kwargs["source_filestore"]
+        assert isinstance(source_filestore, Path)
+        assert (source_filestore / "blob").read_text() == "data"
+        saved.append(str(kwargs["source_database"]))
+
+    monkeypatch.setattr("godoo_cli.runtime.restore.save_runtime_baseline", save_baseline)
     data_dir = tmp_path / "data"
     lifecycle_marker = runtime_readiness_marker(data_dir, "runtime")
     lifecycle_marker.parent.mkdir(parents=True)
@@ -82,10 +111,11 @@ def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path:
 
     restore_custom_runtime(
         connection=_connection(),
+        data_dir=data_dir,
         db_template="template0",
         dump_path=dump,
         filestore_source=source,
-        data_dir=data_dir,
+        keep_reset_baseline=keep_reset_baseline,
         runner=lambda command: calls.append(list(command)) or 0,
         database_creator=lambda connection, template: created.append((connection.db_name, template)),
         database_swapper=lambda connection, staged: swapped.append((connection.db_name, staged)) or "previous",
@@ -100,6 +130,7 @@ def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path:
         "--no-owner",
         "--no-privileges",
         "--verbose",
+        "--jobs=1",
         "--dbname",
         staged_database,
         "--host",
@@ -115,6 +146,8 @@ def test_custom_restore_validates_then_restores_database_and_filestore(tmp_path:
     assert swapped == [("runtime", staged_database)]
     assert cleaned == ["previous"]
     assert (tmp_path / "data" / "filestore" / "runtime" / "blob").read_text() == "data"
+
+    assert saved == ([staged_database] if keep_reset_baseline else [])
 
 
 @pytest.mark.parametrize(("dump_exists", "filestore_exists"), [(False, True), (True, False)])
@@ -133,10 +166,10 @@ def test_custom_restore_preflight_fails_before_database_replacement(
     with pytest.raises(RuntimeRestoreError):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=tmp_path / "data",
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=tmp_path / "data",
             runner=lambda _command: 0,
             database_creator=lambda *_args: replaced.append(True),
             database_swapper=lambda *_args: pytest.fail("database swap must not run"),
@@ -161,10 +194,10 @@ def test_filestore_staging_failure_does_not_clean_existing_database(tmp_path: Pa
     with pytest.raises(OSError, match="disk full"):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=tmp_path / "data",
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=tmp_path / "data",
             runner=lambda _command: 0,
             database_creator=lambda *_args: pytest.fail("staging database creation must not run"),
             database_cleaner=lambda _connection: cleaned.append(True),
@@ -190,10 +223,10 @@ def test_failed_restore_keeps_existing_filestore(tmp_path: Path):
     with pytest.raises(RuntimeRestoreError):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=tmp_path / "data",
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=tmp_path / "data",
             runner=lambda command: 0 if "--list" in command else 7,
             database_creator=lambda connection, _template: created.append(connection.db_name),
             database_cleaner=lambda connection: cleaned.append(connection.db_name),
@@ -223,10 +256,10 @@ def test_staged_major_mismatch_cleans_staging_without_promoting(
     with pytest.raises(RuntimeRestoreError, match="does not match"):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=tmp_path / "data",
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=tmp_path / "data",
             force=True,
             target_major=19,
             runner=lambda _command: 0,
@@ -257,10 +290,10 @@ def test_identity_change_before_restore_cleans_staging_without_sql_restore(
     with pytest.raises(RuntimeRestoreError, match="changed before restore"):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=tmp_path / "data",
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=tmp_path / "data",
             force=True,
             expected_dump_identity=(1, 2, 3, 4, 5),
             runner=lambda command: calls.append(list(command)) or 0,
@@ -299,10 +332,10 @@ def test_identity_change_during_restore_skips_promotion(tmp_path: Path) -> None:
     with pytest.raises(RuntimeRestoreError, match="changed during restore"):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=tmp_path / "data",
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=tmp_path / "data",
             force=True,
             expected_dump_identity=expected_identity,
             runner=runner,
@@ -336,10 +369,10 @@ def test_filestore_swap_failure_restores_previous_database(tmp_path: Path, monke
     with pytest.raises(RuntimeRestoreError, match="filestore unavailable"):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=tmp_path / "data",
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=tmp_path / "data",
             runner=lambda _command: 0,
             database_creator=lambda *_args: None,
             database_swapper=lambda *_args: "previous",
@@ -372,10 +405,10 @@ def test_filestore_swap_and_database_rollback_failure_retains_recovery_artifacts
     with pytest.raises(RuntimeRestoreError, match="pending marker was retained"):
         restore_custom_runtime(
             connection=_connection(),
+            data_dir=data_dir,
             db_template="template0",
             dump_path=dump,
             filestore_source=source,
-            data_dir=data_dir,
             runner=lambda _command: 0,
             database_creator=lambda *_args: None,
             database_swapper=lambda *_args: "previous",
@@ -412,10 +445,10 @@ def test_completed_restore_keeps_database_when_old_filestore_cleanup_fails(
 
     restore_custom_runtime(
         connection=_connection(),
+        data_dir=tmp_path / "data",
         db_template="template0",
         dump_path=dump,
         filestore_source=source,
-        data_dir=tmp_path / "data",
         force=True,
         runner=lambda _command: 0,
         database_creator=lambda *_args: None,

@@ -1,792 +1,221 @@
-"""Tests for the state-based runtime lifecycle service."""
+"""Focused proofs for explicit runtime initialization."""
 
 import json
-import logging
-from collections.abc import Callable
-from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
-from typing import TypedDict, Unpack
 
 import pytest
 
-from godoo_cli.commands.runtime import init as lifecycle_commands
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime import lifecycle as runtime_lifecycle
-from godoo_cli.runtime.lifecycle import (
-    HookRunner,
-    LifecycleOutcome,
-    RuntimePreparer,
-    RuntimeReconciler,
-    deployment_init,
-    ensure_runtime,
-    reconcile_runtime,
-    run_hook_directories,
-)
+from godoo_cli.runtime.lifecycle import LifecycleOutcome, deployment_init
 from godoo_cli.runtime.locks import runtime_readiness_marker
 
 
 @pytest.fixture(autouse=True)
-def supported_cli_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        lifecycle_commands,
-        "require_odoo_version",
-        lambda *_args: SimpleNamespace(major=19, raw="19.0"),
-    )
+def supported_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
-
-
-LOGGER = logging.getLogger(__name__)
-
-
-class _EnsureRuntimeKwargs(TypedDict):
-    """Arguments supplied by the lifecycle command's ensure callback."""
-
-    preparer: RuntimePreparer
-    odoo_demo: bool
-    extra_bootstrap_args: list[str] | None
-    install_workspace_modules: bool
-    install_base_modules: bool
-    allow_lifecycle_retry: bool
-
-
-class _ReconcileRuntimeKwargs(TypedDict):
-    """Arguments supplied by the lifecycle command's reconcile callback."""
-
-    preparer: RuntimePreparer
-    allow_lifecycle_retry: bool
-    reconciler: RuntimeReconciler
-
-
-class _DeploymentInitKwargs(TypedDict):
-    """Arguments supplied by the lifecycle command's deployment call."""
-
-    seed_requested: bool
-    seeder: Callable[[GodooConfig], None] | None
-    ensure: Callable[[GodooConfig], bool]
-    preparer: RuntimePreparer | None
-    preflight: RuntimePreparer | None
-    post_restore_preflight: RuntimePreparer | None
-    reconciler: RuntimeReconciler
-    after_bootstrap_dirs: list[Path] | None
-    after_restore_dirs: list[Path] | None
-    after_reconcile_dirs: list[Path] | None
-    hook_runner: HookRunner | None
 
 
 def _config(tmp_path: Path) -> GodooConfig:
     return GodooConfig(
         odoo_install_folder=tmp_path / "odoo",
-        odoo_conf_path=tmp_path / "odoo.conf",
         workspace_addon_path=tmp_path / "addons",
         thirdparty_addon_path=tmp_path / "thirdparty",
+        odoo_conf_path=tmp_path / "odoo.conf",
         db_name="runtime",
+        db_user="odoo",
         data_dir=tmp_path / "data",
     )
 
 
-@pytest.mark.parametrize("initial_status", [DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB])
-def test_public_deployment_init_real_bootstrap_retry_accepts_pending_marker(
-    tmp_path: Path, initial_status: DbBootstrapStatus, monkeypatch: pytest.MonkeyPatch
-):
-    """Guards public deployment init's real bootstrap retry through its pending marker."""
-    import typer
-    from typer.testing import CliRunner
-
-    from godoo_cli.commands.runtime import init as lifecycle_commands
-
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-    data_dir = tmp_path / "data"
-    state = {"status": initial_status}
-    calls: list[str] = []
-    observed_retry: list[bool] = []
-
-    def status_getter(_connection: object) -> DbBootstrapStatus:
-        return state["status"]
-
-    def bootstrap(_config: GodooConfig, **_kwargs: object) -> int:
-        calls.append("bootstrap")
-        state["status"] = DbBootstrapStatus.BOOTSTRAPPED
-        return 0
-
-    def injected_ensure(config: GodooConfig, **kwargs: Unpack[_EnsureRuntimeKwargs]) -> bool:
-        observed_retry.append(bool(kwargs.get("allow_lifecycle_retry")))
-        return ensure_runtime(
-            config,
-            status_getter=status_getter,
-            bootstrapper=bootstrap,
-            **kwargs,
-        )
-
-    def injected_reconcile(config: GodooConfig, **kwargs: Unpack[_ReconcileRuntimeKwargs]) -> int:
-        return reconcile_runtime(
-            config,
-            preparer=kwargs["preparer"],
-            status_getter=status_getter,
-            reconciler=lambda _runtime: calls.append("reconcile") or 0,
-            allow_lifecycle_retry=kwargs["allow_lifecycle_retry"],
-        )
-
-    def injected_init(config: GodooConfig, **kwargs: Unpack[_DeploymentInitKwargs]) -> tuple[LifecycleOutcome, int]:
-        return deployment_init(config, status_getter=status_getter, **kwargs)
-
-    monkeypatch.setattr(lifecycle_commands, "ensure_runtime", injected_ensure)
-    monkeypatch.setattr(lifecycle_commands, "reconcile_runtime", injected_reconcile)
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", injected_init)
-    monkeypatch.setattr(lifecycle_commands, "prepare_runtime", lambda _config, **_kwargs: None)
-    monkeypatch.setattr(runtime_lifecycle, "preflight_for_config", lambda *_args, **_kwargs: None)
-    result = CliRunner().invoke(
-        app,
-        [],
-        env={
-            "ODOO_MAIN_FOLDER": str(tmp_path / "odoo"),
-            "ODOO_WORKSPACE_ADDON_LOCATION": str(tmp_path / "addons"),
-            "ODOO_CONF_PATH": str(tmp_path / "odoo.conf"),
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-            "ODOO_DATA_DIR": str(data_dir),
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-    assert observed_retry == [True]
-    assert calls == ["bootstrap", "reconcile"]
-    assert not runtime_readiness_marker(data_dir, "runtime").exists()
-
-
-def test_ensure_runtime_rejects_pending_marker_without_retry_authority(tmp_path: Path):
-    """Guards ordinary ensure calls from taking ownership of unfinished init."""
+def test_init_retries_restore_hooks_after_final_hook_failure(tmp_path: Path) -> None:
     config = _config(tmp_path)
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    marker.parent.mkdir(parents=True)
-    marker.touch()
-
-    with pytest.raises(ValueError, match="unresolved legacy lifecycle work"):
-        ensure_runtime(
-            config,
-            preparer=lambda _runtime: None,
-            status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
-            bootstrapper=lambda _config, **_kwargs: 0,
-        )
-
-
-def test_deployment_init_bootstraps_then_reconciles(tmp_path: Path):
-    """Guards the contract that deployment init bootstraps then reconciles."""
-    calls: list[str] = []
-    result = deployment_init(
-        _config(tmp_path),
-        seed_requested=False,
-        seeder=None,
-        status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
-        ensure=lambda _config: calls.append("bootstrap") or True,
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-    )
-    assert result == (LifecycleOutcome.BOOTSTRAPPED, 0)
-    assert calls == ["bootstrap", "reconcile"]
-
-
-def test_deployment_init_preflights_before_refreshing_config(tmp_path: Path) -> None:
-    """Check dependencies before preparation changes the configuration."""
-    calls: list[str] = []
-
-    result = deployment_init(
-        _config(tmp_path),
-        seed_requested=False,
-        seeder=None,
-        preparer=lambda _config: calls.append("prepare"),
-        preflight=lambda _config: calls.append("preflight"),
-        ensure=lambda _config: True,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-    )
-
-    assert result == (LifecycleOutcome.READY, 0)
-    assert calls == ["preflight", "prepare", "reconcile"]
-
-
-def test_deployment_init_preflight_failure_preserves_runtime_state(tmp_path: Path) -> None:
-    """A failed dependency check prevents preparation and every execution phase."""
-    calls: list[str] = []
-
-    def fail_preflight(_config: GodooConfig) -> None:
-        calls.append("preflight")
-        message = "Missing migration dependency"
-        raise RuntimeError(message)
-
-    with pytest.raises(RuntimeError, match="Missing migration dependency"):
-        deployment_init(
-            _config(tmp_path),
-            seed_requested=True,
-            seeder=lambda _config: calls.append("seed"),
-            ensure=lambda _config: calls.append("bootstrap") or True,
-            reconciler=lambda _config: calls.append("reconcile") or 0,
-            preparer=lambda _config: calls.append("prepare"),
-            preflight=fail_preflight,
-            status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
-            hook_runner=lambda _config, _script: calls.append("hook") or 0,
-        )
-
-    assert calls == ["preflight"]
-
-
-def test_deployment_init_seeds_then_reconciles_without_bootstrap(tmp_path: Path):
-    """Guards the contract that deployment init seeds then reconciles without bootstrap."""
-    calls: list[str] = []
-    result = deployment_init(
-        _config(tmp_path),
-        seed_requested=True,
-        status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
-        seeder=lambda _config: calls.append("seed"),
-        ensure=lambda _config: calls.append("bootstrap") or True,
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-    )
-    assert result == (LifecycleOutcome.RESTORED, 0)
-    assert calls == ["seed", "reconcile"]
-
-
-def test_deployment_init_prepares_seeds_and_runs_phase_hooks(tmp_path: Path):
-    """Guards the contract that deployment init prepares seeds and runs phase hooks."""
-    calls: list[str] = []
     hooks = tmp_path / "hooks"
     hooks.mkdir()
-    (hooks / "10_policy.py").write_text("policy")
-
-    result = deployment_init(
-        _config(tmp_path),
-        seed_requested=True,
-        seeder=lambda _config: calls.append("seed"),
-        ensure=lambda _config: False,
-        preparer=lambda _config: calls.append("prepare"),
-        status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-        after_restore_dirs=[hooks],
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, _script: calls.append("hook") or 0,
-    )
-
-    assert result == (LifecycleOutcome.RESTORED, 0)
-    assert calls == ["prepare", "seed", "hook", "reconcile", "hook"]
-
-
-def test_deployment_init_existing_runtime_only_reconciles(tmp_path: Path):
-    """Guards the contract that deployment init existing runtime only reconciles."""
-    calls: list[str] = []
-    result = deployment_init(
-        _config(tmp_path),
-        seed_requested=False,
-        seeder=None,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        ensure=lambda _config: calls.append("bootstrap") or True,
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-    )
-    assert result == (LifecycleOutcome.READY, 0)
-    assert calls == ["reconcile"]
-
-
-def test_hook_directories_preserve_directory_order(tmp_path: Path):
-    """Guards the contract that hook directories preserve directory order."""
-    second = tmp_path / "second"
-    first = tmp_path / "first"
-    second.mkdir()
-    first.mkdir()
-    (second / "10_hook.py").write_text("second")
-    (first / "10_hook.py").write_text("first")
-    calls: list[str] = []
-
-    result = run_hook_directories(
-        _config(tmp_path), [second, first], lambda _config, script: calls.append(script.read_text()) or 0
-    )
-
-    assert result == 0
-    assert calls == ["second", "first"]
-
-
-def test_deployment_init_retries_hooks_for_an_existing_runtime(tmp_path: Path):
-    """Guards the contract that deployment init retries hooks for an existing runtime."""
-    hooks = tmp_path / "after-reconcile"
-    hooks.mkdir()
-    (hooks / "10_policy.py").write_text("policy")
+    (hooks / "10_policy.py").write_text("pass\n")
     status = DbBootstrapStatus.NO_DB
     calls: list[str] = []
+    attempts = 0
 
-    def runtime_status(_connection: object) -> DbBootstrapStatus:
-        return status
+    def seed(_config: GodooConfig) -> None:
+        nonlocal status
+        calls.append("seed")
+        status = DbBootstrapStatus.BOOTSTRAPPED
+
+    def hook(_config: GodooConfig, _script: Path) -> int:
+        nonlocal attempts
+        attempts += 1
+        calls.append(f"hook-{attempts}")
+        return 7 if attempts == 1 else 0
+
+    actions = {
+        "ensure": lambda _config: False,
+        "seeder": seed,
+        "reconciler": lambda _config: calls.append("reconcile") or 0,
+        "status_getter": lambda _connection: status,
+        "hook_runner": hook,
+    }
+    selected = {"after_restore_dirs": [hooks]}
+    assert deployment_init(config, **actions, seed_requested=True, **selected) == (
+        LifecycleOutcome.RESTORED,
+        7,
+    )
+    assert runtime_readiness_marker(config.data_dir, config.db_name).exists()
+    assert deployment_init(config, **actions, seed_requested=False, **selected) == (LifecycleOutcome.READY, 0)
+    assert calls == ["seed", "hook-1", "hook-2", "reconcile"]
+    assert not runtime_readiness_marker(config.data_dir, config.db_name).exists()
+
+
+def test_init_marks_before_bootstrap_and_clears_after_reconcile(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    marker = runtime_readiness_marker(config.data_dir, config.db_name)
+    status = DbBootstrapStatus.NO_DB
 
     def ensure(_config: GodooConfig) -> bool:
         nonlocal status
-        calls.append("bootstrap")
+        assert marker.exists()
+        assert json.loads(marker.read_text())["outcome"] == "bootstrapped"
         status = DbBootstrapStatus.BOOTSTRAPPED
         return True
 
-    hook_attempts = 0
-
-    def run_hook(_config: GodooConfig, _script: Path) -> int:
-        nonlocal hook_attempts
-        hook_attempts += 1
-        calls.append(f"hook-{hook_attempts}")
-        return 9 if hook_attempts == 1 else 0
-
-    first_result = deployment_init(
-        _config(tmp_path),
-        seed_requested=False,
-        seeder=None,
-        status_getter=runtime_status,
+    result = deployment_init(
+        config,
         ensure=ensure,
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-        after_reconcile_dirs=[hooks],
-        hook_runner=run_hook,
+        reconciler=lambda _config: 0,
+        status_getter=lambda _connection: status,
     )
-    assert first_result == (LifecycleOutcome.BOOTSTRAPPED, 9)
-    marker = runtime_readiness_marker(tmp_path / "data", "runtime")
-    state = json.loads(marker.read_text())
-    assert state["schema_version"] == 2
-    assert state["database"] == "runtime"
-    assert state["outcome"] == "bootstrapped"
-    assert state["pending_phase"] == "after-reconcile"
-
-    second_result = deployment_init(
-        _config(tmp_path),
-        seed_requested=False,
-        seeder=None,
-        status_getter=runtime_status,
-        ensure=ensure,
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-        after_reconcile_dirs=[hooks],
-        hook_runner=run_hook,
-    )
-
-    assert second_result == (LifecycleOutcome.BOOTSTRAPPED, 0)
-    assert calls == ["bootstrap", "reconcile", "hook-1", "hook-2"]
-
-
-def test_pending_lifecycle_rejects_changed_effective_addon_paths_before_callbacks(
-    tmp_path: Path,
-) -> None:
-    """A retry cannot resume work against a different effective addon root."""
-    addon_root_a = tmp_path / "addons-a"
-    addon_root_b = tmp_path / "addons-b"
-    addon_root_a.mkdir()
-    addon_root_b.mkdir()
-    config_a = replace(_config(tmp_path), resolved_addon_paths=(addon_root_a,))
-    config_b = replace(_config(tmp_path), resolved_addon_paths=(addon_root_b,))
-    hooks = tmp_path / "after-reconcile"
-    hooks.mkdir()
-    (hooks / "10_policy.py").write_text("pass")
-    calls: list[str] = []
-
-    first_result = deployment_init(
-        config_a,
-        seed_requested=False,
-        seeder=None,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        ensure=lambda _config: pytest.fail("ready runtime must not bootstrap"),
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, _script: calls.append("hook") or 9,
-    )
-    assert first_result == (LifecycleOutcome.READY, 9)
-    marker = runtime_readiness_marker(config_a.data_dir, config_a.db_name)
-    pending_before = marker.read_bytes()
-
-    with pytest.raises(RuntimeError, match="plan differs"):
-        deployment_init(
-            config_b,
-            seed_requested=False,
-            seeder=None,
-            status_getter=lambda _connection: pytest.fail("retry must reject before status"),
-            ensure=lambda _config: pytest.fail("retry must reject before bootstrap"),
-            preparer=lambda _config: pytest.fail("retry must reject before prepare"),
-            preflight=lambda _config: pytest.fail("retry must reject before preflight"),
-            reconciler=lambda _config: pytest.fail("retry must reject before reconcile"),
-            after_reconcile_dirs=[hooks],
-            hook_runner=lambda _config, _script: pytest.fail("retry must reject before hooks"),
-        )
-
-    assert marker.read_bytes() == pending_before
-    assert calls == ["reconcile", "hook"]
-
-    resumed_result = deployment_init(
-        config_a,
-        seed_requested=False,
-        seeder=None,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        ensure=lambda _config: pytest.fail("resumed runtime must not bootstrap"),
-        reconciler=lambda _config: pytest.fail("resumed hooks must not reconcile again"),
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, _script: calls.append("resumed-hook") or 0,
-    )
-    assert resumed_result == (LifecycleOutcome.READY, 0)
-    assert calls == ["reconcile", "hook", "resumed-hook"]
+    assert result == (LifecycleOutcome.BOOTSTRAPPED, 0)
     assert not marker.exists()
 
 
-def test_runtime_lifecycle_plan_preserves_effective_addon_path_order(tmp_path: Path) -> None:
-    """Effective addon paths keep Odoo's module-precedence order in the plan."""
-    addon_root_a = tmp_path / "addons-a"
-    addon_root_b = tmp_path / "addons-b"
-    addon_root_a.mkdir()
-    addon_root_b.mkdir()
-
-    def plan(config: GodooConfig) -> dict[str, object]:
-        return runtime_lifecycle.build_runtime_lifecycle_plan(
-            config,
-            runtime_version=None,
-            expected_odoo_major=None,
-            seed=None,
-            seed_requested=False,
-            original_filestore=None,
-            update_modules=None,
-            install_modules=None,
-            upgrade_paths=None,
-            pre_upgrade_scripts=None,
-            after_bootstrap_dirs=None,
-            after_restore_dirs=None,
-            after_reconcile_dirs=None,
-            install_base_modules=True,
-            install_workspace_modules=True,
-            odoo_demo=False,
-        )
-
+def test_major_version_failure_prevents_marker_and_callbacks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = _config(tmp_path)
-    ordered = replace(config, resolved_addon_paths=(addon_root_a, addon_root_b))
-    equivalent = replace(config, resolved_addon_paths=(addon_root_a / ".." / addon_root_a.name, addon_root_b))
-    reordered = replace(config, resolved_addon_paths=(addon_root_b, addon_root_a))
-
-    assert plan(ordered) == plan(equivalent)
-    assert plan(ordered) != plan(reordered)
-
-
-def test_changed_pending_plan_rejects_before_callbacks_and_preserves_marker(tmp_path: Path) -> None:
-    """A changed selection cannot run callbacks or alter pending recovery state."""
-    config = _config(tmp_path)
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    (hooks / "finalize.py").write_text("pass\n")
     calls: list[str] = []
-
-    def status(_connection: object) -> DbBootstrapStatus:
-        return DbBootstrapStatus.BOOTSTRAPPED
-
-    first_plan = {"identity": {"selection": "sale"}, "diagnostics": {}}
-    result = deployment_init(
-        config,
-        seed_requested=False,
-        seeder=None,
-        status_getter=status,
-        ensure=lambda _config: pytest.fail("ready runtime must not bootstrap"),
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, _script: calls.append("hook") or 9,
-        lifecycle_plan=first_plan,
-    )
-    assert result == (LifecycleOutcome.READY, 9)
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    pending_before = marker.read_bytes()
-    assert json.loads(pending_before)["pending_phase"] == "after-reconcile"
-
-    with pytest.raises(RuntimeError, match="plan differs"):
-        deployment_init(
-            config,
-            seed_requested=False,
-            seeder=None,
-            status_getter=status,
-            ensure=lambda _config: pytest.fail("changed plan must reject first"),
-            preparer=lambda _config: pytest.fail("changed plan must reject before prepare"),
-            preflight=lambda _config: pytest.fail("changed plan must reject before preflight"),
-            reconciler=lambda _config: pytest.fail("changed plan must reject before reconcile"),
-            after_reconcile_dirs=[hooks],
-            hook_runner=lambda _config, _script: pytest.fail("changed plan must reject before hooks"),
-            lifecycle_plan={"identity": {"selection": "stock"}, "diagnostics": {}},
-        )
-
-    assert marker.read_bytes() == pending_before
-    assert calls == ["reconcile", "hook"]
-    with pytest.raises(RuntimeError, match="--adopt-pending-plan"):
-        deployment_init(
-            config,
-            seed_requested=False,
-            seeder=None,
-            status_getter=status,
-            ensure=lambda _config: pytest.fail("bound marker adoption must reject first"),
-            reconciler=lambda _config: pytest.fail("bound marker adoption must reject first"),
-            lifecycle_plan=first_plan,
-            adopt_legacy_plan=True,
-        )
-    assert marker.read_bytes() == pending_before
-
-
-def test_existing_database_major_mismatch_rejects_before_marker_or_callbacks(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An older initialized database requires an explicit restore before runtime init."""
-    config = _config(tmp_path)
     monkeypatch.setattr(
         runtime_lifecycle,
         "require_runtime_database_major",
-        lambda _config: (_ for _ in ()).throw(ValueError("requires godoo db load RESULT")),
+        lambda _config: (_ for _ in ()).throw(ValueError("unsupported major")),
     )
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    callbacks: list[str] = []
-
-    with pytest.raises(ValueError, match="godoo db load RESULT"):
+    with pytest.raises(ValueError, match="unsupported major"):
         deployment_init(
             config,
-            seed_requested=False,
-            seeder=None,
-            status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-            ensure=lambda _config: callbacks.append("bootstrap") or False,
-            preparer=lambda _config: callbacks.append("prepare"),
-            reconciler=lambda _config: callbacks.append("reconcile") or 0,
-            lifecycle_plan={
-                "identity": {"runtime": {"version": "19.0", "expected_major": 19}},
-                "diagnostics": {},
-            },
+            ensure=lambda _config: calls.append("bootstrap") or True,
+            reconciler=lambda _config: calls.append("reconcile") or 0,
         )
-
-    assert callbacks == []
-    assert not marker.exists()
-
-
-def test_legacy_pending_plan_requires_adoption_and_preserves_phase(tmp_path: Path) -> None:
-    """Legacy marker adoption is explicit and retains the saved retry phase."""
-    config = _config(tmp_path)
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    plan = {"identity": {"selection": "sale"}, "diagnostics": {}}
-    with pytest.raises(RuntimeError, match="--adopt-pending-plan"):
-        deployment_init(
-            config,
-            seed_requested=False,
-            seeder=None,
-            status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-            ensure=lambda _config: pytest.fail("adoption without marker must reject"),
-            reconciler=lambda _config: pytest.fail("adoption without marker must reject"),
-            lifecycle_plan=plan,
-            adopt_legacy_plan=True,
-        )
-    assert not marker.exists()
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "database": config.db_name,
-                "outcome": "ready",
-                "pending_phase": "after-reconcile",
-            }
-        )
-    )
-    original = marker.read_bytes()
-    with pytest.raises(RuntimeError, match="no bound plan"):
-        deployment_init(
-            config,
-            seed_requested=False,
-            seeder=None,
-            status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-            ensure=lambda _config: pytest.fail("legacy marker must reject"),
-            reconciler=lambda _config: pytest.fail("legacy marker must reject"),
-            lifecycle_plan=plan,
-        )
-    assert marker.read_bytes() == original
-
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    (hooks / "finalize.py").write_text("pass\n")
-    result = deployment_init(
-        config,
-        seed_requested=False,
-        seeder=None,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        ensure=lambda _config: pytest.fail("saved phase must skip initialization"),
-        reconciler=lambda _config: pytest.fail("saved phase must skip reconciliation"),
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, _script: 9,
-        lifecycle_plan=plan,
-        adopt_legacy_plan=True,
-    )
-    assert result == (LifecycleOutcome.READY, 9)
-    adopted = json.loads(marker.read_text())
-    assert adopted["schema_version"] == 2
-    assert adopted["outcome"] == "ready"
-    assert adopted["pending_phase"] == "after-reconcile"
-    assert adopted["plan"] == plan
+    assert calls == []
+    assert not runtime_readiness_marker(config.data_dir, config.db_name).exists()
 
 
-def test_hook_content_edit_keeps_plan_identity_and_resumes_pending_hook(tmp_path: Path) -> None:
-    """Editing a selected script in place keeps its semantic selection stable."""
+def test_bootstrap_hook_failure_retries_bootstrap_hooks_after_database_exists(tmp_path: Path) -> None:
     config = _config(tmp_path)
     hooks = tmp_path / "hooks"
     hooks.mkdir()
-    hook = hooks / "finalize.py"
-    hook.write_text("version one\n")
-    hook_runs: list[str] = []
-    reconcile_runs: list[str] = []
-
-    def plan() -> dict[str, object]:
-        return runtime_lifecycle.build_runtime_lifecycle_plan(
-            config,
-            runtime_version="19.0",
-            expected_odoo_major=19,
-            seed=None,
-            seed_requested=False,
-            original_filestore=None,
-            update_modules=["sale"],
-            install_modules=None,
-            upgrade_paths=None,
-            pre_upgrade_scripts=None,
-            after_bootstrap_dirs=None,
-            after_restore_dirs=None,
-            after_reconcile_dirs=[hooks],
-            install_base_modules=True,
-            install_workspace_modules=True,
-            odoo_demo=False,
-        )
-
-    first_plan = plan()
-    first = deployment_init(
-        config,
-        seed_requested=False,
-        seeder=None,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        ensure=lambda _config: pytest.fail("ready runtime must not bootstrap"),
-        reconciler=lambda _config: reconcile_runs.append("run") or 0,
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, script: hook_runs.append(script.read_text()) or 9,
-        lifecycle_plan=first_plan,
-    )
-    assert first == (LifecycleOutcome.READY, 9)
-
-    hook.write_text("version two with a harmless content change\n")
-    retry_plan = plan()
-    assert retry_plan["identity"] == first_plan["identity"]
-    assert retry_plan["diagnostics"] != first_plan["diagnostics"]
-    second = deployment_init(
-        config,
-        seed_requested=False,
-        seeder=None,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        ensure=lambda _config: pytest.fail("retry must resume its saved phase"),
-        reconciler=lambda _config: pytest.fail("retry must skip completed reconciliation"),
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, script: hook_runs.append(script.read_text()) or 0,
-        lifecycle_plan=retry_plan,
-    )
-    assert second == (LifecycleOutcome.READY, 0)
-    assert hook_runs == ["version one\n", "version two with a harmless content change\n"]
-    assert reconcile_runs == ["run"]
-
-
-def test_replaced_seed_artifact_rejects_without_changing_pending_marker(tmp_path: Path) -> None:
-    """A replaced archive is a changed recovery input, even at the same path."""
-    config = _config(tmp_path)
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    (hooks / "finalize.py").write_text("pass\n")
-    archive = tmp_path / "seed.zip"
-    archive.write_bytes(b"archive version one")
-
-    def plan() -> dict[str, object]:
-        return runtime_lifecycle.build_runtime_lifecycle_plan(
-            config,
-            runtime_version="19.0",
-            expected_odoo_major=19,
-            seed=archive,
-            seed_requested=True,
-            original_filestore=None,
-            update_modules=["sale"],
-            install_modules=None,
-            upgrade_paths=None,
-            pre_upgrade_scripts=None,
-            after_bootstrap_dirs=None,
-            after_restore_dirs=None,
-            after_reconcile_dirs=[hooks],
-            install_base_modules=True,
-            install_workspace_modules=True,
-            odoo_demo=False,
-        )
-
-    first_plan = plan()
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    calls: list[str] = []
-    first = deployment_init(
-        config,
-        seed_requested=True,
-        seeder=lambda _config: pytest.fail("ready runtime must not restore the archive"),
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        ensure=lambda _config: pytest.fail("ready runtime must not bootstrap"),
-        reconciler=lambda _config: calls.append("reconcile") or 0,
-        after_reconcile_dirs=[hooks],
-        hook_runner=lambda _config, _script: calls.append("hook") or 9,
-        lifecycle_plan=first_plan,
-    )
-    assert first == (LifecycleOutcome.READY, 9)
-    pending = marker.read_bytes()
-    archive.write_bytes(b"archive version two replaced")
-    changed_plan = plan()
-    assert changed_plan["identity"] != first_plan["identity"]
-
-    with pytest.raises(RuntimeError, match="plan differs"):
-        deployment_init(
-            config,
-            seed_requested=True,
-            seeder=lambda _config: pytest.fail("changed archive must reject before restore"),
-            status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-            ensure=lambda _config: pytest.fail("changed archive must reject first"),
-            preparer=lambda _config: pytest.fail("changed archive must reject before prepare"),
-            reconciler=lambda _config: pytest.fail("changed archive must reject first"),
-            after_reconcile_dirs=[hooks],
-            hook_runner=lambda _config, _script: pytest.fail("changed archive must reject first"),
-            lifecycle_plan=changed_plan,
-        )
-
-    assert marker.read_bytes() == pending
-    assert calls == ["reconcile", "hook"]
-
-
-def test_restore_preflight_failure_keeps_marker_until_successful_retry(tmp_path: Path):
-    """Guards the contract that restore preflight failure keeps marker until successful retry."""
-    config = _config(tmp_path)
-    state = DbBootstrapStatus.NO_DB
+    (hooks / "10_bootstrap.py").write_text("pass\n")
+    status = DbBootstrapStatus.NO_DB
     attempts = 0
 
-    def status(_connection: object) -> DbBootstrapStatus:
-        return state
+    def ensure(_config: GodooConfig) -> bool:
+        nonlocal status
+        status = DbBootstrapStatus.BOOTSTRAPPED
+        return True
+
+    def hook(_config: GodooConfig, _script: Path) -> int:
+        nonlocal attempts
+        attempts += 1
+        return 5 if attempts == 1 else 0
+
+    actions = {
+        "ensure": ensure,
+        "reconciler": lambda _config: 0,
+        "status_getter": lambda _connection: status,
+        "hook_runner": hook,
+    }
+    selected = {"after_bootstrap_dirs": [hooks]}
+    assert deployment_init(config, **actions, **selected) == (LifecycleOutcome.BOOTSTRAPPED, 5)
+    assert deployment_init(config, **actions, **selected) == (LifecycleOutcome.READY, 0)
+    assert attempts == 2
+
+
+def test_init_runs_preflight_before_preparer_and_preserves_state_on_failure(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    calls: list[str] = []
+    actions = {
+        "ensure": lambda _config: calls.append("bootstrap") or True,
+        "reconciler": lambda _config: 0,
+        "preflight": lambda _config: calls.append("preflight"),
+        "preparer": lambda _config: calls.append("prepare"),
+        "status_getter": lambda _connection: DbBootstrapStatus.NO_DB,
+    }
+    assert deployment_init(config, **actions) == (LifecycleOutcome.BOOTSTRAPPED, 0)
+    assert calls == ["preflight", "prepare", "bootstrap"]
+
+    failed = {
+        "ensure": lambda _config: True,
+        "reconciler": lambda _config: 0,
+        "preflight": lambda _config: (_ for _ in ()).throw(RuntimeError("bad inputs")),
+        "status_getter": lambda _connection: DbBootstrapStatus.NO_DB,
+    }
+    with pytest.raises(RuntimeError, match="bad inputs"):
+        deployment_init(_config(tmp_path / "failed"), **failed)
+    assert not runtime_readiness_marker(tmp_path / "failed" / "data", "runtime").exists()
+
+
+def test_init_seeds_runs_restore_hooks_then_reconciles(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "10_restore.py").write_text("pass\n")
+    status = DbBootstrapStatus.NO_DB
+    calls: list[str] = []
 
     def seed(_config: GodooConfig) -> None:
-        nonlocal state
-        state = DbBootstrapStatus.BOOTSTRAPPED
+        nonlocal status
+        calls.append("seed")
+        status = DbBootstrapStatus.BOOTSTRAPPED
+
+    attempts = 0
 
     def post_restore(_config: GodooConfig) -> None:
         nonlocal attempts
         attempts += 1
+        calls.append(f"preflight-{attempts}")
         if attempts == 1:
-            message = "dependency preflight failed"
+            message = "dependencies unavailable"
             raise RuntimeError(message)
 
-    with pytest.raises(RuntimeError, match="dependency preflight failed"):
+    actions = {
+        "ensure": lambda _config: False,
+        "seeder": seed,
+        "reconciler": lambda _config: calls.append("reconcile") or 0,
+        "status_getter": lambda _connection: status,
+        "hook_runner": lambda _config, _script: calls.append("restore-hook") or 0,
+        "post_restore_preflight": post_restore,
+    }
+    with pytest.raises(RuntimeError, match="dependencies unavailable"):
         deployment_init(
             config,
+            **actions,
             seed_requested=True,
-            seeder=seed,
-            ensure=lambda _config: True,
-            status_getter=status,
-            post_restore_preflight=post_restore,
-            reconciler=lambda _config: 0,
+            after_restore_dirs=[hooks],
         )
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    assert marker.exists()
-
-    outcome, result = deployment_init(
+    assert calls == ["seed", "preflight-1"]
+    result = deployment_init(
         config,
-        seed_requested=True,
-        seeder=seed,
-        ensure=lambda _config: False,
-        status_getter=status,
-        post_restore_preflight=post_restore,
-        reconciler=lambda _config: 0,
+        **actions,
+        after_restore_dirs=[hooks],
     )
-    assert (outcome, result) == (LifecycleOutcome.RESTORED, 0)
-    assert not marker.exists()
+    assert result == (LifecycleOutcome.READY, 0)
+    assert calls == ["seed", "preflight-1", "preflight-2", "restore-hook", "reconcile"]
+
+
+def test_existing_runtime_reconciles_without_bootstrap(tmp_path: Path) -> None:
+    calls: list[str] = []
+    result = deployment_init(
+        _config(tmp_path),
+        ensure=lambda _config: pytest.fail("must not bootstrap"),
+        reconciler=lambda _config: calls.append("reconcile") or 0,
+        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
+    )
+    assert result == (LifecycleOutcome.READY, 0)
+    assert calls == ["reconcile"]

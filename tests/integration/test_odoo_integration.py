@@ -1,6 +1,5 @@
 """Opt-in integration tests for a live gOdoo container."""
 
-import json
 import logging
 import os
 import shutil
@@ -15,23 +14,22 @@ import psycopg2
 import pytest
 from psycopg2 import sql
 
-from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime.archive import dump_runtime_archive, load_runtime_archive
+from godoo_cli.runtime.baseline import baseline_database_name, save_runtime_baseline
 from godoo_cli.runtime.lifecycle import (
     LifecycleOutcome,
-    build_runtime_lifecycle_plan,
     deployment_init,
     ensure_runtime,
-    reconcile_modules,
     reconcile_runtime,
     run_lifecycle_hook,
 )
-from godoo_cli.runtime.locks import runtime_readiness_marker
+from godoo_cli.runtime.promotion import drop_database_strict
 from godoo_cli.runtime.reset import reset_empty_runtime, reset_runtime_from_template
 from godoo_cli.runtime.restore import RuntimeRestoreError, restore_custom_runtime, runtime_filestore_path
 
 LOGGER = logging.getLogger(__name__)
+
 
 pytestmark = [
     pytest.mark.odoo_integration,
@@ -255,12 +253,11 @@ def test_real_lifecycle_bootstraps_and_runs_ordered_hooks(live_stack: LiveStack,
 
     result = deployment_init(
         config,
-        seed_requested=False,
         seeder=None,
         ensure=ensure,
         reconciler=reconcile,
-        after_reconcile_dirs=[after_reconcile_hooks],
         hook_runner=run_lifecycle_hook,
+        after_reconcile_dirs=[after_reconcile_hooks],
     )
 
     assert result == (LifecycleOutcome.BOOTSTRAPPED, 0)
@@ -274,12 +271,11 @@ def test_real_lifecycle_bootstraps_and_runs_ordered_hooks(live_stack: LiveStack,
 
     result = deployment_init(
         config,
-        seed_requested=False,
         seeder=None,
         ensure=ensure,
         reconciler=reconcile,
-        after_reconcile_dirs=[after_reconcile_hooks],
         hook_runner=run_lifecycle_hook,
+        after_reconcile_dirs=[after_reconcile_hooks],
     )
 
     assert result == (LifecycleOutcome.READY, 0)
@@ -289,244 +285,6 @@ def test_real_lifecycle_bootstraps_and_runs_ordered_hooks(live_stack: LiveStack,
             "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.lifecycle'",
         )
         == "pre-launch-10,pre-launch-20,pre-launch-10,pre-launch-20"
-    )
-
-
-def test_pre_upgrade_native_migration_retries_finalization_with_bound_plan(
-    live_stack: LiveStack,
-) -> None:
-    """Resume native module migration at its failed final hook without rerunning it."""
-    fixture_addons = live_stack.root / "fixture-addons"
-    fixture_addons.mkdir()
-    live_stack.workspace_addons = fixture_addons
-    owner_name = "godoo_native_upgrade_owner"
-    dependency_name = "godoo_native_upgrade_dependency"
-    db_name = live_stack.new_database_name("pre_upgrade_native_migration")
-    config = live_stack.config(db_name, extra_addon_paths=[fixture_addons])
-
-    def write_addon(name: str, version: str, depends: list[str], model_source: str) -> Path:
-        addon = fixture_addons / name
-        models = addon / "models"
-        models.mkdir(parents=True)
-        (addon / "__init__.py").write_text("from . import models\n", encoding="utf-8")
-        (models / "__init__.py").write_text("from . import fixture\n", encoding="utf-8")
-        (models / "fixture.py").write_text(model_source, encoding="utf-8")
-        manifest = {
-            "name": name,
-            "version": version,
-            "depends": depends,
-            "license": "LGPL-3",
-            "installable": True,
-            "application": False,
-        }
-        (addon / "__manifest__.py").write_text(f"{manifest!r}\n", encoding="utf-8")
-        return addon
-
-    owner_model_v1 = """from odoo import fields, models
-
-
-class NativeUpgradeOwner(models.Model):
-    _name = "godoo.native.upgrade.owner"
-    _description = "Native upgrade integration owner"
-
-    name = fields.Char(required=True)
-"""
-    owner_addon = write_addon(owner_name, "19.0.1.0.0", ["base"], owner_model_v1)
-    assert live_stack.initialize(config) == 0
-    assert reconcile_modules(config, update_modules=None, install_modules=[owner_name]) == 0
-    owner_version_before = live_stack.scalar(
-        db_name,
-        "SELECT latest_version FROM ir_module_module WHERE name = %s",
-        (owner_name,),
-    )
-    base_version_before = live_stack.scalar(
-        db_name,
-        "SELECT latest_version FROM ir_module_module WHERE name = 'base'",
-    )
-    assert owner_version_before == "19.0.1.0.0"
-    assert live_stack.scalar(db_name, "SELECT state FROM ir_module_module WHERE name = 'base'") == "installed"
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT COUNT(*) FROM ir_module_module WHERE name = %s",
-            (dependency_name,),
-        )
-        == 0
-    )
-
-    dependency_model = """from odoo import fields, models
-
-
-class NativeUpgradeDependency(models.Model):
-    _name = "godoo.native.upgrade.dependency"
-    _description = "Native upgrade integration dependency"
-
-    name = fields.Char(required=True)
-"""
-    write_addon(dependency_name, "19.0.1.0.0", ["base"], dependency_model)
-    owner_model_v2 = owner_model_v1 + '\n    dependency_id = fields.Many2one("godoo.native.upgrade.dependency")\n'
-    (owner_addon / "__manifest__.py").write_text(
-        f"{{'name': {owner_name!r}, 'version': '19.0.2.0.0', 'depends': ['base', {dependency_name!r}], "
-        "'license': 'LGPL-3', 'installable': True, 'application': False}\n",
-        encoding="utf-8",
-    )
-    (owner_addon / "models" / "fixture.py").write_text(owner_model_v2, encoding="utf-8")
-
-    pre_upgrade_script = live_stack.root / "pre_upgrade_fixture.py"
-    pre_upgrade_script.write_text(
-        "from odoo.upgrade import util\n\n"
-        "def migrate(cr, version):\n"
-        "    cr.execute(\"SELECT state FROM ir_module_module WHERE name = 'base'\")\n"
-        "    if cr.fetchone()[0] != 'installed':\n"
-        "        raise RuntimeError('base must remain installed during pre-upgrade')\n"
-        f'    cr.execute("SELECT COUNT(*) FROM ir_module_module WHERE name = {dependency_name!r}")\n'
-        "    if cr.fetchone()[0] != 0:\n"
-        "        raise RuntimeError('dependency metadata must be absent before force install')\n"
-        f"    util.force_install_module(cr, {dependency_name!r})\n"
-        "    cr.execute(\n"
-        "        \"UPDATE ir_module_module SET state = 'to upgrade' \"\n"
-        "        \"WHERE state = 'installed' AND name != 'base'\"\n"
-        "    )\n",
-        encoding="utf-8",
-    )
-    upgrade_path = live_stack.root / "upgrade-path"
-    upgrade_path.mkdir()
-
-    finalization_dir = live_stack.root / "after-reconcile"
-    finalization_dir.mkdir()
-    retryable_hook = finalization_dir / "retryable_finalization.py"
-    retryable_hook.write_text(
-        "import os\n"
-        "params = env['ir.config_parameter'].sudo()\n"
-        "attempt = int(params.get_param('godoo.integration.finalization.attempt', '0')) + 1\n"
-        "params.set_param('godoo.integration.finalization.attempt', str(attempt))\n"
-        "env.cr.commit()\n"
-        "if attempt == 1:\n"
-        "    os._exit(41)\n"
-        "params.set_param('godoo.integration.finalization.complete', 'yes')\n"
-        "env.cr.commit()\n",
-        encoding="utf-8",
-    )
-
-    def plan(update: list[str], expected_major: int = 19) -> dict[str, object]:
-        return build_runtime_lifecycle_plan(
-            config,
-            runtime_version="19.0",
-            expected_odoo_major=expected_major,
-            seed=None,
-            seed_requested=False,
-            original_filestore=None,
-            update_modules=update,
-            install_modules=None,
-            upgrade_paths=[upgrade_path],
-            pre_upgrade_scripts=[pre_upgrade_script],
-            after_bootstrap_dirs=None,
-            after_restore_dirs=None,
-            after_reconcile_dirs=[finalization_dir],
-            install_base_modules=True,
-            install_workspace_modules=True,
-            odoo_demo=False,
-        )
-
-    reconcile_calls = 0
-
-    def reconcile(runtime: GodooConfig) -> int:
-        nonlocal reconcile_calls
-        reconcile_calls += 1
-        return reconcile_modules(
-            runtime,
-            update_modules=[owner_name],
-            install_modules=None,
-            upgrade_path=[upgrade_path],
-            pre_upgrade_scripts=[pre_upgrade_script],
-        )
-
-    common = {
-        "seed_requested": False,
-        "seeder": None,
-        "ensure": lambda _config: pytest.fail("existing database must not bootstrap"),
-        "preparer": lambda _config: None,
-        "status_getter": lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        "reconciler": reconcile,
-        "after_reconcile_dirs": [finalization_dir],
-        "hook_runner": run_lifecycle_hook,
-    }
-    first = deployment_init(config, lifecycle_plan=plan([owner_name]), **common)
-    assert first == (LifecycleOutcome.READY, 41)
-    marker = runtime_readiness_marker(config.data_dir, db_name)
-    pending = json.loads(marker.read_text(encoding="utf-8"))
-    assert pending["pending_phase"] == "after-reconcile"
-    assert pending["plan"]["identity"]["modules"]["update"] == [owner_name]
-    assert reconcile_calls == 1
-
-    module_state = "SELECT state FROM ir_module_module WHERE name = %s"
-    assert live_stack.scalar(db_name, module_state, (dependency_name,)) == "installed"
-    assert live_stack.scalar(db_name, module_state, (owner_name,)) == "installed"
-    assert live_stack.scalar(db_name, module_state, ("base",)) == "installed"
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT latest_version FROM ir_module_module WHERE name = %s",
-            (owner_name,),
-        )
-        == "19.0.2.0.0"
-    )
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT latest_version FROM ir_module_module WHERE name = 'base'",
-        )
-        == base_version_before
-    )
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT COUNT(*) FROM information_schema.columns "
-            "WHERE table_name = 'godoo_native_upgrade_owner' AND column_name = 'dependency_id'",
-        )
-        == 1
-    )
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'godoo_native_upgrade_dependency'",
-        )
-        == 1
-    )
-    pending_count_sql = "SELECT COUNT(*) FROM ir_module_module WHERE state IN ('to install', 'to upgrade', 'to remove')"
-    assert live_stack.scalar(db_name, pending_count_sql) == 0
-
-    before_reject = marker.read_bytes()
-    for changed_plan in (plan(["base"]), plan([owner_name], expected_major=18)):
-        with pytest.raises(RuntimeError, match="plan differs"):
-            deployment_init(config, lifecycle_plan=changed_plan, **common)
-        assert marker.read_bytes() == before_reject
-        assert reconcile_calls == 1
-        assert (
-            live_stack.scalar(
-                db_name,
-                "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.finalization.attempt'",
-            )
-            == "1"
-        )
-
-    resumed = deployment_init(config, lifecycle_plan=plan([owner_name]), **common)
-    assert resumed == (LifecycleOutcome.READY, 0)
-    assert reconcile_calls == 1
-    assert not marker.exists()
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.finalization.attempt'",
-        )
-        == "2"
-    )
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.finalization.complete'",
-        )
-        == "yes"
     )
 
 
@@ -560,21 +318,21 @@ def test_real_lifecycle_seeds_database_and_filestore_from_odoo_archive(live_stac
 
     def seed(conf: GodooConfig) -> None:
         result = load_runtime_archive(
-            db_name=conf.db_name,
+            connection=conf.db_connection,
+            data_dir=conf.data_dir,
             archive_path=archive,
             odoo_bin_path=live_stack.odoo_path / "odoo-bin",
             odoo_conf_path=conf.odoo_conf_path,
-            data_dir=conf.data_dir,
             force=True,
         )
         assert result == 0
 
     result = deployment_init(
         target_config,
-        seed_requested=True,
         seeder=seed,
         ensure=lambda _config: pytest.fail("seeded runtime must not bootstrap"),
         reconciler=lambda config: reconcile_runtime(config, preparer=lambda _config: None, allow_lifecycle_retry=True),
+        seed_requested=True,
     )
 
     assert result == (LifecycleOutcome.RESTORED, 0)
@@ -615,18 +373,18 @@ def test_real_legacy_restore_promotes_complete_database_and_filestore(live_stack
     with pytest.raises(RuntimeRestoreError, match="already exists"):
         restore_custom_runtime(
             connection=target_config.db_connection,
+            data_dir=live_stack.data_dir,
             db_template="template0",
             dump_path=dump,
             filestore_source=source_filestore,
-            data_dir=live_stack.data_dir,
         )
 
     restore_custom_runtime(
         connection=target_config.db_connection,
+        data_dir=live_stack.data_dir,
         db_template="template0",
         dump_path=dump,
         filestore_source=source_filestore,
-        data_dir=live_stack.data_dir,
         force=True,
     )
 
@@ -668,11 +426,11 @@ def test_native_archive_sql_failure_preserves_ready_runtime(live_stack: LiveStac
                 content += b"\nSELECT 1 / 0;\n"
             invalid.writestr(member, content)
     result = load_runtime_archive(
-        db_name=target_name,
+        connection=config.db_connection,
+        data_dir=config.data_dir,
         archive_path=invalid_archive,
         odoo_bin_path=config.odoo_bin_path,
         odoo_conf_path=config.odoo_conf_path,
-        data_dir=config.data_dir,
         force=True,
     )
     assert result != 0
@@ -711,11 +469,10 @@ def test_real_reset_replaces_and_drops_database_and_filestore(live_stack: LiveSt
     (target_filestore / "obsolete-target").write_text("old filestore")
 
     result = reset_runtime_from_template(
-        db_name=target_name,
-        db_template_name=template_name,
-        odoo_bin_path=live_stack.odoo_path / "odoo-bin",
-        odoo_conf_path=target_config.odoo_conf_path,
+        connection=target_config.db_connection,
         data_dir=live_stack.data_dir,
+        odoo_conf_path=target_config.odoo_conf_path,
+        template=template_name,
     )
 
     assert result == 0
@@ -730,12 +487,66 @@ def test_real_reset_replaces_and_drops_database_and_filestore(live_stack: LiveSt
     assert not (target_filestore / "obsolete-target").exists()
 
     result = reset_empty_runtime(
-        db_name=target_name,
-        odoo_bin_path=live_stack.odoo_path / "odoo-bin",
-        odoo_conf_path=target_config.odoo_conf_path,
+        connection=target_config.db_connection,
         data_dir=live_stack.data_dir,
+        odoo_conf_path=target_config.odoo_conf_path,
     )
 
     assert result == 0
     assert not live_stack.database_exists(target_name)
     assert not target_filestore.exists()
+
+
+def test_real_saved_baseline_supports_repeated_resets(live_stack: LiveStack) -> None:
+    """Restore database values and files repeatedly without changing the saved baseline."""
+    source_name = live_stack.new_database_name("baseline_source")
+    target_name = live_stack.new_database_name("baseline_target")
+    source_config = live_stack.config(source_name)
+    target_config = live_stack.config(target_name)
+    baseline_name = baseline_database_name(target_name)
+    baseline_connection = target_config.db_connection.with_db(baseline_name)
+    baseline_filestore = runtime_filestore_path(live_stack.data_dir, baseline_name)
+    source_filestore = runtime_filestore_path(live_stack.data_dir, source_name)
+    assert live_stack.initialize(source_config) == 0
+    live_stack.execute(
+        source_name,
+        "INSERT INTO ir_config_parameter (key, value) VALUES ('godoo.integration.baseline', 'saved')",
+    )
+    source_filestore.mkdir(parents=True, exist_ok=True)
+    (source_filestore / "saved").write_text("baseline file")
+
+    try:
+        save_runtime_baseline(
+            connection=target_config.db_connection,
+            source_database=source_name,
+            source_filestore=source_filestore,
+            data_dir=live_stack.data_dir,
+        )
+        for _attempt in range(2):
+            assert (
+                reset_runtime_from_template(connection=target_config.db_connection, data_dir=live_stack.data_dir) == 0
+            )
+            assert (
+                live_stack.scalar(
+                    target_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.baseline'"
+                )
+                == "saved"
+            )
+            target_filestore = runtime_filestore_path(live_stack.data_dir, target_name)
+            assert (target_filestore / "saved").read_text() == "baseline file"
+            assert not (target_filestore / "extra").exists()
+            live_stack.execute(
+                target_name, "UPDATE ir_config_parameter SET value = 'changed' WHERE key = 'godoo.integration.baseline'"
+            )
+            (target_filestore / "extra").write_text("discard on reset")
+        assert (
+            live_stack.scalar(
+                baseline_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.baseline'"
+            )
+            == "saved"
+        )
+        assert not (baseline_filestore / "extra").exists()
+    finally:
+        drop_database_strict(baseline_connection)
+        if baseline_filestore.exists():
+            shutil.rmtree(baseline_filestore)

@@ -1,981 +1,110 @@
-"""Tests lifecycle orchestration across runtime setup and deployment initialization."""
+"""Focused helpers used by runtime initialization."""
 
-import logging
-import zipfile
-from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
-import typer
-from typer.testing import CliRunner
 
-from godoo_cli.commands.runtime import init as lifecycle_commands
-from godoo_cli.database.connection import DBConnection
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
-from godoo_cli.runtime import archive as runtime_archive
-from godoo_cli.runtime import lifecycle as runtime_lifecycle
-from godoo_cli.runtime import prepare as runtime_prepare
-from godoo_cli.runtime.lifecycle import (
-    LifecycleBootstrapError,
-    LifecycleOutcome,
-    build_runtime_lifecycle_plan,
-    ensure_runtime,
-)
-from godoo_cli.runtime.locks import (
-    begin_runtime_lifecycle,
-    read_runtime_lifecycle,
-    retire_runtime_lifecycle,
-    runtime_readiness_marker,
-    write_runtime_lifecycle,
-)
-
-LOGGER = logging.getLogger(__name__)
+from godoo_cli.runtime import lifecycle
 
 
 @pytest.fixture(autouse=True)
-def supported_odoo_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        lifecycle_commands,
-        "require_odoo_version",
-        lambda *_args: SimpleNamespace(major=19, raw="19.0"),
-    )
-    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
+def supported_database_major(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use a supported runtime for tests with an isolated fake configuration."""
+    monkeypatch.setattr(lifecycle, "require_runtime_database_major", lambda _config: 19)
 
 
 def _config(tmp_path: Path) -> GodooConfig:
     return GodooConfig(
         odoo_install_folder=tmp_path / "odoo",
-        odoo_conf_path=tmp_path / "odoo.conf",
         workspace_addon_path=tmp_path / "addons",
         thirdparty_addon_path=tmp_path / "thirdparty",
+        odoo_conf_path=tmp_path / "odoo.conf",
         db_name="runtime",
+        db_user="odoo",
         data_dir=tmp_path / "data",
     )
 
 
-def test_ensure_runtime_prepares_and_skips_existing_database(tmp_path: Path):
-    """Guards the contract that ensure runtime prepares and skips existing database."""
+def test_hook_directories_preserve_order(tmp_path: Path) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "10.py").write_text("first")
+    (second / "10.py").write_text("second")
     calls: list[str] = []
-
-    created = ensure_runtime(
-        _config(tmp_path),
-        preparer=lambda _config: calls.append("prepare"),
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        bootstrapper=lambda *_args, **_kwargs: calls.append("bootstrap") or 0,
+    assert (
+        lifecycle.run_hook_directories(
+            _config(tmp_path), [second, first], lambda _config, path: calls.append(path.read_text()) or 0
+        )
+        == 0
     )
-
-    assert created is False
-    assert calls == ["prepare"]
+    assert calls == ["second", "first"]
 
 
-@pytest.mark.parametrize(("expected_major", "exit_code"), [(19, 0), (18, 2)])
-def test_runtime_init_uses_effective_odoo_version_for_guards_and_plan(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expected_major: int, exit_code: int
-) -> None:
-    """Mounted runtime sources determine the version guard and lifecycle plan."""
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-    sources_root = tmp_path / "sources"
-    effective_odoo = sources_root / "mounted-odoo"
-    mounted_addons = sources_root / "mounted-addons"
-    effective_odoo.mkdir(parents=True)
-    mounted_addons.mkdir()
-    observed: dict[str, object] = {}
-    original_build_plan = lifecycle_commands.build_runtime_lifecycle_plan
-
-    def require_version(path: Path, _specifier: str) -> SimpleNamespace:
-        if path != effective_odoo:
-            message = f"runtime init checked {path}, not the mounted Odoo source"
-            raise AssertionError(message)
-        observed["version_path"] = path
-        return SimpleNamespace(major=19, raw="19.0")
-
-    def build_plan(*args: object, **kwargs: object):
-        observed["runtime_version"] = kwargs["runtime_version"]
-        observed["expected_odoo_major"] = kwargs["expected_odoo_major"]
-        return original_build_plan(*args, **kwargs)
-
-    def run_deployment(*_args: object, **_kwargs: object) -> tuple[LifecycleOutcome, int]:
-        observed["deployed"] = True
-        return LifecycleOutcome.READY, 0
-
-    monkeypatch.setattr(lifecycle_commands, "require_odoo_version", require_version)
-    monkeypatch.setattr(lifecycle_commands, "build_runtime_lifecycle_plan", build_plan)
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", run_deployment)
-
-    result = CliRunner().invoke(
-        app,
-        ["--expected-odoo-major", str(expected_major)],
-        env={
-            "ODOO_MAIN_FOLDER": "/unmounted/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-            "GODOO_SOURCES_ROOT": str(sources_root),
-            "GODOO_RUNTIME_ODOO_PATH": str(effective_odoo),
-            "GODOO_RUNTIME_ADDON_PATHS": str(mounted_addons),
-        },
-    )
-
-    assert result.exit_code == exit_code, result.output
-    if expected_major == 19:
-        assert observed == {
-            "version_path": effective_odoo,
-            "runtime_version": "19.0",
-            "expected_odoo_major": 19,
-            "deployed": True,
-        }
-    else:
-        assert observed == {"version_path": effective_odoo}
-        assert "requires Odoo 18.x" in result.output
+def test_upgrade_options_require_update(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="require at least one --update"):
+        lifecycle.reconcile_modules(_config(tmp_path), None, None, upgrade_path=tmp_path / "upgrades")
 
 
-def test_expected_odoo_major_rejects_before_deployment_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Reject a transition target that disagrees with the configured Odoo runtime."""
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
+def test_reconcile_modules_passes_selected_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: list[str] = []
+
+    def build_command(_config: GodooConfig, arguments: list[str], **kwargs: object) -> list[str]:
+        assert kwargs["upgrade_workspace_modules"] is False
+        return arguments
+
+    monkeypatch.setattr(lifecycle, "build_launch_command", build_command)
     monkeypatch.setattr(
-        lifecycle_commands,
-        "deployment_init",
-        lambda *_args, **_kwargs: pytest.fail("version mismatch must reject before deployment"),
+        lifecycle, "run_odoo_command", lambda command: observed.extend(command) or SimpleNamespace(returncode=0)
     )
-    result = CliRunner().invoke(
-        app,
-        ["--expected-odoo-major", "18"],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-    assert result.exit_code == 2
-    assert "requires Odoo 18.x" in result.output
+    lifecycle.reconcile_modules(_config(tmp_path), ["sale,stock"], ["web"])
+    assert observed[observed.index("--update") + 1] == "sale,stock"
+    assert observed[observed.index("--init") + 1] == "web"
 
 
-def test_ensure_runtime_prepares_and_bootstraps_missing_database(tmp_path: Path):
-    """Prepare runtime configuration before bootstrapping a missing database."""
+def test_ensure_runtime_prepares_and_passes_bootstrap_policy(tmp_path: Path) -> None:
     calls: list[str] = []
-    bootstrap_args: list[str] = []
+    observed: dict[str, object] = {}
 
-    def bootstrapper(*_args: object, **kwargs: object) -> int:
-        bootstrap_args.extend(cast(list[str], kwargs["extra_cmd_args"]))
+    def bootstrap(_config: GodooConfig, **kwargs: object) -> int:
         calls.append("bootstrap")
+        observed.update(kwargs)
         return 0
 
-    created = ensure_runtime(
+    assert lifecycle.ensure_runtime(
         _config(tmp_path),
         preparer=lambda _config: calls.append("prepare"),
         status_getter=lambda _connection: DbBootstrapStatus.NO_DB,
-        bootstrapper=bootstrapper,
+        bootstrapper=bootstrap,
     )
-
-    assert created is True
     assert calls == ["prepare", "bootstrap"]
-    assert bootstrap_args == ["--without-demo"]
-    assert "all" not in bootstrap_args
+    assert observed["extra_cmd_args"] == ["--without-demo"]
 
 
-def test_ensure_runtime_reports_native_bootstrap_failure(tmp_path: Path):
-    """Guards the contract that ensure runtime reports native bootstrap failure."""
-    with pytest.raises(LifecycleBootstrapError) as error:
-        ensure_runtime(
+def test_ensure_runtime_reports_native_bootstrap_failure(tmp_path: Path) -> None:
+    with pytest.raises(lifecycle.LifecycleBootstrapError) as error:
+        lifecycle.ensure_runtime(
             _config(tmp_path),
             preparer=lambda _config: None,
             status_getter=lambda _connection: DbBootstrapStatus.EMPTY_DB,
             bootstrapper=lambda *_args, **_kwargs: 17,
         )
-
     assert error.value.return_code == 17
 
 
-def test_reconcile_modules_passes_addon_paths_when_config_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Guards the contract that reconcile modules passes addon paths when config is missing."""
-    config = _config(tmp_path)
-    (config.workspace_addon_path / "sale").mkdir(parents=True)
-    (config.workspace_addon_path / "sale" / "__manifest__.py").write_text("{}")
-    observed: dict[str, object] = {}
-
-    def run_command(command: list[str]) -> SimpleNamespace:
-        observed["command"] = command
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr(runtime_lifecycle, "run_odoo_command", run_command)
-    assert runtime_lifecycle.reconcile_modules(config, ["sale"], None) == 0
-
-    command = cast(list[str], observed["command"])
-    assert command[command.index("--addons-path") + 1] == str(config.workspace_addon_path.absolute())
-
-
-def test_reconcile_modules_builds_typed_upgrade_arguments(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Guards the contract that reconcile modules builds typed upgrade arguments."""
-    config = _config(tmp_path)
-    config.odoo_conf_path.write_text("[options]\n")
-    observed: dict[str, list[str]] = {}
-    monkeypatch.setattr(
-        runtime_lifecycle,
-        "run_odoo_command",
-        lambda command: observed.update(command=command) or SimpleNamespace(returncode=0),
-    )
-
-    result = runtime_lifecycle.reconcile_modules(
-        config,
-        ["sale,stock", "sale"],
-        ["web"],
-        upgrade_path=[tmp_path / "upgrades", tmp_path / "extra-upgrades"],
-        pre_upgrade_scripts=[tmp_path / "first.py", tmp_path / "second.py"],
-        log_handlers=["odoo.modules:DEBUG,odoo.sql_db:INFO", "odoo.modules:DEBUG"],
-    )
-
-    assert result == 0
-    command = observed["command"]
-    assert command[-1] == "--no-http"
-    assert "--save" not in command
-
-    def option_values(option: str) -> list[str]:
-        return [command[index + 1] for index, value in enumerate(command[:-1]) if value == option]
-
-    assert option_values("--database") == ["runtime"]
-    assert option_values("--db_user") == [""]
-    assert option_values("--db_host") == [""]
-    assert option_values("--db_port") == ["0"]
-    assert option_values("--update") == ["sale,stock"]
-    assert option_values("--init") == ["web"]
-    assert option_values("--upgrade-path") == [f"{tmp_path / 'upgrades'},{tmp_path / 'extra-upgrades'}"]
-    assert option_values("--pre-upgrade-scripts") == [f"{tmp_path / 'first.py'},{tmp_path / 'second.py'}"]
-    assert option_values("--log-handler") == ["odoo.modules:DEBUG", "odoo.sql_db:INFO"]
-
-
-def test_reconcile_modules_keeps_single_path_api_compatibility(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Keep existing direct callers that pass one Path working."""
-    observed: dict[str, list[str]] = {}
-    monkeypatch.setattr(
-        runtime_lifecycle,
-        "run_odoo_command",
-        lambda command: observed.update(command=command) or SimpleNamespace(returncode=0),
-    )
-    upgrade_root = tmp_path / "upgrades"
-    assert (
-        runtime_lifecycle.reconcile_modules(
-            _config(tmp_path),
-            ["sale"],
-            None,
-            upgrade_path=upgrade_root,
-        )
-        == 0
-    )
-    command = observed["command"]
-    assert command[command.index("--upgrade-path") + 1] == str(upgrade_root.resolve())
-
-
-def test_upgrade_options_require_an_explicit_update(tmp_path: Path):
-    """Guards the contract that upgrade options require an explicit update."""
-    with pytest.raises(ValueError, match="require at least one --update"):
-        runtime_lifecycle.reconcile_modules(
-            _config(tmp_path),
-            None,
-            ["web"],
-            upgrade_path=tmp_path / "upgrades",
-        )
-
-
-def test_reconcile_preflight_includes_selected_modules(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Guards the contract that reconcile preflight includes selected modules."""
+def test_reconcile_preflight_includes_selected_modules(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     observed: list[str] = []
-    monkeypatch.setattr(
-        runtime_lifecycle,
-        "preflight_for_config",
-        lambda _config, arguments, **_kwargs: observed.extend(arguments),
-    )
-
-    runtime_lifecycle.preflight_reconcile_dependencies(
-        _config(tmp_path),
-        ["sale,stock", "sale"],
-        ["web"],
-    )
-
+    monkeypatch.setattr(lifecycle, "preflight_for_config", lambda _config, args, **_kwargs: observed.extend(args))
+    lifecycle.preflight_reconcile_dependencies(_config(tmp_path), ["sale,stock"], ["web"])
     assert observed == ["--update", "sale,stock", "--init", "web"]
 
 
-def test_reconcile_preflight_allows_missing_installed_modules_for_pre_upgrade(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """Pass the pre-upgrade reconciliation allowance to dependency preflight."""
-    observed: dict[str, object] = {}
-
-    def preflight(_config: GodooConfig, _arguments: list[str], **kwargs: object) -> None:
-        observed.update(kwargs)
-
-    monkeypatch.setattr(runtime_lifecycle, "preflight_for_config", preflight)
-
-    runtime_lifecycle.preflight_reconcile_dependencies(
-        _config(tmp_path),
-        ["base"],
-        None,
-        ignore_missing_installed_modules=True,
-    )
-
-    assert observed == {"ignore_missing_installed_modules": True}
-    return
-    app = typer.Typer()
-
-    def reconcile(_config: GodooConfig, **kwargs: object) -> int:
-        observed.update(kwargs)
-        assert "dependency_resolver" not in kwargs
-        return 0
-
-    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        observed["init_kwargs"] = kwargs
-        reconciler = cast(Callable[[GodooConfig], int], kwargs["reconciler"])
-        assert callable(reconciler)
-        return LifecycleOutcome.READY, reconciler(config)
-
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
-    monkeypatch.setattr(lifecycle_commands, "reconcile_runtime", reconcile)
-    result = CliRunner().invoke(
-        app,
-        [],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-            "GODOO_RECONCILE_DEPENDENCIES": "true",
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-    assert cast(dict[str, object], observed["init_kwargs"])["after_reconcile_dirs"] is None
-
-
-def test_deployment_init_passes_fresh_bootstrap_policy(monkeypatch: pytest.MonkeyPatch):
-    """Guards the contract that deployment init passes fresh bootstrap policy."""
-    observed: dict[str, object] = {}
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-
-    def ensure(_config: GodooConfig, **kwargs: object) -> bool:
-        observed.update(kwargs)
-        return True
-
-    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        ensure_runtime = cast(Callable[[GodooConfig], bool], kwargs["ensure"])
-        assert ensure_runtime(config) is True
-        return LifecycleOutcome.BOOTSTRAPPED, 0
-
-    monkeypatch.setattr(lifecycle_commands, "ensure_runtime", ensure)
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
-    result = CliRunner().invoke(
-        app,
-        ["--no-install-workspace-modules", "--extra-bootstrap-args=--load-language=de_DE"],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-            "GODOO_RUNTIME_DEMO": "true",
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-    assert observed["odoo_demo"] is True
-    assert observed["install_workspace_modules"] is False
-    assert observed["extra_bootstrap_args"] == ["--load-language=de_DE"]
-
-
-def test_deployment_init_preflights_pre_upgrade_before_and_after_restore(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-):
-    """Guards the contract that deployment init preflights requested modules before and after restore."""
-    observed: list[tuple[list[str], dict[str, object]]] = []
-    pre_upgrade_script = tmp_path / "pre-upgrade.py"
-    pre_upgrade_script.write_text("pass\n")
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-
-    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        preflight = cast(Callable[[GodooConfig], None], kwargs["preflight"])
-        post_restore_preflight = cast(Callable[[GodooConfig], None], kwargs["post_restore_preflight"])
-        preflight(config)
-        post_restore_preflight(config)
-        return LifecycleOutcome.RESTORED, 0
-
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
+def test_reconcile_without_selection_does_not_run_odoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Initialization without module selections must not trigger implicit upgrades."""
     monkeypatch.setattr(
-        runtime_lifecycle,
-        "preflight_for_config",
-        lambda _config, arguments, **kwargs: observed.append((arguments, kwargs)),
+        lifecycle, "build_launch_command", lambda *_args, **_kwargs: pytest.fail("unrequested module reconciliation")
     )
-
-    result = CliRunner().invoke(
-        app,
-        ["--update", "base", "--pre-upgrade-script", str(pre_upgrade_script)],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-    assert observed == [
-        (["--update", "base"], {"ignore_missing_installed_modules": True}),
-        (["--update", "base"], {"ignore_missing_installed_modules": True}),
-    ]
-
-
-@pytest.mark.parametrize("filename", ["backup", "backup.backup"])
-def test_deployment_init_loads_native_seed_archive_through_odoo(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    filename: str,
-):
-    """Guards the contract that deployment init loads native seed archive through odoo."""
-    observed: dict[str, object] = {}
-    archive = tmp_path / filename
-    with zipfile.ZipFile(archive, "w") as seed:
-        seed.writestr("dump.sql", "-- seed")
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-
-    def load_archive(**kwargs: object) -> int:
-        observed.update(kwargs)
-        return 0
-
-    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        assert kwargs["seed_requested"] is True
-        seeder = cast(Callable[[GodooConfig], None], kwargs["seeder"])
-        seeder(config)
-        return LifecycleOutcome.RESTORED, 0
-
-    monkeypatch.setattr(lifecycle_commands, "load_runtime_archive", load_archive)
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
-
-    result = CliRunner().invoke(
-        app,
-        ["--seed", str(archive)],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-    assert observed["archive_path"] == archive
-    assert observed["db_name"] == "runtime"
-    assert observed["data_dir"] == Path("/var/lib/odoo")
-    assert observed["force"] is True
-    assert observed["use_native_db_load"] is None
-    assert observed["_validated_archive"] is not None
-    assert observed["require_same_archive_identity"] is True
-    connection = observed["connection"]
-    assert isinstance(connection, DBConnection)
-    assert connection.db_name == "runtime"
-    assert connection.username == "odoo"
-
-
-def test_deployment_init_uses_sql_seed_load_before_pre_upgrade_scripts(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-):
-    """Restore through PostgreSQL before Odoo can run pre-upgrade scripts."""
-    observed: dict[str, object] = {}
-    pre_upgrade_script = tmp_path / "pre-upgrade.py"
-    pre_upgrade_script.write_text("pass\n")
-    archive = tmp_path / "runtime.zip"
-    with zipfile.ZipFile(archive, "w") as seed:
-        seed.writestr("dump.sql", "-- seed")
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-
-    def load_archive(**kwargs: object) -> int:
-        observed.update(kwargs)
-        return 0
-
-    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        seeder = cast(Callable[[GodooConfig], None], kwargs["seeder"])
-        seeder(config)
-        return LifecycleOutcome.RESTORED, 0
-
-    monkeypatch.setattr(lifecycle_commands, "load_runtime_archive", load_archive)
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
-
-    result = CliRunner().invoke(
-        app,
-        ["--seed", str(archive), "--update", "base", "--pre-upgrade-script", str(pre_upgrade_script)],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-    assert observed["use_native_db_load"] is False
-
-
-def test_deployment_init_rejects_after_restore_hooks_with_pre_upgrade_scripts():
-    """Prevent restore hooks from creating Odoo's registry before reconciliation."""
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-
-    result = CliRunner().invoke(
-        app,
-        [
-            "--seed",
-            "/tmp/runtime.zip",
-            "--pre-upgrade-script",
-            "/tmp/pre-upgrade.py",
-            "--after-restore-dir",
-            "/tmp/hooks",
-        ],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-
-    assert result.exit_code == 2
-    assert "cannot run with" in result.output
-
-
-def test_deployment_init_allows_after_restore_hooks_without_seed_for_pre_upgrade(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-):
-    """Allow ready-runtime reconciliation to retain its ordinary hook configuration."""
-    pre_upgrade_script = tmp_path / "pre-upgrade.py"
-    pre_upgrade_script.write_text("pass\n")
-    hook_dir = tmp_path / "hooks"
-    hook_dir.mkdir()
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-    monkeypatch.setattr(
-        lifecycle_commands,
-        "deployment_init",
-        lambda *_args, **_kwargs: (LifecycleOutcome.READY, 0),
-    )
-
-    result = CliRunner().invoke(
-        app,
-        ["--update", "base", "--pre-upgrade-script", str(pre_upgrade_script), "--after-restore-dir", str(hook_dir)],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-
-
-def test_deployment_init_rejects_pre_upgrade_scripts_without_update():
-    """Fail before seed restoration when Odoo has no module update to run."""
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-
-    result = CliRunner().invoke(
-        app,
-        ["--seed", "/tmp/runtime.zip", "--pre-upgrade-script", "/tmp/pre-upgrade.py"],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-
-    assert result.exit_code == 2
-    assert "requires at least one" in result.output
-
-
-def test_deployment_init_passes_original_filestore_to_seed_loader(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The init command sends the supplied original filestore to native restore."""
-    source = tmp_path / "original-filestore"
-    source.mkdir()
-    archive = tmp_path / "seed.zip"
-    with zipfile.ZipFile(archive, "w") as seed:
-        seed.writestr("dump.sql", "-- seed")
-    original_validate = runtime_archive._validate_native_runtime_archive_contents
-    validation_runs = 0
-
-    def count_validation_runs(archive_path: Path) -> runtime_archive._ValidatedNativeArchive:
-        nonlocal validation_runs
-        validation_runs += 1
-        return original_validate(archive_path)
-
-    monkeypatch.setattr(runtime_archive, "_validate_native_runtime_archive_contents", count_validation_runs)
-    observed: dict[str, object] = {}
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-
-    def load_archive(**kwargs: object) -> int:
-        observed.update(kwargs)
-        return 0
-
-    def init(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        seeder = cast(Callable[[GodooConfig], None], kwargs["seeder"])
-        seeder(config)
-        return LifecycleOutcome.RESTORED, 0
-
-    monkeypatch.setattr(lifecycle_commands, "load_runtime_archive", load_archive)
-    monkeypatch.setattr(lifecycle_commands, "deployment_init", init)
-    result = CliRunner().invoke(
-        app,
-        ["--seed", str(archive), "--original-filestore", str(source)],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-        },
-    )
-
-    assert result.exit_code == 0, result.output
-    assert observed["archive_path"] == archive
-    assert observed["_validated_archive"] is not None
-    assert validation_runs == 1
-    assert observed["original_filestore"] == source
-    assert observed["lifecycle_owner"] == "init"
-    assert observed["require_same_archive_identity"] is True
-
-
-def test_deployment_init_requires_seed_for_original_filestore_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The original-filestore environment setting fails before lifecycle work without a seed."""
-    source = tmp_path / "original-filestore"
-    source.mkdir()
-    app = typer.Typer()
-    app.command()(lifecycle_commands.deployment_init_odoo_runtime)
-    monkeypatch.setattr(
-        lifecycle_commands,
-        "deployment_init",
-        lambda *_args, **_kwargs: pytest.fail("Lifecycle work must not start without the ZIP seed."),
-    )
-
-    result = CliRunner().invoke(
-        app,
-        [],
-        env={
-            "ODOO_MAIN_FOLDER": "/tmp/odoo",
-            "ODOO_WORKSPACE_ADDON_LOCATION": "/tmp/addons",
-            "ODOO_CONF_PATH": "/tmp/odoo.conf",
-            "ODOO_DB_FILTER": ".*",
-            "ODOO_MAIN_DB": "runtime",
-            "ODOO_DB_USER": "odoo",
-            "GODOO_ORIGINAL_FILESTORE": str(source),
-        },
-    )
-
-    assert result.exit_code == 2
-    assert "An Odoo ZIP archive is required" in result.output
-
-
-def test_external_replacement_retires_lifecycle_marker(tmp_path: Path) -> None:
-    marker = runtime_readiness_marker(tmp_path, "runtime")
-    marker.parent.mkdir(parents=True)
-    marker.write_text("pending", encoding="utf-8")
-
-    retire_runtime_lifecycle(tmp_path, "runtime")
-
-    assert not marker.exists()
-
-
-def test_current_lifecycle_owner_preserves_marker(tmp_path: Path) -> None:
-    marker = runtime_readiness_marker(tmp_path, "runtime")
-    marker.parent.mkdir(parents=True)
-    marker.write_text("pending", encoding="utf-8")
-
-    retire_runtime_lifecycle(tmp_path, "runtime", owner="init")
-
-    assert marker.read_text(encoding="utf-8") == "pending"
-
-
-@pytest.mark.parametrize(
-    ("preparation_strategy", "outcome", "phase"),
-    [
-        ("odoo", "restored", "after-restore"),
-        ("postgres", "restored", "after-restore"),
-        ("cow", "restored", "after-restore"),
-        ("bootstrap", "bootstrapped", "after-bootstrap"),
-    ],
-)
-def test_prepare_handoff_binds_actual_init_plan_without_repeating_seed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    preparation_strategy: str,
-    outcome: str,
-    phase: str,
-) -> None:
-    config = _config(tmp_path)
-    monkeypatch.setattr(
-        runtime_prepare,
-        "_cow_capability_available",
-        lambda _config, _source: preparation_strategy == "cow",
-    )
-    monkeypatch.setattr(
-        runtime_prepare,
-        "require_supported_odoo_runtime",
-        lambda _path: SimpleNamespace(major=19),
-    )
-    monkeypatch.setattr(runtime_prepare, "ensure_runtime", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(runtime_prepare, "duplicate_cow_runtime", lambda **_kwargs: 0)
-    loader_options: dict[str, object] = {}
-    restore_options: dict[str, object] = {}
-
-    def restore_runtime(**kwargs: object) -> None:
-        restore_options.update(kwargs)
-
-    def load_archive(**kwargs: object) -> int:
-        loader_options.update(kwargs)
-        return 0
-
-    monkeypatch.setattr(runtime_prepare, "load_runtime_archive", load_archive)
-    monkeypatch.setattr(runtime_prepare, "restore_custom_runtime", restore_runtime)
-    monkeypatch.setattr(runtime_prepare, "validate_custom_dump", lambda *_args: None)
-    monkeypatch.setattr(runtime_prepare, "validate_filestore", lambda *_args: None)
-
-    archive = None
-    filestore = None
-    source_db = "source" if preparation_strategy == "cow" else ""
-    if preparation_strategy == "odoo":
-        archive = tmp_path / "seed.zip"
-        with zipfile.ZipFile(archive, "w") as bundle:
-            bundle.writestr("dump.sql", "-- seed")
-    elif preparation_strategy == "postgres":
-        archive = tmp_path / "seed.dump"
-        archive.write_bytes(b"dump")
-        filestore = tmp_path / "seed-filestore"
-        filestore.mkdir()
-    runtime_prepare.prepare_runtime(
-        config,
-        strategy=preparation_strategy,
-        source_db=source_db,
-        archive_path=archive,
-        filestore_path=filestore,
-    )
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    prepared = read_runtime_lifecycle(marker, config.db_name)
-    assert prepared is not None
-    assert prepared["schema_version"] == 3
-    assert prepared["preparation_complete"] is True
-    assert prepared["outcome"] == outcome
-    assert prepared["pending_phase"] == phase
-    if preparation_strategy == "odoo":
-        assert loader_options["lifecycle_owner"] == "prepare"
-        assert loader_options["require_same_archive_identity"] is True
-    if preparation_strategy == "postgres":
-        assert restore_options["lifecycle_owner"] == "prepare"
-
-    plan = build_runtime_lifecycle_plan(
-        config,
-        runtime_version=None,
-        expected_odoo_major=None,
-        seed=None,
-        seed_requested=False,
-        original_filestore=None,
-        update_modules=None,
-        install_modules=None,
-        upgrade_paths=None,
-        pre_upgrade_scripts=None,
-        after_bootstrap_dirs=None,
-        after_restore_dirs=None,
-        after_reconcile_dirs=None,
-        install_base_modules=True,
-        install_workspace_modules=True,
-        odoo_demo=False,
-    )
-    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
-
-    result, exit_code = runtime_lifecycle.deployment_init(
-        config,
-        seed_requested=False,
-        seeder=lambda _config: pytest.fail("Prepared runtime must not be seeded again."),
-        ensure=lambda _config: pytest.fail("Prepared runtime must not be bootstrapped again."),
-        reconciler=lambda _config: 0,
-        status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-        lifecycle_plan=plan,
-    )
-
-    assert result.value == outcome
-    assert exit_code == 0
-    assert not marker.exists()
-
-
-def test_incomplete_or_changed_prepare_handoff_is_rejected(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    connection = config.db_connection
-    actual_target = {
-        "runtime_path": str(config.odoo_install_folder.resolve()),
-        "database": config.db_name,
-        "data_dir": str(config.data_dir.resolve()),
-        "connection": {
-            "host": connection.hostname,
-            "port": connection.port,
-            "user": connection.username,
-            "sslmode": connection.sslmode,
-        },
-    }
-    preparation = {
-        "strategy": "odoo",
-        "source_db": "",
-        "archive": None,
-        "filestore": None,
-        "original_filestore": None,
-        "target": {**actual_target, "database": "other"},
-    }
-    begin_runtime_lifecycle(config.data_dir, config.db_name, owner="prepare", preparation=preparation)
-    with pytest.raises(RuntimeError, match="inputs differ"):
-        begin_runtime_lifecycle(
-            config.data_dir,
-            config.db_name,
-            owner="prepare",
-            preparation={**preparation, "source_db": "changed"},
-        )
-    plan = build_runtime_lifecycle_plan(
-        config,
-        runtime_version=None,
-        expected_odoo_major=None,
-        seed=None,
-        seed_requested=False,
-        original_filestore=None,
-        update_modules=None,
-        install_modules=None,
-        upgrade_paths=None,
-        pre_upgrade_scripts=None,
-        after_bootstrap_dirs=None,
-        after_restore_dirs=None,
-        after_reconcile_dirs=None,
-        install_base_modules=True,
-        install_workspace_modules=True,
-        odoo_demo=False,
-    )
-
-    with pytest.raises(RuntimeError, match="incomplete"):
-        begin_runtime_lifecycle(config.data_dir, config.db_name, plan=plan)
-    with pytest.raises(RuntimeError, match="schema-one"):
-        begin_runtime_lifecycle(
-            config.data_dir,
-            config.db_name,
-            plan=plan,
-            adopt_legacy_plan=True,
-        )
-
-    marker = runtime_readiness_marker(config.data_dir, config.db_name)
-    write_runtime_lifecycle(
-        marker,
-        config.db_name,
-        outcome="restored",
-        pending_phase="after-restore",
-        owner="prepare",
-        preparation=preparation,
-        preparation_complete=True,
-    )
-    with pytest.raises(RuntimeError, match="target differs"):
-        begin_runtime_lifecycle(config.data_dir, config.db_name, plan=plan)
-
-
-def test_prepare_provenance_survives_binding_and_phase_writes(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    connection = config.db_connection
-    preparation = {
-        "strategy": "postgres",
-        "source_db": "",
-        "archive": None,
-        "filestore": None,
-        "original_filestore": None,
-        "target": {
-            "runtime_path": str(config.odoo_install_folder.resolve()),
-            "database": config.db_name,
-            "data_dir": str(config.data_dir.resolve()),
-            "connection": {
-                "host": connection.hostname,
-                "port": connection.port,
-                "user": connection.username,
-                "sslmode": connection.sslmode,
-            },
-        },
-    }
-    marker = begin_runtime_lifecycle(config.data_dir, config.db_name, owner="prepare", preparation=preparation)
-    write_runtime_lifecycle(
-        marker,
-        config.db_name,
-        outcome="restored",
-        pending_phase="after-restore",
-        owner="prepare",
-        preparation=preparation,
-        preparation_complete=True,
-    )
-    plan = build_runtime_lifecycle_plan(
-        config,
-        runtime_version=None,
-        expected_odoo_major=None,
-        seed=None,
-        seed_requested=False,
-        original_filestore=None,
-        update_modules=None,
-        install_modules=None,
-        upgrade_paths=None,
-        pre_upgrade_scripts=None,
-        after_bootstrap_dirs=None,
-        after_restore_dirs=None,
-        after_reconcile_dirs=None,
-        install_base_modules=True,
-        install_workspace_modules=True,
-        odoo_demo=False,
-    )
-
-    begin_runtime_lifecycle(config.data_dir, config.db_name, plan=plan)
-    state = read_runtime_lifecycle(marker, config.db_name)
-    assert state is not None
-    assert state["preparation_provenance"] == preparation
-
-    write_runtime_lifecycle(
-        marker,
-        config.db_name,
-        outcome="restored",
-        pending_phase="reconcile",
-        plan=plan,
-    )
-    state = read_runtime_lifecycle(marker, config.db_name)
-    assert state is not None
-    assert state["preparation_provenance"] == preparation
+    assert lifecycle.reconcile_modules(_config(tmp_path), None, None) == 0

@@ -12,11 +12,8 @@ from click import unstyle
 from typer.testing import CliRunner
 
 from godoo_cli.commands.runtime import init as runtime_init
-from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
-from godoo_cli.runtime import lifecycle as runtime_lifecycle
 from godoo_cli.runtime.lifecycle import LifecycleOutcome
-from godoo_cli.runtime.locks import read_runtime_lifecycle, runtime_readiness_marker
 from godoo_cli.runtime.migration import resolve_migration_directory
 
 CONFLICTING_ENVIRONMENT = (
@@ -118,7 +115,6 @@ def test_dump_path_routes_plain_dataset_to_custom_restore(
     assert restored["lifecycle_owner"] == "init"
     assert restored["target_major"] == 19
     assert restored["expected_dump_identity"] is not None
-    assert str(dump.resolve()) in repr(observed["lifecycle_plan"])
 
 
 def test_migration_dump_path_selects_paired_upgrade_archive(
@@ -139,7 +135,6 @@ def test_migration_dump_path_selects_paired_upgrade_archive(
 
     def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
         cast(Callable[[GodooConfig], None], kwargs["seeder"])(config)
-        loaded["plan"] = kwargs["lifecycle_plan"]
         return LifecycleOutcome.RESTORED, 0
 
     monkeypatch.setattr(runtime_init, "deployment_init", deployment)
@@ -149,7 +144,6 @@ def test_migration_dump_path_selects_paired_upgrade_archive(
     assert result.exit_code == 0, result.output
     assert loaded["archive_path"] == archive.resolve()
     assert loaded["original_filestore"] == filestore
-    assert str(archive.resolve()) in repr(loaded["plan"])
 
 
 @pytest.mark.parametrize("modules", [None, "", "sale\nstock,sale\n"])
@@ -177,7 +171,6 @@ def test_migration_resolves_native_inputs_and_preserves_output_hooks(
 
     def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
         observed["hooks"] = kwargs["after_reconcile_dirs"]
-        observed["plan"] = kwargs["lifecycle_plan"]
         assert cast(Callable[[GodooConfig], int], kwargs["reconciler"])(config) == 0
         return LifecycleOutcome.RESTORED, 0
 
@@ -207,15 +200,6 @@ def test_migration_resolves_native_inputs_and_preserves_output_hooks(
     assert observed["pre_upgrade_scripts"] == ([directory / "pre-upgrade.py"] if expected_updates else None)
     assert observed["upgrade_path"] == (roots if expected_updates else None)
     assert observed["hooks"] == [directory / "after-reconcile", project_hooks]
-    identity = cast(dict[str, object], cast(dict[str, object], observed["plan"])["identity"])
-    assert cast(dict[str, object], identity["runtime"])["expected_major"] == 19
-    assert identity["migration"] == {
-        "directory": str(directory),
-        "source_major": 16,
-        "target_major": 19,
-        "pre_upgrade_script": str(directory / "pre-upgrade.py"),
-        "upgrade_roots": [str(root) for root in roots],
-    }
 
 
 @pytest.mark.parametrize("variable", CONFLICTING_ENVIRONMENT)
@@ -249,58 +233,6 @@ def test_migration_rejects_generic_cli_overrides_before_config(
     assert option in unstyle(result.output)
 
 
-@pytest.mark.parametrize(
-    "invalid",
-    [
-        "missing",
-        "name",
-        "descending",
-        "pre-script",
-        "hooks",
-        "nested-hooks",
-        "seed",
-        "filestore",
-        "demo",
-        "major",
-        "root",
-    ],
-)
-def test_migration_preflight_rejects_invalid_inputs_without_deployment(
-    migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch, invalid: str
-) -> None:
-    """Invalid transition inputs fail before any lifecycle execution callback."""
-    directory, environment = migration_environment
-    arguments = ["--migration-dir", str(directory)]
-    if invalid in {"missing", "name", "descending"}:
-        selected = directory.parent / {"missing": "17-19", "name": "transition", "descending": "19-16"}[invalid]
-        if invalid != "missing":
-            directory.rename(selected)
-        arguments = ["--migration-dir", str(selected)]
-    elif invalid == "pre-script":
-        (directory / "pre-upgrade.py").unlink()
-    elif invalid in {"hooks", "nested-hooks"}:
-        hook = directory / "after-reconcile" / "01-finish.py"
-        hook.unlink()
-        if invalid == "nested-hooks":
-            (hook.parent / "nested").mkdir()
-            (hook.parent / "nested" / "hook.py").write_text("pass\n")
-    elif invalid == "seed":
-        Path(environment["GODOO_RUNTIME_SEED"]).write_text("not a ZIP")
-    elif invalid == "filestore":
-        (Path(environment["GODOO_ORIGINAL_FILESTORE"]) / "attachment").unlink()
-    elif invalid == "demo":
-        arguments.append("--odoo-demo")
-    elif invalid == "major":
-        arguments.extend(["--expected-odoo-major", "18"])
-    else:
-        arguments.extend(["--upgrade-path", str(directory / "missing-upgrades")])
-    monkeypatch.setattr(
-        runtime_init, "deployment_init", lambda *_args, **_kwargs: pytest.fail("deployment must not run")
-    )
-    result = CliRunner().invoke(_app(), arguments, env=environment)
-    assert result.exit_code == 2, result.output
-
-
 def test_migration_environment_supports_absolute_portable_directory(
     migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -329,154 +261,3 @@ def test_migration_requires_explicit_restore_inputs(
     result = CliRunner().invoke(_app(), ["--migration-dir", str(directory)], env=environment)
     assert result.exit_code == 2, result.output
     assert "requires" in result.output
-
-
-@pytest.mark.parametrize("additional", [False, True])
-def test_migration_rejects_nonfile_hook_entries_before_deployment(
-    migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch, additional: bool
-) -> None:
-    """Neither transition nor added project hooks can defer invalid entries until execution."""
-    directory, environment = migration_environment
-    arguments = ["--migration-dir", str(directory)]
-    hook_dir = directory / "after-reconcile"
-    if additional:
-        hook_dir = directory.parent / "project-hooks"
-        hook_dir.mkdir()
-        arguments.extend(["--after-reconcile-dir", str(hook_dir)])
-    (hook_dir / "not-a-file.py").mkdir()
-    monkeypatch.setattr(
-        runtime_init, "deployment_init", lambda *_args, **_kwargs: pytest.fail("deployment must not run")
-    )
-    result = CliRunner().invoke(_app(), arguments, env=environment)
-    assert result.exit_code == 2, result.output
-    assert "not a Python file" in result.output
-
-
-@pytest.mark.parametrize("changed_input", [None, "modules", "roots", "directory", "hooks"])
-def test_migration_pending_plan_binds_selection_even_with_empty_updates(
-    migration_environment: tuple[Path, dict[str, str]],
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-    changed_input: str | None,
-) -> None:
-    """Resume pending hooks only when selected migration inputs still match."""
-    directory, environment = migration_environment
-    (directory / "update_modules.txt").write_text("")
-    calls: list[str] = []
-    hook_attempts = 0
-
-    def hook(_config: GodooConfig, _script: Path) -> int:
-        nonlocal hook_attempts
-        calls.append("hook")
-        hook_attempts += 1
-        return 1 if hook_attempts == 1 else 0
-
-    def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        return runtime_lifecycle.deployment_init(
-            config,
-            seed_requested=True,
-            seeder=lambda _config: pytest.fail("ready database must not be seeded"),
-            ensure=lambda _config: pytest.fail("ready database must not be bootstrapped"),
-            preparer=lambda _config: calls.append("prepare"),
-            preflight=lambda _config: calls.append("preflight"),
-            reconciler=lambda _config: calls.append("reconcile") or 0,
-            status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED,
-            after_reconcile_dirs=cast(list[Path], kwargs["after_reconcile_dirs"]),
-            hook_runner=hook,
-            lifecycle_plan=cast(dict[str, object], kwargs["lifecycle_plan"]),
-        )
-
-    monkeypatch.setattr(runtime_init, "deployment_init", deployment)
-    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
-    result = CliRunner().invoke(_app(), ["--migration-dir", str(directory)], env=environment)
-    assert result.exit_code == 1, result.output
-    assert calls == ["preflight", "prepare", "reconcile", "hook"]
-    calls.clear()
-    if changed_input == "modules":
-        (directory / "update_modules.txt").write_text("sale\n")
-    elif changed_input == "roots":
-        (directory / "upgrades").rmdir()
-    elif changed_input == "directory":
-        selected = directory.parent / "17-19"
-        directory.rename(selected)
-        directory = selected
-    elif changed_input == "hooks":
-        (directory / "after-reconcile" / "02-added.py").write_text("pass\n")
-    result = CliRunner().invoke(_app(), ["--migration-dir", str(directory)], env=environment)
-    if changed_input is None:
-        assert result.exit_code == 0, result.output
-        assert calls == ["preflight", "prepare", "hook"]
-    else:
-        assert result.exit_code == 1, result.output
-        assert "Pending lifecycle plan differs" in caplog.text
-        assert calls == []
-
-
-def test_migration_restore_dependency_failure_resumes_without_reseeding(
-    migration_environment: tuple[Path, dict[str, str]],
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """A dependency found after restore leaves the selected plan pending at that phase."""
-    directory, environment = migration_environment
-    status = DbBootstrapStatus.NO_DB
-    restored_dependency_missing = True
-    calls: list[str] = []
-
-    def load_archive(**_kwargs: object) -> int:
-        nonlocal status
-        calls.append("seed")
-        status = DbBootstrapStatus.BOOTSTRAPPED
-        return 0
-
-    def preflight(_config: GodooConfig, _updates: list[str], _installs: list[str], **kwargs: object) -> None:
-        assert kwargs["ignore_missing_installed_modules"] is True
-        calls.append("preflight" if status is DbBootstrapStatus.NO_DB else "restored-preflight")
-        if status is DbBootstrapStatus.BOOTSTRAPPED and restored_dependency_missing:
-            message = "Missing dependency discovered after restore"
-            raise RuntimeError(message)
-
-    def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
-        return runtime_lifecycle.deployment_init(
-            config,
-            seed_requested=cast(bool, kwargs["seed_requested"]),
-            seeder=cast(Callable[[GodooConfig], None], kwargs["seeder"]),
-            ensure=cast(Callable[[GodooConfig], bool], kwargs["ensure"]),
-            preparer=cast(Callable[[GodooConfig], None], kwargs["preparer"]),
-            preflight=cast(Callable[[GodooConfig], None], kwargs["preflight"]),
-            post_restore_preflight=cast(Callable[[GodooConfig], None], kwargs["post_restore_preflight"]),
-            reconciler=cast(Callable[[GodooConfig], int], kwargs["reconciler"]),
-            status_getter=lambda _connection: status,
-            after_reconcile_dirs=cast(list[Path], kwargs["after_reconcile_dirs"]),
-            hook_runner=cast(Callable[[GodooConfig, Path], int], kwargs["hook_runner"]),
-            lifecycle_plan=cast(dict[str, object], kwargs["lifecycle_plan"]),
-        )
-
-    monkeypatch.setattr(runtime_init, "deployment_init", deployment)
-    monkeypatch.setattr(runtime_init, "load_runtime_archive", load_archive)
-    monkeypatch.setattr(runtime_init, "prepare_runtime", lambda *_args, **_kwargs: calls.append("prepare"))
-    monkeypatch.setattr(runtime_init, "preflight_reconcile_dependencies", preflight)
-    monkeypatch.setattr(runtime_init, "reconcile_runtime", lambda *_args, **_kwargs: calls.append("reconcile") or 0)
-    monkeypatch.setattr(runtime_init, "run_lifecycle_hook", lambda *_args: calls.append("hook") or 0)
-    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
-    arguments = ["--migration-dir", str(directory)]
-    result = CliRunner().invoke(_app(), arguments, env=environment)
-
-    assert result.exit_code == 1, result.output
-    assert "Missing dependency discovered after restore" in caplog.text
-    assert calls == ["preflight", "prepare", "seed", "restored-preflight"]
-    marker = runtime_readiness_marker(directory.parent.parent / "data", "runtime")
-    pending = read_runtime_lifecycle(marker, "runtime")
-    assert pending is not None
-    assert pending["pending_phase"] == "after-restore"
-    assert pending["outcome"] == "restored"
-    identity = cast(dict[str, object], cast(dict[str, object], pending["plan"])["identity"])
-    assert cast(dict[str, object], identity["migration"])["directory"] == str(directory)
-
-    restored_dependency_missing = False
-    calls.clear()
-    result = CliRunner().invoke(_app(), arguments, env=environment)
-
-    assert result.exit_code == 0, result.output
-    assert calls == ["restored-preflight", "prepare", "restored-preflight", "reconcile", "hook"]
-    assert not marker.exists()

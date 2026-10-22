@@ -23,16 +23,6 @@ class MigrationSelection:
     install_modules: tuple[str, ...]
     upgrade_paths: tuple[Path, ...]
 
-    def plan_identity(self) -> dict[str, object]:
-        """Keep the selected transition bound to resumable initialization."""
-        return {
-            "directory": str(self.directory),
-            "source_major": self.source_major,
-            "target_major": self.target_major,
-            "pre_upgrade_script": str(self.pre_upgrade_script),
-            "upgrade_roots": [str(path) for path in self.upgrade_paths],
-        }
-
 
 def _module_list(path: Path, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Parse transition lists with the existing lifecycle value rules."""

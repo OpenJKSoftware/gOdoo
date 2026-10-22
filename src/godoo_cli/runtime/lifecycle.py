@@ -1,20 +1,23 @@
-"""Composable lifecycle orchestration for a gOdoo runtime."""
+"""Runtime initialization and reconciliation helpers."""
+
+from __future__ import annotations
 
 import logging
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import cast
 
 from ..database.connection import DBConnection
 from ..database.state import DbBootstrapStatus, classify_bootstrap_state
 from ..models import GodooConfig
+from .baseline import baseline_database_name
 from .locks import (
     begin_runtime_lifecycle,
     finish_runtime_lifecycle,
     read_runtime_lifecycle,
     runtime_inconsistency_reason,
     runtime_locks,
+    runtime_readiness_marker,
     write_runtime_lifecycle,
 )
 from .odoo import (
@@ -28,7 +31,6 @@ from .odoo import (
 )
 
 LOGGER = logging.getLogger(__name__)
-
 RuntimePreparer = Callable[[GodooConfig], None]
 BootstrapStatusGetter = Callable[[DBConnection], DbBootstrapStatus]
 RuntimeBootstrapper = Callable[..., int]
@@ -37,7 +39,7 @@ HookRunner = Callable[[GodooConfig, Path], int]
 
 
 class LifecycleOutcome(StrEnum):
-    """Stable result of selecting a runtime initialization path."""
+    """Stable result selecting the runtime initialization path."""
 
     READY = "ready"
     BOOTSTRAPPED = "bootstrapped"
@@ -48,7 +50,7 @@ class LifecycleBootstrapError(RuntimeError):
     """Raised when Odoo's native bootstrap command fails."""
 
     def __init__(self, db_name: str, return_code: int) -> None:
-        """Record the database and Odoo process status that failed."""
+        """Record the database and native Odoo exit status."""
         super().__init__(f"Odoo bootstrap failed for database '{db_name}' (exit code {return_code})")
         self.return_code = return_code
 
@@ -56,45 +58,31 @@ class LifecycleBootstrapError(RuntimeError):
 def validate_initialization_state(
     config: GodooConfig, status: DbBootstrapStatus, *, allow_lifecycle_retry: bool = False
 ) -> None:
-    """Reject non-Odoo databases and orphaned filestores before initialization."""
+    """Reject incomplete database/filestore pairs and invalid databases before init."""
     reason = runtime_inconsistency_reason(
         config.data_dir,
         config.db_name,
-        missing_or_empty=status in (DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB),
+        missing_or_empty=status in {DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB},
     )
-    if reason == "an unfinished restore promotion":
+    if reason == "unfinished lifecycle work":
+        if not allow_lifecycle_retry:
+            message = f"Runtime '{config.db_name}' has incomplete initialization; rerun runtime init."
+            raise ValueError(message)
+    elif reason is not None:
         message = (
-            f"Runtime '{config.db_name}' has an unfinished restore promotion. "
-            "Recover its matching database and filestore before removing the pending restore marker."
+            f"Runtime '{config.db_name}' has {reason}. "
+            "Restore or reset its matching database and filestore before initializing."
         )
-        raise ValueError(message)
-    if reason == "unresolved legacy lifecycle marker":
-        msg = f"Runtime '{config.db_name}' has unresolved legacy lifecycle work; recover it manually before initialization."
-        raise ValueError(msg)
-    if reason == "unfinished lifecycle work" and not allow_lifecycle_retry:
-        message = f"Runtime '{config.db_name}' has unfinished lifecycle work; rerun runtime init to resume it."
         raise ValueError(message)
     if status == DbBootstrapStatus.INVALID_DB:
         message = f"Runtime '{config.db_name}' has an invalid database; inspect it before initializing."
-        raise ValueError(message)
-    orphaned_filestore = config.data_dir / "filestore" / config.db_name
-    has_orphaned_filestore = (
-        status in (DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB)
-        and orphaned_filestore.exists()
-        and (not orphaned_filestore.is_dir() or next(orphaned_filestore.iterdir(), None) is not None)
-    )
-    if reason == "filestore data but no initialized database" or has_orphaned_filestore:
-        message = (
-            f"Runtime '{config.db_name}' has filestore data but no initialized database. "
-            "Recover the matching database and filestore before initializing."
-        )
         raise ValueError(message)
 
 
 def ensure_runtime(
     godoo_config: GodooConfig,
     *,
-    preparer: RuntimePreparer = prepare_runtime,
+    preparer: RuntimePreparer | None = prepare_runtime,
     status_getter: BootstrapStatusGetter = classify_bootstrap_state,
     bootstrapper: RuntimeBootstrapper = bootstrap_runtime,
     odoo_demo: bool = False,
@@ -116,7 +104,8 @@ def ensure_runtime(
         LifecycleBootstrapError: If Odoo fails to initialize the database.
     """
     with runtime_locks(godoo_config.data_dir, godoo_config.db_name):
-        preparer(godoo_config)
+        if preparer:
+            preparer(godoo_config)
         status = status_getter(godoo_config.db_connection)
         validate_initialization_state(godoo_config, status, allow_lifecycle_retry=allow_lifecycle_retry)
         LOGGER.info("Bootstrap status for database '%s': %s", godoo_config.db_name, status.value)
@@ -141,7 +130,7 @@ def ensure_runtime(
 
 
 def run_hook_directories(config: GodooConfig, directories: list[Path], runner: HookRunner) -> int:
-    """Run hook directories in supplied order and Python files in lexical order."""
+    """Run Python hooks in supplied directory and filename order."""
     for directory in directories:
         if not directory.is_dir():
             message = f"Lifecycle hook directory does not exist: {directory}"
@@ -157,7 +146,7 @@ def run_hook_directories(config: GodooConfig, directories: list[Path], runner: H
 def reconcile_runtime(
     config: GodooConfig,
     *,
-    preparer: RuntimePreparer = prepare_runtime,
+    preparer: RuntimePreparer | None = prepare_runtime,
     status_getter: BootstrapStatusGetter = classify_bootstrap_state,
     reconciler: RuntimeReconciler | None = None,
     after_reconcile_dirs: list[Path] | None = None,
@@ -166,7 +155,8 @@ def reconcile_runtime(
 ) -> int:
     """Prepare and update an existing runtime without bootstrapping or resetting it."""
     with runtime_locks(config.data_dir, config.db_name):
-        preparer(config)
+        if preparer:
+            preparer(config)
         status = status_getter(config.db_connection)
         validate_initialization_state(config, status, allow_lifecycle_retry=allow_lifecycle_retry)
         if status != DbBootstrapStatus.BOOTSTRAPPED:
@@ -188,159 +178,95 @@ def _initialize_runtime(
     seeder: Callable[[GodooConfig], None] | None,
     ensure: Callable[[GodooConfig], bool],
     status_getter: BootstrapStatusGetter,
-    allow_lifecycle_retry: bool = False,
 ) -> LifecycleOutcome:
-    """Select and execute exactly one state-initialization path."""
     status = status_getter(config.db_connection)
-    validate_initialization_state(config, status, allow_lifecycle_retry=allow_lifecycle_retry)
+    validate_initialization_state(config, status, allow_lifecycle_retry=True)
     if status == DbBootstrapStatus.BOOTSTRAPPED:
-        if seed_requested:
-            LOGGER.info("Runtime '%s' is already ready; skipping configured seed artifacts", config.db_name)
         return LifecycleOutcome.READY
-    if status not in (DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB):
-        message = f"Unsupported runtime state for '{config.db_name}': {status}"
+    if status not in {DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB}:
+        message = f"Unsupported runtime state '{config.db_name}': {status}"
         raise ValueError(message)
-    if not seed_requested:
-        ensure(config)
-        return LifecycleOutcome.BOOTSTRAPPED
-    if seeder is None:
-        message = "Runtime seeding was requested but no complete seed was supplied."
-        raise ValueError(message)
-    LOGGER.info("Seeding missing or empty runtime '%s'", config.db_name)
-    seeder(config)
-    return LifecycleOutcome.RESTORED
+    outcome = LifecycleOutcome.RESTORED if seed_requested else LifecycleOutcome.BOOTSTRAPPED
+    write_runtime_lifecycle(
+        runtime_readiness_marker(config.data_dir, config.db_name), config.db_name, outcome=outcome.value
+    )
+    if seed_requested:
+        if seeder is None:
+            message = "Runtime seeding requested but no complete seed supplied."
+            raise ValueError(message)
+        seeder(config)
+        return LifecycleOutcome.RESTORED
+    ensure(config)
+    return LifecycleOutcome.BOOTSTRAPPED
 
 
 def _run_outcome_hooks(
     config: GodooConfig,
     outcome: LifecycleOutcome,
-    *,
-    after_bootstrap_dirs: list[Path],
-    after_restore_dirs: list[Path],
+    after_bootstrap_dirs: list[Path] | None,
+    after_restore_dirs: list[Path] | None,
     hook_runner: HookRunner | None,
 ) -> int:
-    """Run only the hook phase selected by the preserved initialization outcome."""
+    """Run the hook phase selected by the initialization outcome."""
     if hook_runner is None:
         return 0
     if outcome == LifecycleOutcome.BOOTSTRAPPED:
-        return run_hook_directories(config, after_bootstrap_dirs, hook_runner)
+        return run_hook_directories(config, after_bootstrap_dirs or [], hook_runner)
     if outcome == LifecycleOutcome.RESTORED:
-        return run_hook_directories(config, after_restore_dirs, hook_runner)
+        return run_hook_directories(config, after_restore_dirs or [], hook_runner)
     return 0
 
 
-def deployment_init(  # noqa: C901
+def deployment_init(
     config: GodooConfig,
     *,
-    seed_requested: bool,
-    seeder: Callable[[GodooConfig], None] | None,
+    seed_requested: bool = False,
+    seeder: Callable[[GodooConfig], None] | None = None,
     ensure: Callable[[GodooConfig], bool],
     reconciler: RuntimeReconciler,
     preparer: RuntimePreparer | None = None,
     preflight: RuntimePreparer | None = None,
     post_restore_preflight: RuntimePreparer | None = None,
-    status_getter: BootstrapStatusGetter = classify_bootstrap_state,
     after_bootstrap_dirs: list[Path] | None = None,
     after_restore_dirs: list[Path] | None = None,
     after_reconcile_dirs: list[Path] | None = None,
+    status_getter: BootstrapStatusGetter = classify_bootstrap_state,
     hook_runner: HookRunner | None = None,
-    lifecycle_plan: dict[str, object] | None = None,
-    adopt_legacy_plan: bool = False,
+    keep_reset_baseline: bool = False,
 ) -> tuple[LifecycleOutcome, int]:
-    """Run lock-owned lifecycle phases, persisting each pending phase before entry."""
-    # Serialize recovery and reconciliation so every marker describes one complete attempt.
-    with runtime_locks(config.data_dir, config.db_name):
+    """Run one explicit initialization attempt and clear the marker only on success."""
+    lock_names = (config.db_name, baseline_database_name(config.db_name)) if keep_reset_baseline else (config.db_name,)
+    with runtime_locks(config.data_dir, *lock_names):
         require_runtime_database_major(config)
-        plan = lifecycle_plan or build_runtime_lifecycle_plan(
-            config,
-            runtime_version=None,
-            expected_odoo_major=None,
-            seed=None,
-            seed_requested=seed_requested,
-            original_filestore=None,
-            update_modules=None,
-            install_modules=None,
-            upgrade_paths=None,
-            pre_upgrade_scripts=None,
-            after_bootstrap_dirs=after_bootstrap_dirs,
-            after_restore_dirs=after_restore_dirs,
-            after_reconcile_dirs=after_reconcile_dirs,
-            install_base_modules=True,
-            install_workspace_modules=True,
-            odoo_demo=False,
-        )
-        marker = begin_runtime_lifecycle(
-            config.data_dir,
-            config.db_name,
-            plan=plan,
-            adopt_legacy_plan=adopt_legacy_plan,
-        )
-        state = read_runtime_lifecycle(marker, config.db_name)
-        assert state is not None
-        phase = cast(str, state["pending_phase"])
-        outcome_value = cast(str, state["outcome"])
-        initial_status = status_getter(config.db_connection)
+        status = status_getter(config.db_connection)
+        validate_initialization_state(config, status, allow_lifecycle_retry=True)
         if preflight:
             preflight(config)
+        existing = read_runtime_lifecycle(runtime_readiness_marker(config.data_dir, config.db_name), config.db_name)
+        marker = begin_runtime_lifecycle(
+            config.data_dir, config.db_name, outcome=existing["outcome"] if existing else "ready"
+        )
         if preparer:
             preparer(config)
-        outcome = (
-            LifecycleOutcome(outcome_value) if outcome_value in {item.value for item in LifecycleOutcome} else None
+        outcome = _initialize_runtime(
+            config, seed_requested=seed_requested, seeder=seeder, ensure=ensure, status_getter=status_getter
         )
-        if phase == "initialize":
-            status = initial_status
-            if outcome is None and status is not DbBootstrapStatus.BOOTSTRAPPED:
-                outcome = LifecycleOutcome.RESTORED if seed_requested else LifecycleOutcome.BOOTSTRAPPED
-                write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
-            if outcome is not None and status is DbBootstrapStatus.BOOTSTRAPPED:
-                phase = "after-restore" if outcome is LifecycleOutcome.RESTORED else "after-bootstrap"
-            else:
-                outcome = _initialize_runtime(
-                    config,
-                    seed_requested=seed_requested,
-                    seeder=seeder,
-                    ensure=ensure,
-                    status_getter=status_getter,
-                    allow_lifecycle_retry=True,
-                )
-                phase = "after-restore" if outcome is LifecycleOutcome.RESTORED else "after-bootstrap"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
-        assert outcome is not None
-        if phase == "after-bootstrap":
-            if outcome is LifecycleOutcome.BOOTSTRAPPED:
-                result = _run_outcome_hooks(
-                    config,
-                    outcome,
-                    after_bootstrap_dirs=after_bootstrap_dirs or [],
-                    after_restore_dirs=[],
-                    hook_runner=hook_runner,
-                )
-                if result:
-                    return outcome, result
-            phase = "reconcile"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
-        if phase == "after-restore":
-            if outcome is LifecycleOutcome.RESTORED:
-                if post_restore_preflight:
-                    post_restore_preflight(config)
-                result = _run_outcome_hooks(
-                    config,
-                    outcome,
-                    after_bootstrap_dirs=[],
-                    after_restore_dirs=after_restore_dirs or [],
-                    hook_runner=hook_runner,
-                )
-                if result:
-                    return outcome, result
-            phase = "reconcile"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
-        if phase == "reconcile":
-            result = reconciler(config)
-            if result:
-                return outcome, result
-            phase = "after-reconcile"
-            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value, pending_phase=phase, plan=plan)
-        if phase == "after-reconcile" and hook_runner:
+        persisted = read_runtime_lifecycle(marker, config.db_name)
+        hook_outcome = (
+            LifecycleOutcome(persisted["outcome"]) if persisted and persisted["outcome"] != "ready" else outcome
+        )
+        if outcome != LifecycleOutcome.READY:
+            write_runtime_lifecycle(marker, config.db_name, outcome=outcome.value)
+            hook_outcome = outcome
+        if hook_outcome == LifecycleOutcome.RESTORED and post_restore_preflight:
+            post_restore_preflight(config)
+        result = _run_outcome_hooks(config, hook_outcome, after_bootstrap_dirs, after_restore_dirs, hook_runner)
+        if result:
+            return outcome, result
+        result = reconciler(config)
+        if result:
+            return outcome, result
+        if hook_runner:
             result = run_hook_directories(config, after_reconcile_dirs or [], hook_runner)
             if result:
                 return outcome, result
@@ -349,13 +275,14 @@ def deployment_init(  # noqa: C901
 
 
 def run_lifecycle_hook(config: GodooConfig, script: Path) -> int:
-    """Execute a deployment policy hook through the Odoo shell command."""
-    command = build_odoo_shell_command(config)
-    return run_odoo_command(command, input=script.read_text(encoding="utf-8"), text=True).returncode
+    """Execute a deployment hook through Odoo shell."""
+    return run_odoo_command(
+        build_odoo_shell_command(config), input=script.read_text(encoding="utf-8"), text=True
+    ).returncode
 
 
 def split_lifecycle_values(values: list[str] | None) -> list[str]:
-    """Flatten repeatable comma-separated values, preserving first-seen order."""
+    """Flatten comma-separated selections while preserving first occurrence."""
     return list(dict.fromkeys(item.strip() for value in values or [] for item in value.split(",") if item.strip()))
 
 
@@ -373,121 +300,6 @@ def split_upgrade_paths(values: list[Path] | Path | None) -> list[Path]:
                 selected.append(path)
                 seen.add(path)
     return selected
-
-
-def _path_identity(path: Path | None) -> dict[str, object] | None:
-    if path is None:
-        return None
-    resolved = path.expanduser().resolve()
-    stat = resolved.stat()
-    return {
-        "path": str(resolved),
-        "device": stat.st_dev,
-        "inode": stat.st_ino,
-        "size": stat.st_size,
-        "mtime_ns": stat.st_mtime_ns,
-    }
-
-
-def build_runtime_lifecycle_plan(
-    config: GodooConfig,
-    *,
-    runtime_version: str | None,
-    expected_odoo_major: int | None,
-    seed: Path | None,
-    seed_requested: bool,
-    original_filestore: Path | None,
-    update_modules: list[str] | None,
-    install_modules: list[str] | None,
-    upgrade_paths: list[Path] | Path | None,
-    pre_upgrade_scripts: list[Path] | None,
-    after_bootstrap_dirs: list[Path] | None,
-    after_restore_dirs: list[Path] | None,
-    after_reconcile_dirs: list[Path] | None,
-    install_base_modules: bool,
-    install_workspace_modules: bool,
-    odoo_demo: bool,
-) -> dict[str, object]:
-    """Build a nonsecret semantic identity for resumable runtime initialization."""
-    hook_dirs = {
-        "after_bootstrap": after_bootstrap_dirs or [],
-        "after_restore": after_restore_dirs or [],
-        "after_reconcile": after_reconcile_dirs or [],
-    }
-    selected_hooks: dict[str, list[dict[str, object]]] = {}
-    script_diagnostics: dict[str, list[dict[str, object]]] = {}
-    for phase, directories in hook_dirs.items():
-        phase_directories: list[dict[str, object]] = []
-        phase_diagnostics: list[dict[str, object]] = []
-        for directory in directories:
-            resolved = directory.expanduser().resolve()
-            if not resolved.is_dir():
-                message = f"Lifecycle hook directory does not exist: {resolved}"
-                raise ValueError(message)
-            scripts = sorted(resolved.glob("*.py"))
-            for script in scripts:
-                if not script.is_file():
-                    message = f"Lifecycle hook is not a Python file: {script}"
-                    raise ValueError(message)
-            phase_directories.append({"directory": str(resolved), "scripts": [script.name for script in scripts]})
-            phase_diagnostics.extend(
-                {
-                    "path": str(script.resolve()),
-                    "size": script.stat().st_size,
-                    "mtime_ns": script.stat().st_mtime_ns,
-                }
-                for script in scripts
-            )
-        selected_hooks[phase] = phase_directories
-        script_diagnostics[phase] = phase_diagnostics
-
-    normalized_pre_scripts = [path.expanduser().resolve() for path in pre_upgrade_scripts or []]
-    for script in normalized_pre_scripts:
-        if not script.is_file():
-            message = f"Pre-upgrade script does not exist: {script}"
-            raise ValueError(message)
-    script_diagnostics["pre_upgrade"] = [
-        {"path": str(script), "size": script.stat().st_size, "mtime_ns": script.stat().st_mtime_ns}
-        for script in normalized_pre_scripts
-    ]
-
-    connection = config.db_connection
-    upgrade_roots = split_upgrade_paths(upgrade_paths)
-    identity: dict[str, object] = {
-        "runtime": {
-            "install_path": str(config.odoo_install_folder.resolve()),
-            "addon_paths": [str(path.expanduser().resolve()) for path in config.addon_paths],
-            "version": runtime_version,
-            "expected_major": expected_odoo_major,
-        },
-        "database": {
-            "name": config.db_name,
-            "filter": config.db_filter,
-            "data_dir": str(config.data_dir.resolve()),
-            "connection": {
-                "host": connection.hostname,
-                "port": connection.port,
-                "user": connection.username,
-                "sslmode": connection.sslmode,
-            },
-        },
-        "seed_requested": seed_requested,
-        "artifacts": {
-            "seed": _path_identity(seed),
-            "original_filestore": _path_identity(original_filestore),
-        },
-        "modules": {
-            "update": split_lifecycle_values(update_modules),
-            "install": split_lifecycle_values(install_modules),
-            "install_base": install_base_modules,
-            "install_workspace": install_workspace_modules,
-            "demo": odoo_demo,
-        },
-        "upgrade_roots": [str(path) for path in upgrade_roots],
-        "pre_upgrade_scripts": [str(path) for path in normalized_pre_scripts],
-        "hooks": selected_hooks,
-    }
-    return {"identity": identity, "diagnostics": {"script_stats": script_diagnostics}}
 
 
 def preflight_reconcile_dependencies(

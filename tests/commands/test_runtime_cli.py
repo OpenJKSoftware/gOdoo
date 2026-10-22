@@ -81,10 +81,8 @@ def test_database_help_preserves_public_database_commands():
     assert result.exit_code == 0
     commands = set(re.findall(r"^│ ([\w-]+)\s", output, re.MULTILINE)) - {"--help"}
     assert commands == {
-        "prepare",
         "backup",
         "restore",
-        "clone",
         "reset",
         "status",
         "set-passwords",
@@ -164,7 +162,6 @@ def test_workspace_help_exposes_workspace_operations():
         ["run"],
         ["runtime", "init"],
         ["runtime", "launch"],
-        ["db", "prepare"],
         ["test", "run"],
         ["test", "load-data"],
     ],

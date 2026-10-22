@@ -38,7 +38,6 @@ def test_runtime_generates_lookup_from_resolved_sources(
         monkeypatch.setattr(init_commands, "require_odoo_version", lambda *_args: version)
         monkeypatch.setattr(init_commands, "x_sendfile_enabled", lambda *_args: False)
         monkeypatch.setattr(init_commands, "prepare_runtime", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(init_commands, "build_runtime_lifecycle_plan", lambda *_args, **_kwargs: {})
 
         def initialize(resolved: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
             preparer = kwargs["preparer"]

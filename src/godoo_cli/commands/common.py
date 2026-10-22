@@ -155,6 +155,12 @@ class DatabaseCLIArgs:
         help="template database for an explicit reset",
         rich_help_panel="Database Options",
     )
+    keep_reset_baseline = Option(
+        "--keep-reset-baseline/--no-keep-reset-baseline",
+        envvar="GODOO_KEEP_RESET_BASELINE",
+        help="Save the restored database and filestore before initialization for repeated resets.",
+        rich_help_panel="Lifecycle Options",
+    )
     empty_reset = Option(
         "--empty",
         help="drop only selected runtime state; do not use a template",

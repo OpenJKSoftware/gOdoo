@@ -61,20 +61,20 @@ def _development_sources(tmp_path: Path) -> tuple[WorkspaceSettings, list[Resolv
 
 def test_reset_uses_manifest_selected_odoo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Reset validates and executes the manifest-selected Odoo executable."""
-    settings, sources, archives = _development_sources(tmp_path)
+    selected = _development_sources(tmp_path)
     observed: dict[str, Path] = {}
 
     def require_version(path: Path, _specifier: str) -> OdooVersion:
         observed["version"] = path
         return ODOO19
 
-    def reset_empty(*, odoo_bin_path: Path, **_kwargs: object) -> int:
-        observed["bin"] = odoo_bin_path
+    def reset_empty(*, data_dir: Path, **_kwargs: object) -> int:
+        observed["target"] = data_dir
         return 0
 
     monkeypatch.setattr(
         "godoo_cli.commands.configuration._development_sources",
-        lambda: (settings, sources, archives),
+        lambda: selected,
     )
     monkeypatch.setattr(
         reset_command,
@@ -97,7 +97,7 @@ def test_reset_uses_manifest_selected_odoo_root(tmp_path: Path, monkeypatch: pyt
         )
         == 0
     )
-    assert observed == {"version": sources[0].host_path, "bin": sources[0].host_path / "odoo-bin"}
+    assert observed == {"version": selected[1][0].host_path, "target": tmp_path / "data"}
 
 
 @pytest.fixture(autouse=True)
@@ -107,32 +107,34 @@ def mock_postgres_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runtime_archive, "odoo_bin_get_version", lambda _path: ODOO19)
 
 
-def test_template_reset_stages_database_and_filestore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Guards the contract that template reset stages database and filestore."""
+def test_template_reset_uses_rsync_and_file_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Guards the explicit-template reset copy contract."""
     commands = []
-    monkeypatch.setattr("godoo_cli.runtime.reset.create_database", lambda *_args: None)
+    source = tmp_path / "data" / "filestore" / "template"
+    source.mkdir(parents=True)
+    monkeypatch.setattr("godoo_cli.runtime.reset.create_database", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("godoo_cli.runtime.reset.swap_database", lambda *_args: None)
     monkeypatch.setattr("godoo_cli.runtime.reset.cleanup_database", lambda *_args: None)
     result = reset_runtime_from_template(
-        db_name="runtime",
-        db_template_name="template",
-        odoo_bin_path=Path("/odoo/odoo-bin"),
-        odoo_conf_path=Path("/project/odoo.conf"),
+        connection=DBConnection("", 0, "", "", "runtime"),
         data_dir=tmp_path / "data",
-        runner=lambda command: commands.append(command) or 17,
+        template="template",
+        odoo_conf_path=Path("/project/odoo.conf"),
+        runner=lambda command: commands.append(command) or 0,
+        database_exists_getter=lambda _connection, _name: True,
     )
     assert result == 0
-    assert commands == []
+    assert commands == [
+        ["rsync", "-a", "--delete", f"{source}/", str(tmp_path / "data" / "filestore" / "runtime") + "/"]
+    ]
 
 
 def test_empty_reset_drops_through_connection_and_preserves_filestore_contract(tmp_path: Path):
     """Guards the contract that empty reset drops through connection and preserves filestore contract."""
     commands = []
     result = reset_empty_runtime(
-        db_name="runtime",
-        odoo_bin_path=Path("/odoo/odoo-bin"),
+        connection=DBConnection("", 0, "", "", "runtime"),
         data_dir=tmp_path / "data",
-        runner=lambda command: commands.append(command) or 9,
         database_cleaner=lambda _connection: None,
     )
     assert result == 0
@@ -142,11 +144,12 @@ def test_empty_reset_drops_through_connection_and_preserves_filestore_contract(t
 def test_reset_failed_staged_create_preserves_target_filestore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Guards the contract that reset failed staged create preserves target filestore."""
     data_dir = tmp_path / "data"
+    (data_dir / "filestore" / "template").mkdir(parents=True)
     target = data_dir / "filestore" / "runtime"
     target.mkdir(parents=True)
     (target / "keep").write_text("old")
 
-    def fail_create(*_args: object) -> None:
+    def fail_create(*_args: object, **_kwargs: object) -> None:
         message = "create failed"
         raise RuntimeError(message)
 
@@ -154,33 +157,28 @@ def test_reset_failed_staged_create_preserves_target_filestore(tmp_path: Path, m
     monkeypatch.setattr("godoo_cli.runtime.reset.cleanup_database", lambda *_args: None)
     with pytest.raises(RuntimeError, match="create failed"):
         reset_runtime_from_template(
-            db_name="runtime",
-            db_template_name="template",
-            odoo_bin_path=Path("/odoo/odoo-bin"),
-            data_dir=data_dir,
             connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+            data_dir=data_dir,
+            template="template",
+            database_exists_getter=lambda _connection, _name: True,
         )
     assert (target / "keep").read_text() == "old"
 
 
-def test_reset_missing_template_filestore_replaces_target_with_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Guards the contract that reset missing template filestore replaces target with empty."""
+def test_reset_missing_template_filestore_preserves_target(tmp_path: Path):
+    """Guards the contract that a missing template cannot change the runtime."""
     data_dir = tmp_path / "data"
     target = data_dir / "filestore" / "runtime"
     target.mkdir(parents=True)
     (target / "obsolete").write_text("old")
-    monkeypatch.setattr("godoo_cli.runtime.reset.create_database", lambda *_args: None)
-    monkeypatch.setattr("godoo_cli.runtime.reset.swap_database", lambda *_args: None)
-    monkeypatch.setattr("godoo_cli.runtime.reset.cleanup_database", lambda *_args: None)
-    reset_runtime_from_template(
-        db_name="runtime",
-        db_template_name="template",
-        odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=data_dir,
-        connection=DBConnection("host", 5432, "user", "pass", "runtime"),
-    )
-    assert target.is_dir()
-    assert not list(target.iterdir())
+    with pytest.raises(RuntimeError, match="baseline filestore"):
+        reset_runtime_from_template(
+            connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+            data_dir=data_dir,
+            template="template",
+            database_exists_getter=lambda _connection, _name: True,
+        )
+    assert (target / "obsolete").read_text() == "old"
 
 
 @pytest.mark.parametrize("use_custom_cleaner", [True, False], ids=["custom", "default"])
@@ -199,10 +197,8 @@ def test_drop_failure_restores_filestore(tmp_path: Path, monkeypatch: pytest.Mon
         monkeypatch.setattr("godoo_cli.runtime.reset.drop_database_strict", fail_drop)
 
     result = reset_empty_runtime(
-        db_name="runtime",
-        odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=data_dir,
         connection=DBConnection("host", 5432, "user", "secret", "runtime", sslmode="require"),
+        data_dir=data_dir,
         database_cleaner=fail_drop if use_custom_cleaner else None,
     )
     assert result == 1
@@ -225,13 +221,7 @@ def test_default_drop_success_removes_filestore(tmp_path: Path, monkeypatch: pyt
     )
 
     assert (
-        reset_empty_runtime(
-            db_name="runtime",
-            odoo_bin_path=Path("/odoo/odoo-bin"),
-            data_dir=data_dir,
-            connection=DBConnection("host", 5432, "user", "secret", "runtime"),
-        )
-        == 0
+        reset_empty_runtime(connection=DBConnection("host", 5432, "user", "secret", "runtime"), data_dir=data_dir) == 0
     )
     assert dropped == ["runtime"]
     assert not target.exists()
@@ -285,43 +275,43 @@ def test_dump_replaces_destination_only_after_success(tmp_path: Path, odoo_versi
 
 
 @pytest.mark.parametrize("odoo_version", [19, 20])
-def test_native_archive_staging_and_cleanup_use_the_selected_connection(tmp_path: Path, odoo_version: int):
-    """Guards the contract that native archive staging and cleanup use the selected connection."""
+def test_zip_archive_staging_and_cleanup_use_the_selected_connection(tmp_path: Path, odoo_version: int) -> None:
+    """Use the selected PostgreSQL connection for ZIP restore staging."""
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as runtime_zip:
         runtime_zip.writestr("dump.sql", "select 1;")
     connection = DBConnection("selected-host", 5544, "selected-user", "selected-secret", "runtime", sslmode="require")
     commands: list[list[str]] = []
+    created: list[DBConnection] = []
     cleaned: list[DBConnection] = []
 
     result = load_runtime_archive(
-        db_name="runtime",
+        connection=connection,
+        data_dir=tmp_path / "data",
         archive_path=archive_path,
         odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=tmp_path / "data",
-        connection=connection,
         force=True,
         odoo_version=odoo_version,
         runner=lambda command: commands.append(list(command)) or 13,
+        database_creator=lambda staged, _template: created.append(staged),
         database_cleaner=cleaned.append,
     )
 
     assert result == 13
     command = commands[0]
+    assert command[:3] == ["psql", "--quiet", "--file"]
+    assert Path(command[3]).name == "dump.sql"
     for option, value in (
-        ("--db_host", "selected-host"),
-        ("--db_port", "5544"),
-        ("--db_user", "selected-user"),
-        ("--db_password", "selected-secret"),
-        ("--db_sslmode", "require"),
+        ("--host", "selected-host"),
+        ("--port", "5544"),
+        ("--username", "selected-user"),
     ):
-        assert command.index(option) < command.index("load")
         assert command[command.index(option) + 1] == value
-    assert cleaned == [connection.with_db(command[-2])]
-    assert command[:4] == ["/odoo/odoo-bin", "db", "--data-dir", str(tmp_path / "data")]
-    assert command[-3] == "load"
-    assert command[-2].startswith("godoo_native_restore_")
-    assert command[-1] == str(archive_path)
+    staged_database = command[command.index("--dbname") + 1]
+    assert staged_database.startswith("godoo_native_restore_")
+    assert "selected-secret" not in command
+    assert created == [connection.with_db(staged_database)]
+    assert cleaned == [connection.with_db(staged_database)]
 
 
 def test_pre_upgrade_archive_load_uses_psql_for_odoo_19(tmp_path: Path):
@@ -333,14 +323,12 @@ def test_pre_upgrade_archive_load_uses_psql_for_odoo_19(tmp_path: Path):
     commands: list[list[str]] = []
 
     result = load_runtime_archive(
-        db_name="runtime",
+        connection=connection,
+        data_dir=tmp_path / "data",
         archive_path=archive_path,
         odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=tmp_path / "data",
-        connection=connection,
         force=True,
         odoo_version=19,
-        use_native_db_load=False,
         runner=lambda command: commands.append(list(command)) or 13,
         database_creator=lambda *_args: None,
         database_cleaner=lambda *_args: None,
@@ -351,42 +339,48 @@ def test_pre_upgrade_archive_load_uses_psql_for_odoo_19(tmp_path: Path):
     assert "--file" in commands[0]
 
 
-def test_native_archive_load_clears_inherited_postgres_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Native archive loads must use selected connection PostgreSQL environment."""
+def test_zip_archive_load_clears_inherited_postgres_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run ZIP restore psql with the selected PostgreSQL environment."""
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as runtime_zip:
         runtime_zip.writestr("dump.sql", "select 1;")
-    connection = DBConnection("selected-host", 5544, "selected-user", "selected-secret", "runtime", sslmode="require")
+    connection = DBConnection("", 0, "", "selected-secret", "runtime", sslmode="require")
     for name in ("PGHOST", "PGPORT", "PGUSER", "PGDATABASE", "PGPASSWORD", "PGSSLMODE"):
-        monkeypatch.setenv(name, "hostile")
-    observed: dict[str, object] = {}
-    monkeypatch.setattr(
-        runtime_archive,
-        "run_odoo_command",
-        lambda _command, **kwargs: observed.update(kwargs) or type("R", (), {"returncode": 13})(),
-    )
-    monkeypatch.setattr(runtime_archive, "database_exists", lambda *_args: False)
+        monkeypatch.setenv(name, "inherited")
+    observed: dict[str, str] = {}
+    commands: list[str] = []
+
+    def capture_stream(command: Sequence[str], dump_path: Path, environment: dict[str, str]) -> int:
+        commands.extend(command)
+        assert dump_path.is_file()
+        assert "ON_ERROR_STOP" in Path(environment["PSQLRC"]).read_text()
+        observed.update(environment)
+        return 13
+
+    monkeypatch.setattr(runtime_archive.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(runtime_archive, "_stream_sql_input", capture_stream)
     result = load_runtime_archive(
-        db_name="runtime",
+        connection=connection,
+        data_dir=tmp_path / "data",
         archive_path=archive_path,
         odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=tmp_path / "data",
-        connection=connection,
         force=True,
         odoo_version=19,
         database_creator=lambda *_args: None,
     )
+
     assert result == 13
-    environment = observed["env"]
-    assert isinstance(environment, dict)
+    assert commands[0] == "psql"
+    assert commands[commands.index("--file") + 1] == "-"
     for name in ("PGHOST", "PGPORT", "PGUSER", "PGDATABASE"):
-        assert name not in environment
-    assert environment["PGPASSWORD"] == "selected-secret"
-    assert environment["PGSSLMODE"] == "require"
-    assert environment["PSQLRC"]
+        assert name not in observed
+    assert observed["PGPASSWORD"] == "selected-secret"
+    assert observed["PGSSLMODE"] == "require"
 
 
-def test_native_archive_filestore_failure_rolls_back_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_zip_archive_filestore_failure_rolls_back_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Guards the contract that native archive filestore failure rolls back database."""
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as runtime_zip:
@@ -401,12 +395,13 @@ def test_native_archive_filestore_failure_rolls_back_database(tmp_path: Path, mo
     monkeypatch.setattr(runtime_archive, "_validate_staged_base_version", lambda *_args: None)
     with pytest.raises(OSError, match="disk unavailable"):
         load_runtime_archive(
-            db_name="runtime",
+            connection=DBConnection("", 0, "", "", "runtime"),
+            data_dir=tmp_path / "data",
             archive_path=archive_path,
             odoo_bin_path=Path("/odoo/odoo-bin"),
-            data_dir=tmp_path / "data",
             force=True,
             runner=lambda _command: 0,
+            database_creator=lambda *_args: None,
             database_swapper=lambda _connection, _staged: "retained",
             database_rollback=lambda connection, backup: calls.append(("rollback", connection.db_name, backup)),
             database_cleaner=lambda connection: calls.append(("clean", connection.db_name)),
@@ -417,8 +412,8 @@ def test_native_archive_filestore_failure_rolls_back_database(tmp_path: Path, mo
     assert list((tmp_path / "data" / "filestore").iterdir())
 
 
-def test_native_archive_rollback_failure_retains_staging_and_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Guards native archive cleanup when database rollback is uncertain."""
+def test_zip_archive_rollback_failure_retains_staging_and_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Retain staged ZIP restore data when database rollback is uncertain."""
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as runtime_zip:
         runtime_zip.writestr("dump.sql", "select 1;")
@@ -436,10 +431,10 @@ def test_native_archive_rollback_failure_retains_staging_and_marker(tmp_path: Pa
     data_dir = tmp_path / "data"
     with pytest.raises(RuntimeRestoreError, match="pending marker was retained"):
         load_runtime_archive(
-            db_name="runtime",
+            connection=DBConnection("", 0, "", "", "runtime"),
+            data_dir=data_dir,
             archive_path=archive_path,
             odoo_bin_path=Path("/odoo/odoo-bin"),
-            data_dir=data_dir,
             force=True,
             runner=lambda _command: 0,
             database_creator=lambda *_args: None,
@@ -454,7 +449,7 @@ def test_native_archive_rollback_failure_retains_staging_and_marker(tmp_path: Pa
     assert staged[0].exists()
 
 
-def test_interrupted_native_archive_keeps_target_and_cleans_staging(tmp_path: Path):
+def test_interrupted_zip_archive_keeps_target_and_cleans_staging(tmp_path: Path):
     """Guards the contract that interrupted native archive keeps target and cleans staging."""
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as runtime_zip:
@@ -466,18 +461,20 @@ def test_interrupted_native_archive_keeps_target_and_cleans_staging(tmp_path: Pa
     cleaned = []
 
     def interrupted(command: Sequence[str]) -> int:
-        staged = data_dir / "filestore" / command[-2]
+        staged_database = command[command.index("--dbname") + 1]
+        staged = data_dir / "filestore" / staged_database
         staged.mkdir()
         (staged / "partial").write_text("partial")
         return 143
 
     result = load_runtime_archive(
-        db_name="runtime",
+        connection=DBConnection("", 0, "", "", "runtime"),
+        data_dir=data_dir,
         archive_path=archive_path,
         odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=data_dir,
         force=True,
         runner=interrupted,
+        database_creator=lambda *_args: None,
         database_swapper=lambda *_args: pytest.fail("interrupted restore must not replace target"),
         database_cleaner=lambda connection: cleaned.append(connection.db_name),
     )
@@ -496,10 +493,10 @@ def test_invalid_archive_fails_before_forced_load(tmp_path: Path):
 
     with pytest.raises(RuntimeRestoreError, match="not a valid ZIP"):
         load_runtime_archive(
-            db_name="runtime",
+            connection=DBConnection("", 0, "", "", "runtime"),
+            data_dir=tmp_path / "data",
             archive_path=archive_path,
             odoo_bin_path=Path("/odoo/odoo-bin"),
-            data_dir=tmp_path / "data",
             force=True,
             runner=lambda command: calls.append(list(command)) or 0,
         )
@@ -507,8 +504,8 @@ def test_invalid_archive_fails_before_forced_load(tmp_path: Path):
     assert calls == []
 
 
-def test_native_archive_existing_target_fails_before_staging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Reject a non-forced replacement before Odoo creates a staging database."""
+def test_zip_archive_existing_target_fails_before_staging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Reject a non-forced replacement before creating a staging database."""
     archive_path = tmp_path / "runtime.zip"
     with zipfile.ZipFile(archive_path, "w") as runtime_zip:
         runtime_zip.writestr("dump.sql", "select 1;")
@@ -521,11 +518,10 @@ def test_native_archive_existing_target_fails_before_staging(tmp_path: Path, mon
 
     with pytest.raises(RuntimeRestoreError, match="already exists"):
         load_runtime_archive(
-            db_name="runtime",
+            connection=selected,
+            data_dir=tmp_path / "data",
             archive_path=archive_path,
             odoo_bin_path=Path("/odoo/odoo-bin"),
-            data_dir=tmp_path / "data",
-            connection=selected,
             runner=lambda command: calls.append(list(command)) or 0,
         )
 
@@ -533,9 +529,7 @@ def test_native_archive_existing_target_fails_before_staging(tmp_path: Path, mon
     assert checked == [selected.with_db("postgres")]
 
 
-def test_load_database_reports_invalid_native_archive_without_a_traceback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_load_database_reports_invalid_archive_without_a_traceback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Guards the contract that load database reports invalid native archive without a traceback."""
     archive_path = tmp_path / "invalid.zip"
     archive_path.write_bytes(b"not a zip")
@@ -574,8 +568,16 @@ def test_load_cli_uses_one_connection_precedence_for_both_archive_formats(
     )
     observed: dict[str, object] = {}
     monkeypatch.setattr(archive, "require_cli_odoo_version", lambda *_args: ODOO19)
-    monkeypatch.setattr(archive, "load_runtime_archive", lambda **kwargs: observed.update(kwargs) or 0)
-    monkeypatch.setattr(archive, "load_legacy_runtime_dump", lambda **kwargs: observed.update(kwargs))
+    monkeypatch.setattr(
+        archive,
+        "load_runtime_archive",
+        lambda **kwargs: observed.update(**kwargs) or 0,
+    )
+    monkeypatch.setattr(
+        archive,
+        "load_legacy_runtime_dump",
+        lambda **kwargs: observed.update(**kwargs),
+    )
     monkeypatch.chdir(tmp_path)
     for name in (
         "ODOO_DB_HOST",
@@ -642,16 +644,16 @@ def test_load_legacy_dump_selects_the_single_legacy_filestore(tmp_path: Path, mo
     dump.write_bytes(b"custom dump")
     observed: dict[str, object] = {}
 
-    monkeypatch.setattr(runtime_archive, "restore_custom_runtime", lambda **kwargs: observed.update(kwargs))
+    monkeypatch.setattr(
+        runtime_archive,
+        "restore_custom_runtime",
+        lambda **kwargs: observed.update(**kwargs),
+    )
 
     load_legacy_runtime_dump(
-        db_name="runtime",
-        source_folder=source,
+        connection=DBConnection("db", 5432, "odoo", "secret", "runtime"),
         data_dir=tmp_path / "data",
-        db_host="db",
-        db_port=5432,
-        db_user="odoo",
-        db_password="secret",
+        source_folder=source,
         db_template="template0",
     )
 
@@ -667,13 +669,9 @@ def test_load_legacy_dump_rejects_ambiguous_filestores(tmp_path: Path):
 
     with pytest.raises(RuntimeRestoreError, match="unambiguous filestore"):
         load_legacy_runtime_dump(
-            db_name="runtime",
-            source_folder=source,
+            connection=DBConnection("", 0, "odoo", "", "runtime"),
             data_dir=tmp_path / "data",
-            db_host="",
-            db_port=0,
-            db_user="odoo",
-            db_password="",
+            source_folder=source,
             db_template="template0",
         )
 

@@ -13,9 +13,9 @@ from ...runtime.archive import (
     dump_runtime_archive,
     load_legacy_runtime_dump,
     load_runtime_archive,
+    prepare_archive_with_original_filestore,
 )
 from ...runtime.odoo import SUPPORTED_ODOO_VERSION_SPECIFIER
-from ...runtime.prepare import validate_original_filestore_source
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_development_odoo_main_path
 
@@ -62,6 +62,7 @@ def load_database(
     db_password: Annotated[str | None, CLI.database.db_password] = None,
     force: Annotated[bool, typer.Option("--force", envvar="GODOO_DB_LOAD_FORCE")] = False,
     db_template: Annotated[str, CLI.database.db_template_name] = "template0",
+    keep_reset_baseline: Annotated[bool, CLI.database.keep_reset_baseline] = False,
     original_filestore: Annotated[
         Path | None,
         typer.Option("--original-filestore", envvar="GODOO_ORIGINAL_FILESTORE"),
@@ -69,7 +70,7 @@ def load_database(
 ) -> int:
     """Load an archive through staged promotion."""
     try:
-        validated_archive = validate_original_filestore_source(archive_path, original_filestore)
+        validated_archive = prepare_archive_with_original_filestore(archive_path, original_filestore)
     except (RuntimeRestoreError, OSError, ValueError) as error:
         raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
     try:
@@ -83,26 +84,26 @@ def load_database(
             if not force:
                 return CLI.returner(2)
             load_legacy_runtime_dump(
-                db_name=db_name,
-                source_folder=archive_path,
-                data_dir=data_dir,
-                db_template=db_template,
                 connection=connection,
+                data_dir=data_dir,
+                source_folder=archive_path,
+                db_template=db_template,
                 force=force,
+                keep_reset_baseline=keep_reset_baseline,
             )
             return CLI.returner(0)
         odoo_main_path = resolve_development_odoo_main_path(odoo_main_path)
         version = require_cli_odoo_version(odoo_main_path, SUPPORTED_ODOO_VERSION_SPECIFIER)
         return CLI.returner(
             load_runtime_archive(
-                db_name=db_name,
+                connection=connection,
+                data_dir=data_dir,
                 archive_path=archive_path,
                 odoo_bin_path=odoo_main_path / "odoo-bin",
                 odoo_conf_path=odoo_conf_path,
-                data_dir=data_dir,
                 force=force,
+                keep_reset_baseline=keep_reset_baseline,
                 odoo_version=version.major,
-                connection=connection,
                 original_filestore=original_filestore,
                 _validated_archive=validated_archive,
             )
@@ -110,3 +111,6 @@ def load_database(
     except (RuntimeRestoreError, OSError, ValueError, psycopg2.Error):
         LOGGER.exception("Archive load failed")
         return CLI.returner(1)
+    finally:
+        if validated_archive is not None:
+            validated_archive.cleanup()

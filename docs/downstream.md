@@ -117,6 +117,5 @@ Downstream still owns Compose mounts, service ordering, and project shell script
 banner when `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, independently of development mode.
 
 Selected inputs and dependency checks that can run before restore fail before mutation. Dependencies discovered only
-from the restored database are checked afterward; a failure leaves the bound `after-restore` phase pending. Repair the
-dependency and rerun the same selection to resume the pending phase. Finish any pending init started with direct flags
-using those original flags before adopting `--migration-dir`.
+from the restored database are checked afterward; a failure leaves init incomplete. Repair the dependency and rerun
+init. Hooks and reconciliation run again, so project hooks must be safe to rerun.

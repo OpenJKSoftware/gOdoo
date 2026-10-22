@@ -22,9 +22,9 @@ flowchart TD
     RestoreHooks --> Reconcile
     BootstrapHooks --> Reconcile
     Reconcile --> Finalize[after-reconcile hooks]
-    Reconcile -->|failure| Pending[Keep marker; retry saved phase]
+    Reconcile -->|failure| Pending[Keep marker; rerun init]
     Finalize -->|success| Ready[Clear marker; init exits]
-    Finalize -->|failure| Pending[Keep marker; resume saved phase]
+    Finalize -->|failure| Pending[Keep marker; rerun init]
     Ready -->|service_completed_successfully| Launch[runtime launch]
 ```
 
@@ -42,6 +42,9 @@ Set `GODOO_DUMP_PATH` or pass `--dump-path` to a mounted dataset directory. The 
 original source filestore at `odoo_filestore/filestore/odoo`. Init restores that plain pair into the configured runtime
 database.
 
+For a custom-format `odoo.dump`, set `GODOO_RESTORE_JOBS` or pass `--restore-jobs` to control `pg_restore` workers. It
+defaults to one. ZIP dataset restores use `psql` and cannot parallelize this way.
+
 With `--migration-dir`, init instead selects `upgraded.zip` from the same directory and overlays it on the original
 filestore. `--seed` remains authoritative; when it selects that paired `upgraded.zip`, init infers the original
 filestore unless `--original-filestore` names one explicitly. Invalid dumps, ZIPs, or required filestores fail before
@@ -55,24 +58,24 @@ godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
 - Launch checks the Odoo version, pending recovery, and process dependencies before starting the server.
 - If `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, launch applies the bundled banner script first, in
   either runtime mode. Unset or blank banner settings skip this update. A failed update prevents server startup.
-- Runtime commands require Odoo 16 or newer. Archive commands default to native Odoo commands on 19 or newer and
-  PostgreSQL tools on 16–18; restore options may require SQL staging. Archive validation reports bytes checked, with
-  updates at most every five seconds plus final measurements. Phases without measured progress report elapsed time every
-  ten seconds. Linux restores try filesystem cloning first; when cloning is unavailable, rsync writes its progress and
-  diagnostics directly to stdout when present, otherwise the existing Python copy fallback reports elapsed phases. SQL
-  staging sends native `pv` progress to stderr when present and reports bytes sent otherwise. SQL restore discards
-  query-result tables while keeping PostgreSQL diagnostics on stderr. Input reaching 100% means the dump has been sent;
-  PostgreSQL may still be working. The original-filestore copy and database restore report start and completion or
-  failure.
+- Runtime commands require Odoo 16 or newer. Backups use native Odoo commands on 19 or newer and PostgreSQL tools on
+  16–18. ZIP restores stage SQL and filestore files before promotion; `runtime init` runs Odoo afterward. Archive
+  validation reports bytes checked, with updates at most every five seconds plus final measurements. Phases without
+  measured progress report elapsed time every ten seconds. Linux restores try filesystem cloning first; when cloning is
+  unavailable, rsync writes its progress and diagnostics directly to stdout when present, otherwise the existing Python
+  copy fallback reports elapsed phases. SQL staging sends native `pv` progress to stderr when present and reports bytes
+  sent otherwise. SQL restore discards query-result tables while keeping PostgreSQL diagnostics on stderr. Input
+  reaching 100% means the dump has been sent; PostgreSQL may still be working. The original-filestore copy and database
+  restore report start and completion or failure.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.
 - Hook directories run in configured order; each directory's `*.py` files run lexically, one Odoo shell session per
   file. Phases are at-least-once, so scripts must be safe to rerun. Contents may change at a selected path.
 
-Dependency installation, custom dump checks and restores, strict filestore clones, and the official upgrade client
-report elapsed time every ten seconds. Child output, including interactive shells and the running Odoo server, keeps its
-native streams.
+Dependency installation, custom dump checks and restores, filestore copies, and the official upgrade client report
+elapsed time every ten seconds. Child output, including interactive shells and the running Odoo server, keeps its native
+streams.
 
 ## Migration directories
 
@@ -94,8 +97,8 @@ explicit native seed ZIP and a nonempty original filestore directory. Demo data 
 Directory names and files, module lists, hook entrypoints, selected roots, seed and filestore inputs, the configured
 runtime target, and dependencies known before restore are checked before mutation. Init checks dependencies again after
 restoring the seed, when restored database state may reveal additional requirements. If that check fails, the restore
-has already completed and the existing bound plan remains pending at `after-restore`. Fix the dependency and retry the
-same inputs; init resumes that phase.
+has already completed and init remains incomplete. Fix the dependency and rerun init; the existing database is kept, and
+initialization hooks and reconciliation run again.
 
 | Transition input               | Init behavior                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
@@ -115,13 +118,7 @@ cannot be combined with migration selection. Unset `GODOO_RECONCILE_UPDATE`, `GO
 nonempty values are rejected even when a CLI option would override them. Use explicit CLI options for additional upgrade
 roots and final project hooks.
 
-The existing pending plan binds the selected directory, target, module lists, roots, pre-upgrade script, and hook
-entrypoints, including inputs skipped by an empty update list. Resume the same selection after a failure. Script
-contents retain the existing at-least-once retry policy. Ordinary init without a migration directory keeps its direct
-flags and environment defaults.
-
-An already bound pending plan started with direct init flags must be resumed with those original flags before switching
-to migration-directory selection.
+Ordinary init without a migration directory keeps its direct flags and environment defaults.
 
 ## Official and major-version upgrades
 
@@ -143,15 +140,14 @@ godoo upgrade test -i ORIGINAL_DUMP -t 19.0 -c CONTRACT -x
 - Archive and source-tree checks happen before database mutation. Without this option, normal ZIP restore behavior is
   unchanged.
 
-The option or `GODOO_ORIGINAL_FILESTORE` works with `godoo db load`, `godoo db prepare`, and
-`godoo runtime init --seed`.
+The option or `GODOO_ORIGINAL_FILESTORE` works with `godoo db restore` and `godoo runtime init --seed`.
 
 An initialized database from an older Odoo major fails the runtime-version guard before preparation or reconciliation;
 `--seed` cannot replace it. Stop the app and other database writers, then load the upgraded pair and initialize:
 
 ```bash
 # Stop downstream app services and other database writers first.
-godoo db load RESULT.zip --original-filestore /path/to/filestore/SOURCE_DB --force \
+godoo db restore RESULT.zip --original-filestore /path/to/filestore/SOURCE_DB --force \
   && godoo runtime init --update your_modules --pre-upgrade-script /path/to/migrate.py \
   && godoo runtime launch
 ```
@@ -172,8 +168,28 @@ flowchart TD
     Promote -->|interrupted| Recovery[Inspect pending promotion marker]
     Promote -->|complete| Init[Init: pre-upgrade, reconcile, hooks]
     Init -->|success| Launch[Launch Odoo]
-    Init -->|failure| Retry[Keep marker; next init resumes saved phase]
+    Init -->|failure| Retry[Keep marker; rerun init]
 ```
+
+## Reset a development runtime
+
+Development Compose enables `GODOO_KEEP_RESET_BASELINE`. Each successful restore saves an independent database and
+filestore pair before initialization, migrations, and hooks. The equivalent option is `--keep-reset-baseline` on
+`godoo runtime init` or `godoo db restore`; it is off by default outside development. A fresh restore replaces the saved
+baseline. Bootstrap alone does not create one.
+
+- `make reset` stops the stack, starts PostgreSQL for the reset, and restores the saved baseline. Containers and volumes
+  remain, and Odoo stays stopped. Run `make dev` afterward to initialize and launch this repository's development stack.
+- `make reset-hard` removes the containers and volumes, including the saved baseline.
+- `godoo db reset` performs the database and filestore operation; callers must stop Odoo writers first. `--db-template`
+  can select another database with a matching filestore. `--empty` retains its existing drop-only behavior.
+
+Reset copies the baseline database and uses rsync to restore its filestore, deleting files absent from the baseline. It
+uses PostgreSQL's faster copy method when available. The baseline remains unchanged for subsequent resets.
+
+An interrupted reset may leave the active filestore incomplete. Its pending marker blocks initialization; rerun
+`make reset` to restore the pair. A missing or incomplete baseline requires a fresh restore before reset can proceed.
+After a successful reset, the next initialization reruns restore hooks, reconciliation, and migration hooks.
 
 ## Status and recovery
 
@@ -197,18 +213,17 @@ provenance does not establish release identity. It does not write runtime state 
 - Clones lock source and target in order; nested restore calls reuse held locks.
 - Lock files remain after release; do not remove them while a process may wait.
 
-### Pending initialization
+### Incomplete initialization
 
-- `.godoo/pending-lifecycle/` records the target, modules, ordered addon paths, artifact identities, upgrade roots, and
-  hook entrypoints. A changed selected archive stops init before callbacks.
-- Plan identity does not prove database origin or detect edits inside nested filestore files.
-- Bound markers without addon paths fail the plan check.
-- Only schema-one markers may use `--adopt-pending-plan`, after recovery inputs are checked. Adoption preserves the
-  phase, has no environment fallback, and cannot rewrite a bound plan.
-- `db prepare` tries CoW clone, PostgreSQL restore, native Odoo restore, then bootstrap; `--strategy` can require one.
-- Its schema-three handoff records input identities, strategy, outcome, and pending phase. Resume incomplete preparation
-  with the same inputs.
-- A completed handoff binds to init after target checks; the original inputs are no longer needed.
+Init writes a marker under `.godoo/pending-lifecycle/` before changing the runtime and removes it after success. Status
+reports an incomplete runtime and launch refuses to start while the marker exists.
+
+After fixing a failure, rerun init. It keeps an initialized database, reruns the bootstrap or restore hooks associated
+with the incomplete attempt, then reruns reconciliation and final hooks. Hooks must be safe to run again. Init does not
+resume a saved phase or compare the new selection with a persisted plan.
+
+Resetting to the saved baseline marks the runtime as restored, so the next init runs restore hooks again. Older recovery
+markers require restoring or resetting the database and filestore before initialization.
 
 ### Interrupted restore
 

@@ -9,11 +9,10 @@ import psycopg2
 import typer
 
 from ...models import GodooConfig
-from ...runtime.archive import _validate_native_runtime_archive, load_runtime_archive
+from ...runtime.archive import load_runtime_archive, prepare_archive_with_original_filestore
 from ...runtime.dataset import resolve_runtime_dataset
 from ...runtime.lifecycle import (
     LifecycleBootstrapError,
-    build_runtime_lifecycle_plan,
     deployment_init,
     ensure_runtime,
     preflight_reconcile_dependencies,
@@ -32,7 +31,6 @@ from ...runtime.odoo import (
     set_report_url,
     x_sendfile_enabled,
 )
-from ...runtime.prepare import validate_original_filestore_source
 from ...runtime.restore import restore_custom_runtime
 from ..common import CommonCLI
 from ..configuration import resolve_command_config
@@ -114,6 +112,16 @@ def deployment_init_odoo_runtime(  # noqa: C901
             help="Fixed dataset directory containing odoo.dump and odoo_filestore.",
         ),
     ] = None,
+    keep_reset_baseline: Annotated[bool, CLI.database.keep_reset_baseline] = False,
+    restore_jobs: Annotated[
+        int,
+        typer.Option(
+            "--restore-jobs",
+            envvar="GODOO_RESTORE_JOBS",
+            min=1,
+            help="Parallel pg_restore jobs for custom-format dataset imports.",
+        ),
+    ] = 1,
     migration_dir: Annotated[
         Path | None,
         typer.Option(
@@ -172,13 +180,6 @@ def deployment_init_odoo_runtime(  # noqa: C901
             help="Require the configured Odoo runtime to match this major version.",
         ),
     ] = None,
-    adopt_pending_plan: Annotated[
-        bool,
-        typer.Option(
-            "--adopt-pending-plan",
-            help="Bind a verified unbound legacy pending marker to this initialization plan once.",
-        ),
-    ] = False,
     install_base_modules: Annotated[
         bool,
         typer.Option(
@@ -292,46 +293,16 @@ def deployment_init_odoo_runtime(  # noqa: C901
         raise typer.BadParameter(message, param_hint="--expected-odoo-major")
     _validate_pre_upgrade_options(seed, pre_upgrade_scripts, update_modules, after_restore_dirs)
     validated_archive = None
-    if dataset is None or dataset.kind == "archive":
-        try:
-            validated_archive = validate_original_filestore_source(seed, original_filestore)
-        except (RuntimeError, OSError, ValueError) as error:
-            raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
-    if seed is not None and (dataset is None or dataset.kind == "archive") and validated_archive is None:
-        try:
-            validated_archive = _validate_native_runtime_archive(seed)
-        except (RuntimeError, OSError, ValueError) as error:
-            raise typer.BadParameter(str(error), param_hint="--seed") from error
     if x_sendfile_enabled(config, x_sendfile) and not report_url:
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")
     runtime_seed = seed
-
-    try:
-        lifecycle_plan = build_runtime_lifecycle_plan(
-            config,
-            runtime_version=runtime_version.raw,
-            expected_odoo_major=expected_odoo_major,
-            seed=runtime_seed,
-            seed_requested=runtime_seed is not None,
-            original_filestore=original_filestore,
-            update_modules=update_modules,
-            install_modules=install_modules,
-            upgrade_paths=upgrade_path,
-            pre_upgrade_scripts=pre_upgrade_scripts,
-            after_bootstrap_dirs=after_bootstrap_dirs,
-            after_restore_dirs=after_restore_dirs,
-            after_reconcile_dirs=after_reconcile_dirs,
-            install_base_modules=install_base_modules,
-            install_workspace_modules=install_workspace_modules,
-            odoo_demo=odoo_demo,
-        )
-    except (OSError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
-    if migration is not None:
-        identity = lifecycle_plan["identity"]
-        assert isinstance(identity, dict)
-        identity["migration"] = migration.plan_identity()
+    validated_archive = None
+    if dataset is None or dataset.kind == "archive":
+        try:
+            validated_archive = prepare_archive_with_original_filestore(runtime_seed, original_filestore)
+        except (OSError, ValueError) as error:
+            raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
 
     def already_prepared(_conf: GodooConfig) -> None:
         """Skip preparation already completed by init."""
@@ -370,10 +341,11 @@ def deployment_init_odoo_runtime(  # noqa: C901
                 lifecycle_owner="init",
                 target_major=runtime_version.major,
                 expected_dump_identity=dataset.dump_identity,
+                keep_reset_baseline=keep_reset_baseline,
+                restore_jobs=restore_jobs,
             )
             return
         result = load_runtime_archive(
-            db_name=conf.db_name,
             archive_path=runtime_seed,
             odoo_bin_path=conf.odoo_install_folder / "odoo-bin",
             odoo_conf_path=conf.odoo_conf_path,
@@ -384,7 +356,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
             _validated_archive=validated_archive,
             lifecycle_owner="init",
             require_same_archive_identity=True,
-            use_native_db_load=False if pre_upgrade_scripts else None,
+            keep_reset_baseline=keep_reset_baseline,
         )
         if result:
             message = f"Odoo seed archive load failed for runtime '{conf.db_name}' (exit code {result})"
@@ -426,8 +398,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
             after_restore_dirs=after_restore_dirs,
             after_reconcile_dirs=after_reconcile_dirs,
             hook_runner=run_lifecycle_hook,
-            lifecycle_plan=lifecycle_plan,
-            adopt_legacy_plan=adopt_pending_plan,
+            keep_reset_baseline=keep_reset_baseline,
         )
         if result == 0 and report_url:
             set_report_url(config, report_url)

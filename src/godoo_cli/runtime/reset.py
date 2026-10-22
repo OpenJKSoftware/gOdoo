@@ -2,26 +2,33 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import shutil
+import subprocess
 import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..database.connection import DBConnection
-from .locks import begin_runtime_restore, retire_runtime_lifecycle, runtime_data_directory, runtime_locks
-from .odoo import run_odoo_command
+from ..database.state import database_exists
+from .baseline import baseline_database_name
+from .locks import (
+    begin_runtime_lifecycle,
+    begin_runtime_restore,
+    retire_runtime_lifecycle,
+    runtime_data_directory,
+    runtime_locks,
+    runtime_restore_marker,
+)
 from .promotion import (
     cleanup_database,
-    complete_runtime_promotion,
     create_database,
     drop_database_strict,
-    replace_filestore,
-    rollback_database_swap,
     runtime_filestore_path,
     swap_database,
-    temporary_database_name,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -29,10 +36,9 @@ LOGGER = logging.getLogger(__name__)
 CommandRunner = Callable[[Sequence[str]], int]
 
 
-def _run_odoo_db(command: Sequence[str]) -> int:
-    """Run an Odoo database command without invoking a shell."""
-    LOGGER.info("Running Odoo database command: %s", " ".join(command))
-    return run_odoo_command(command).returncode
+def _run_rsync(command: Sequence[str]) -> int:
+    """Synchronize reset filestore content without invoking Odoo."""
+    return subprocess.run(command, check=False).returncode
 
 
 def odoo_db_command(
@@ -65,79 +71,109 @@ def odoo_db_command(
     return command
 
 
+def _validate_reset_retry(marker: Path, db_name: str, staged_database: str) -> None:
+    """Require an existing restore marker to belong to this reset."""
+    try:
+        state = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        message = f"Reset for '{db_name}' has an unreadable pending restore marker."
+        raise RuntimeError(message) from error
+    if not isinstance(state, dict) or (state.get("database"), state.get("staged_database")) != (
+        db_name,
+        staged_database,
+    ):
+        message = f"Reset for '{db_name}' has an unrelated pending restore marker."
+        raise RuntimeError(message)
+
+
 def reset_runtime_from_template(
     *,
-    db_name: str,
-    db_template_name: str,
-    odoo_bin_path: Path,
+    connection: DBConnection,
+    data_dir: Path,
+    template: str = "",
     odoo_conf_path: Path | None = None,
-    data_dir: Path | None = None,
-    runner: CommandRunner = _run_odoo_db,
-    odoo_version: int | None = None,
-    connection: DBConnection | None = None,
-    **_: object,
+    runner: CommandRunner = _run_rsync,
+    database_exists_getter: Callable[[DBConnection, str], bool] = database_exists,
 ) -> int:
-    """Replace a database and filestore from a template through staging."""
-    del odoo_bin_path, runner, odoo_version
-    with runtime_locks(data_dir, db_name, db_template_name, odoo_conf_path=odoo_conf_path):
-        if db_name == db_template_name:
-            LOGGER.error("Template and target database names must differ.")
-            return 2
-        runtime_data = runtime_data_directory(data_dir, odoo_conf_path)
-        target_connection = connection or DBConnection.from_odoo_config(db_name, odoo_conf_path)
-        target = runtime_filestore_path(runtime_data, db_name)
-        source = runtime_filestore_path(runtime_data, db_template_name)
-        stage = target.with_name(f".{target.name}.reset-{uuid.uuid4().hex}")
-        staged_database = temporary_database_name("reset")
-        created = False
-        marker = None
-        try:
-            if source.is_dir():
-                shutil.copytree(source, stage)
-            else:
-                stage.mkdir(parents=True)
-            create_database(target_connection.with_db(staged_database), db_template_name)
-            created = True
-            marker = begin_runtime_restore(runtime_data, db_name, staged_database)
-            backup = swap_database(target_connection, staged_database)
-            created = False
-            complete_runtime_promotion(
-                connection=target_connection,
-                marker=marker,
-                backup_database=backup,
-                staged_filestore=stage,
-                target_filestore=target,
-                database_cleaner=cleanup_database,
-                database_rollback=rollback_database_swap,
-                filestore_replacer=replace_filestore,
+    """Reset a runtime from a saved baseline or an explicit database template."""
+    target_connection = connection
+    db_name = target_connection.db_name
+    runtime_data = runtime_data_directory(data_dir, odoo_conf_path)
+    template = template or baseline_database_name(db_name)
+    if template == db_name:
+        LOGGER.error("Template and target database names must differ.")
+        return 2
+    target_filestore = runtime_filestore_path(runtime_data, db_name)
+    source = runtime_filestore_path(runtime_data, template)
+    staged_database = f"godoo_reset_{hashlib.sha256(db_name.encode()).hexdigest()[:32]}"
+
+    with runtime_locks(runtime_data, db_name, template):
+        baseline_marker = runtime_restore_marker(runtime_data, template)
+        if baseline_marker.exists():
+            message = (
+                f"Reset baseline '{template}' has an unfinished promotion. "
+                "Restore a fresh runtime with --keep-reset-baseline before resetting."
             )
-            return 0
-        finally:
-            if created:
-                cleanup_database(target_connection.with_db(staged_database))
-            if stage.exists() and (marker is None or not marker.exists()):
-                shutil.rmtree(stage, ignore_errors=True)
-            elif stage.exists():
-                LOGGER.warning("Retaining reset staging directory %s because promotion remains pending", stage)
+            raise RuntimeError(message)
+        if not database_exists_getter(target_connection.with_db("postgres"), template):
+            message = (
+                f"Reset baseline database '{template}' is missing. "
+                "Restore a fresh runtime with --keep-reset-baseline before resetting."
+            )
+            raise RuntimeError(message)
+        if not source.is_dir():
+            message = (
+                f"Reset baseline filestore '{source}' is missing. "
+                "Restore a fresh runtime with --keep-reset-baseline before resetting."
+            )
+            raise RuntimeError(message)
+
+        marker = runtime_restore_marker(runtime_data, db_name)
+        if marker.exists():
+            _validate_reset_retry(marker, db_name, staged_database)
+
+        create_database(target_connection.with_db(staged_database), template, prefer_cow=True)
+        if not marker.exists():
+            marker = begin_runtime_restore(runtime_data, db_name, staged_database)
+
+        target_filestore.mkdir(parents=True, exist_ok=True)
+        command = ["rsync", "-a", "--delete", f"{source}/", f"{target_filestore}/"]
+        try:
+            result = runner(command)
+        except OSError as error:
+            message = (
+                f"Could not reset filestore from baseline '{template}': {error}. "
+                "The pending restore marker was retained; run reset again to retry."
+            )
+            raise RuntimeError(message) from error
+        if result:
+            message = (
+                f"Could not reset filestore from baseline '{template}'. "
+                "The pending restore marker was retained; run reset again to retry."
+            )
+            raise RuntimeError(message)
+
+        backup = swap_database(target_connection, staged_database)
+        if backup is not None:
+            cleanup_database(target_connection.with_db(backup))
+        retire_runtime_lifecycle(runtime_data, db_name)
+        begin_runtime_lifecycle(runtime_data, db_name, outcome="restored")
+        marker.unlink()
+        return 0
 
 
 def reset_empty_runtime(
     *,
-    db_name: str,
-    odoo_bin_path: Path,
+    connection: DBConnection,
+    data_dir: Path,
     odoo_conf_path: Path | None = None,
-    data_dir: Path | None = None,
-    runner: CommandRunner = _run_odoo_db,
-    odoo_version: int | None = None,
-    connection: DBConnection | None = None,
     database_cleaner: Callable[[DBConnection], None] | None = None,
-    **_: object,
 ) -> int:
     """Drop a database and its filestore as one recoverable operation."""
-    del odoo_bin_path, runner, odoo_version
+    target_connection = connection
+    db_name = target_connection.db_name
     # Move the filestore aside before dropping the database so failure can restore the prior pair.
     with runtime_locks(data_dir, db_name, odoo_conf_path=odoo_conf_path):
-        target_connection = connection or DBConnection.from_odoo_config(db_name, odoo_conf_path)
         runtime_data = runtime_data_directory(data_dir, odoo_conf_path)
         filestore = runtime_filestore_path(runtime_data, db_name)
         backup = filestore.with_name(f".{db_name}.before-drop-{uuid.uuid4().hex}") if filestore else None

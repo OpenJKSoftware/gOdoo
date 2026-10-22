@@ -20,17 +20,16 @@ import godoo_cli.runtime.archive as runtime_archive
 from godoo_cli.database.connection import DBConnection
 from godoo_cli.runtime.archive import (
     RuntimeRestoreError,
-    _overlay_filestore,
     _ProgressPhase,
     _reuse_or_validate_archive,
     _run_postgres_command,
     _validate_native_runtime_archive,
     _validate_staged_base_version,
     load_runtime_archive,
+    prepare_archive_with_original_filestore,
     validate_native_runtime_archive,
 )
 from godoo_cli.runtime.filestore import _copy_command, _copy_with_rsync, copy_filestore
-from godoo_cli.runtime.prepare import validate_original_filestore_source
 
 
 def _fake_progress_tools(
@@ -307,25 +306,6 @@ def test_failed_rsync_discards_partial_stage_before_python_fallback(
     assert not (destination / "stale").exists()
 
 
-def test_archive_overlay_retains_original_and_zip_wins_collisions(tmp_path: Path) -> None:
-    destination = tmp_path / "stage"
-    destination.mkdir()
-    (destination / "retained").write_text("original")
-    (destination / "collision").write_text("original")
-    archive_path = tmp_path / "upgraded.zip"
-    with zipfile.ZipFile(archive_path, "w") as archive:
-        archive.writestr("dump.sql", "select 1")
-        archive.writestr("filestore/collision", "ZIP version")
-        archive.writestr("filestore/new/nested", "new attachment")
-
-    with zipfile.ZipFile(archive_path) as archive:
-        _overlay_filestore(archive, destination)
-
-    assert (destination / "retained").read_text() == "original"
-    assert (destination / "collision").read_text() == "ZIP version"
-    assert (destination / "new/nested").read_text() == "new attachment"
-
-
 def test_archive_rejects_traversing_filestore_member(tmp_path: Path) -> None:
     archive_path = tmp_path / "bad.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
@@ -336,47 +316,64 @@ def test_archive_rejects_traversing_filestore_member(tmp_path: Path) -> None:
         validate_native_runtime_archive(archive_path)
 
 
+@pytest.mark.parametrize("extract_during_validation", [True, False])
 def test_original_filestore_restore_uses_staged_sql_and_overlay(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extract_during_validation: bool
 ) -> None:
     data_dir = tmp_path / "data"
     source = tmp_path / "original"
     source.mkdir()
     (source / "retained").write_text("old")
     (source / "collision").write_text("old")
+    (source / "replaced-directory").write_text("old")
     archive_path = tmp_path / "upgraded.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr("dump.sql", "select 1")
         archive.writestr("filestore/collision", "new")
         archive.writestr("filestore/addition", "added")
+        archive.writestr("filestore/replaced-directory/nested", "new")
     original_open = zipfile.ZipFile.open
-    crc_reads = 0
+    dump_reads = 0
 
-    def count_crc_reads(archive: zipfile.ZipFile, name: str | zipfile.ZipInfo, *args: object, **kwargs: object):
-        nonlocal crc_reads
+    def count_dump_reads(archive: zipfile.ZipFile, name: str | zipfile.ZipInfo, *args: object, **kwargs: object):
+        nonlocal dump_reads
         if getattr(name, "filename", name) == "dump.sql":
-            crc_reads += 1
+            dump_reads += 1
         return original_open(archive, name, *args, **kwargs)
 
-    monkeypatch.setattr(zipfile.ZipFile, "open", count_crc_reads)
+    monkeypatch.setattr(zipfile.ZipFile, "open", count_dump_reads)
 
     monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)
     monkeypatch.setattr("godoo_cli.runtime.archive._validate_staged_base_version", lambda *_args: None)
     commands: list[list[str]] = []
+    saved: list[Path] = []
+
+    def save_baseline(**kwargs: object) -> None:
+        source_filestore = kwargs["source_filestore"]
+        assert isinstance(source_filestore, Path)
+        assert (source_filestore / "collision").read_text() == "new"
+        assert (source_filestore / "addition").read_text() == "added"
+        assert not (data_dir / "filestore" / "runtime").exists()
+        saved.append(source_filestore)
+
+    monkeypatch.setattr("godoo_cli.runtime.archive.save_runtime_baseline", save_baseline)
     connection = DBConnection("host", 5432, "user", "pass", "runtime")
-    validated_archive = validate_original_filestore_source(archive_path, source)
+    validated_archive = (
+        prepare_archive_with_original_filestore(archive_path, source)
+        if extract_during_validation
+        else _reuse_or_validate_archive(archive_path, None)
+    )
     result = load_runtime_archive(
-        db_name="runtime",
+        connection=connection,
+        data_dir=data_dir,
         archive_path=archive_path,
         original_filestore=source,
         odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=data_dir,
-        connection=connection,
         force=True,
+        keep_reset_baseline=True,
         odoo_version=19,
-        use_native_db_load=True,
-        _validated_archive=validated_archive,
         runner=lambda command: commands.append(list(command)) or 0,
+        _validated_archive=validated_archive,
         database_creator=lambda *_args: None,
         database_swapper=lambda *_args: None,
         database_rollback=lambda *_args: None,
@@ -385,14 +382,165 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
 
     target = data_dir / "filestore" / "runtime"
     assert result == 0
-    assert crc_reads >= 1
+    assert len(saved) == 1
+    assert dump_reads == (1 if extract_during_validation else 2)
     assert commands[0][0] == "psql"
     assert commands[0][1] == "--quiet"
     assert (target / "retained").read_text() == "old"
     assert (target / "collision").read_text() == "new"
     assert (target / "addition").read_text() == "added"
+    assert (target / "replaced-directory" / "nested").read_text() == "new"
     (target / "retained").write_text("changed")
     assert (source / "retained").read_text() == "old"
+
+
+def test_original_filestore_preflight_failure_preserves_caller_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rejected replacement leaves the supplied archive for caller cleanup."""
+    data_dir = tmp_path / "data"
+    target = data_dir / "filestore" / "runtime"
+    target.mkdir(parents=True)
+    (target / "active").write_text("keep")
+    source = tmp_path / "original"
+    source.mkdir()
+    archive_path = tmp_path / "upgraded.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("dump.sql", "select 1")
+
+    validated = prepare_archive_with_original_filestore(archive_path, source)
+    assert validated is not None
+    assert validated.extracted is not None
+    extracted_path = Path(validated.extracted.name)
+    monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeRestoreError, match="already exists"):
+        load_runtime_archive(
+            connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+            data_dir=data_dir,
+            archive_path=archive_path,
+            original_filestore=source,
+            odoo_bin_path=Path("/odoo/odoo-bin"),
+            odoo_version=19,
+            _validated_archive=validated,
+        )
+
+    assert extracted_path.exists()
+    validated.cleanup()
+    assert not extracted_path.exists()
+
+
+def test_original_filestore_database_probe_failure_preserves_caller_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Database preflight errors release the extraction held by the caller token."""
+    source = tmp_path / "original"
+    source.mkdir()
+    archive_path = tmp_path / "upgraded.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("dump.sql", "select 1")
+
+    validated = prepare_archive_with_original_filestore(archive_path, source)
+    assert validated is not None
+    assert validated.extracted is not None
+    extracted_path = Path(validated.extracted.name)
+
+    def unavailable(*_args: object, **_kwargs: object) -> bool:
+        message = "PostgreSQL unavailable"
+        raise OSError(message)
+
+    monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", unavailable)
+    with pytest.raises(OSError, match="unavailable"):
+        load_runtime_archive(
+            connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+            data_dir=tmp_path / "data",
+            archive_path=archive_path,
+            original_filestore=source,
+            odoo_bin_path=Path("/odoo/odoo-bin"),
+            odoo_version=19,
+            _validated_archive=validated,
+        )
+
+    assert extracted_path.exists()
+    validated.cleanup()
+    assert not extracted_path.exists()
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+def test_original_filestore_identity_failure_preserves_caller_archive(tmp_path: Path, replacement: bool) -> None:
+    """Missing and replaced archives release the extraction before database work."""
+    source = tmp_path / "original"
+    source.mkdir()
+    archive_path = tmp_path / "upgraded.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("dump.sql", "select 1")
+
+    validated = prepare_archive_with_original_filestore(archive_path, source)
+    assert validated is not None
+    assert validated.extracted is not None
+    extracted_path = Path(validated.extracted.name)
+    if replacement:
+        with zipfile.ZipFile(tmp_path / "replacement.zip", "w") as archive:
+            archive.writestr("dump.sql", "select 2")
+        (tmp_path / "replacement.zip").replace(archive_path)
+    else:
+        archive_path.unlink()
+
+    with pytest.raises(RuntimeRestoreError, match="changed after lifecycle plan validation"):
+        load_runtime_archive(
+            connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+            data_dir=tmp_path / "data",
+            archive_path=archive_path,
+            original_filestore=source,
+            odoo_bin_path=Path("/odoo/odoo-bin"),
+            odoo_version=19,
+            require_same_archive_identity=True,
+            _validated_archive=validated,
+        )
+
+    assert extracted_path.exists()
+    validated.cleanup()
+    assert not extracted_path.exists()
+
+
+def test_original_filestore_cancellation_preserves_caller_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Interrupted staged restores discard their preflight archive extraction."""
+    data_dir = tmp_path / "data"
+    source = tmp_path / "original"
+    source.mkdir()
+    archive_path = tmp_path / "upgraded.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("dump.sql", "select 1")
+
+    validated = prepare_archive_with_original_filestore(archive_path, source)
+    assert validated is not None
+    assert validated.extracted is not None
+    extracted_path = Path(validated.extracted.name)
+    monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)
+
+    def cancel_restore(_command: list[str]) -> int:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        load_runtime_archive(
+            connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+            data_dir=data_dir,
+            archive_path=archive_path,
+            original_filestore=source,
+            odoo_bin_path=Path("/odoo/odoo-bin"),
+            force=True,
+            odoo_version=19,
+            runner=cancel_restore,
+            _validated_archive=validated,
+            database_creator=lambda *_args: None,
+            database_cleaner=lambda *_args: None,
+        )
+
+    assert extracted_path.exists()
+    validated.cleanup()
+    assert not extracted_path.exists()
 
 
 def test_failed_staged_sql_restore_preserves_active_filestore(
@@ -438,15 +586,13 @@ def test_failed_staged_sql_restore_preserves_active_filestore(
     monkeypatch.setattr(runtime_archive.shutil, "which", lambda _name: None)
     monkeypatch.setattr(runtime_archive, "_stream_sql_input", fail_restore)
     result = load_runtime_archive(
-        db_name="runtime",
+        connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+        data_dir=data_dir,
         archive_path=archive_path,
         original_filestore=source,
         odoo_bin_path=Path("/odoo/odoo-bin"),
-        data_dir=data_dir,
-        connection=DBConnection("host", 5432, "user", "pass", "runtime"),
         force=True,
         odoo_version=19,
-        use_native_db_load=True,
         database_creator=lambda *_args: None,
         database_cleaner=lambda *_args: None,
     )
@@ -527,15 +673,14 @@ def test_native_wrong_major_preserves_active_filestore(tmp_path: Path, monkeypat
 
     with pytest.raises(RuntimeRestoreError, match="version 18"):
         load_runtime_archive(
-            db_name="runtime",
-            archive_path=archive_path,
-            odoo_bin_path=Path("/odoo/odoo-bin"),
             connection=DBConnection("host", 5432, "user", "pass", "runtime"),
             data_dir=data_dir,
+            archive_path=archive_path,
+            odoo_bin_path=Path("/odoo/odoo-bin"),
             force=True,
             odoo_version=19,
-            use_native_db_load=True,
             runner=lambda _command: 0,
+            database_creator=lambda *_args: None,
             database_swapper=lambda *_args: swaps.append(True),
             database_rollback=lambda *_args: None,
             database_cleaner=lambda *_args: None,
@@ -605,14 +750,12 @@ def test_invalid_staged_base_version_preserves_active_database_and_filestore(
 
     with pytest.raises(RuntimeRestoreError):
         load_runtime_archive(
-            db_name="runtime",
+            connection=DBConnection("host", 5432, "user", "pass", "runtime"),
+            data_dir=data_dir,
             archive_path=archive_path,
             odoo_bin_path=Path("/odoo/odoo-bin"),
-            data_dir=data_dir,
-            connection=DBConnection("host", 5432, "user", "pass", "runtime"),
             force=True,
             odoo_version=19,
-            use_native_db_load=False,
             runner=lambda _command: 0,
             database_creator=lambda *_args: None,
             database_swapper=lambda *_args: swaps.append(True),
