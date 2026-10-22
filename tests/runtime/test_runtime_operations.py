@@ -22,9 +22,38 @@ from godoo_cli.models import GodooConfig
 from godoo_cli.runtime import lifecycle as runtime_lifecycle
 from godoo_cli.runtime import status as runtime_status
 from godoo_cli.runtime.lifecycle import LifecycleOutcome, deployment_init
-from godoo_cli.runtime.locks import begin_runtime_restore, runtime_locks
+from godoo_cli.runtime.locks import begin_runtime_lifecycle, begin_runtime_restore, runtime_locks
 
 LOGGER = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize(
+    "database_state", [DbBootstrapStatus.BOOTSTRAPPED, DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB]
+)
+def test_runtime_status_distinguishes_retryable_initialization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, database_state: DbBootstrapStatus
+) -> None:
+    monkeypatch.setattr(runtime_status, "classify_bootstrap_state", lambda _connection: database_state)
+    marker = begin_runtime_lifecycle(tmp_path, "runtime", outcome="restored")
+    contents = marker.read_bytes()
+    connection = _config(tmp_path).db_connection.with_db("runtime")
+
+    payload, exit_code = runtime_status.inspect_runtime(connection, tmp_path, tmp_path / "provenance")
+
+    assert (payload["state"], exit_code) == ("incomplete", 23)
+    assert marker.read_bytes() == contents
+
+
+def test_invalid_database_with_lifecycle_marker_still_requires_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runtime_status, "classify_bootstrap_state", lambda _connection: DbBootstrapStatus.INVALID_DB)
+    begin_runtime_lifecycle(tmp_path, "runtime")
+    connection = _config(tmp_path).db_connection.with_db("runtime")
+
+    payload, exit_code = runtime_status.inspect_runtime(connection, tmp_path, tmp_path / "provenance")
+
+    assert (payload["state"], exit_code) == ("inconsistent", 22)
 
 
 def _config(tmp_path: Path) -> GodooConfig:

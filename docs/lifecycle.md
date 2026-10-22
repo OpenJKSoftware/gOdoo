@@ -201,7 +201,11 @@ After a successful reset, the next initialization reruns restore hooks, reconcil
 | `missing`      |        20 |
 | `empty`        |        21 |
 | `inconsistent` |        22 |
+| `incomplete`   |        23 |
 | `unavailable`  |         1 |
+
+`incomplete` means initialization can be retried with the same inputs. `inconsistent` requires inspecting and recovering
+the database and filestore first. A downstream init wrapper may retry exit 23 while refusing exit 22.
 
 Status reads production provenance from `/odoo/godoo-source-provenance.json`; `--provenance-path` overrides it. Missing
 provenance does not establish release identity. It does not write runtime state or inspect host source roots.

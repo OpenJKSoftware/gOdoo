@@ -59,17 +59,21 @@ def inspect_runtime(connection: DBConnection, data_dir: Path, provenance_path: P
     try:
         status = classify_bootstrap_state(connection)
         state, exit_code = _STATE_NAMES[status], BOOTSTRAP_EXIT_CODE[status]
-        if runtime_inconsistency_reason(
+        recovery_reason = runtime_inconsistency_reason(
             data_dir,
             connection.db_name,
             missing_or_empty=status in (DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB),
-        ):
+        )
+        if recovery_reason == "unfinished lifecycle work" and status != DbBootstrapStatus.INVALID_DB:
+            state, exit_code = "incomplete", 23
+        elif recovery_reason:
             state, exit_code = "inconsistent", 22
         reasons = {
             "ready": "The database has an initialized Odoo base module.",
             "missing": "The database is missing; run runtime init to restore a seed or bootstrap.",
             "empty": "The database is empty; run runtime init to restore a seed or bootstrap.",
-            "inconsistent": "Recover an unfinished restore or rerun runtime init to finish lifecycle work.",
+            "incomplete": "Rerun runtime init with the same inputs to finish initialization.",
+            "inconsistent": "Inspect and recover the matching database and filestore before initialization.",
         }
         payload.update(state=state, reason=reasons[state])
     except (psycopg2.Error, OSError):
