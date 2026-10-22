@@ -7,6 +7,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+import psycopg2.errors
 from psycopg2 import sql
 
 from ..database.connection import DBConnection
@@ -47,22 +48,51 @@ def temporary_database_name(label: str) -> str:
     return f"godoo_{label}_{uuid.uuid4().hex}"[:63]
 
 
-def create_database(connection: DBConnection, template: str) -> None:
-    """Create a clean staging database from ``template``."""
+def create_database(connection: DBConnection, template: str, *, prefer_cow: bool = False) -> None:
+    """Create a clean staging database from ``template``.
+
+    When requested, use PostgreSQL's file-copy strategy and prefer its clone
+    method where the server supports it.
+    """
     admin = connection.with_db("postgres").get_connection()
     admin.autocommit = True
     try:
         with admin.cursor() as cursor:
+            create_database_sql = sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                sql.Identifier(connection.db_name), sql.Identifier(template)
+            )
+            clone_enabled = False
+            if prefer_cow:
+                cursor.execute("SHOW server_version_num")
+                version_row = cursor.fetchone()
+                if version_row and int(version_row[0]) >= 150000:
+                    create_database_sql += sql.SQL(" STRATEGY FILE_COPY")
+                    if int(version_row[0]) >= 180000:
+                        cursor.execute(
+                            "SELECT 'clone' = ANY(enumvals) FROM pg_settings WHERE name = 'file_copy_method'"
+                        )
+                        clone_row = cursor.fetchone()
+                        if clone_row and clone_row[0]:
+                            cursor.execute("SET file_copy_method TO 'clone'")
+                            clone_enabled = True
             cursor.execute(
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s",
                 [connection.db_name],
             )
             cursor.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(connection.db_name)))
-            cursor.execute(
-                sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
-                    sql.Identifier(connection.db_name), sql.Identifier(template)
-                )
-            )
+            if clone_enabled:
+                try:
+                    cursor.execute(create_database_sql)
+                except (psycopg2.errors.FeatureNotSupported, psycopg2.errors.IoError) as error:
+                    LOGGER.warning(
+                        "PostgreSQL clone copy failed for '%s'; retrying with regular file copy: %s",
+                        connection.db_name,
+                        error,
+                    )
+                    cursor.execute("SET file_copy_method TO 'copy'")
+                    cursor.execute(create_database_sql)
+            else:
+                cursor.execute(create_database_sql)
     finally:
         admin.close()
 
