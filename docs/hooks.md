@@ -112,6 +112,13 @@ The lifecycle marker records unfinished init and preserves its original outcome 
 after restore still exposes `restored` even though the database already exists. A later ordinary init exposes `ready`.
 Existing marker/restore recovery and database-major guards remain in force.
 
+Native migration failures need a separate completion check. Odoo can commit an addon's target version before its `end-`
+migrations run. A later failure may roll back repair writes while leaving that version advanced, so another update can
+skip those scripts. Neither a log entry nor the installed version alone proves completion. Verify the repair's data
+invariants before accepting a retry. If completion cannot be established, fix the cause and restore the matching
+pre-attempt database and filestore before retrying. A pending gOdoo marker does not make Odoo replay versioned
+migrations. Do not force replay by editing module versions or introduce a second migration ledger.
+
 Execution is at least once. There is no generic `once=True`, hook-success ledger, or file-hash cache. State predicates
 must observe desired state: a prior success does not establish that configuration is still correct after edits or
 restores.

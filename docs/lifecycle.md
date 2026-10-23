@@ -121,6 +121,11 @@ Hook declarations, configured runtime version, and dependencies known before res
 Dependencies discovered from the restored database are checked afterward. A failure at that point leaves init
 incomplete: repair the dependency and rerun init without restoring the seed again.
 
+If native module loading or an Odoo migration fails after it starts changing the database, verify the actual repair
+results before accepting a retry. Odoo can commit an addon's target version before `end-` scripts complete; a subsequent
+update may skip repairs whose writes were rolled back. If their completion is uncertain, restore the matching
+pre-attempt pair after fixing the cause. See [native migration recovery](hooks.md#idempotence-and-recovery).
+
 ## Official and major-version upgrades
 
 `godoo upgrade` fetches Odoo's official client and forwards its arguments. HTTPS certificate and hostname verification
