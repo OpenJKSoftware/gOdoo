@@ -8,9 +8,10 @@ description:
 
 Read `docs/workspace.md`, then open the generated `<project>.code-workspace`.
 
-gOdoo enables Pylance and generates `python.analysis.extraPaths` from the resolved project, Odoo, third-party, and
-archive addon roots. The installed Odoo IDE extension contributes Odoo-specific analysis but does not own Pylance's
-import search path. The supported source mapping is the generated multi-root workspace plus its generated extra paths.
+gOdoo sets `python.languageServer` to `None` so the installed Odoo IDE extension provides Python and Odoo analysis
+without a competing Pylance server. Keep the Python extension for interpreter selection and debugging. The generated
+`python.analysis.extraPaths` covers the resolved project, Odoo, third-party, and archive addon roots. The supported
+source mapping is the generated multi-root workspace plus its generated extra paths.
 
 Reload the window after generation, save representative project, Odoo, and addon files, then inspect VS Code Problems.
 Confirm each diagnostic refers to the intended selected host worktree. Problems validate editor analysis, not execution.

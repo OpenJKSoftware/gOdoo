@@ -51,7 +51,7 @@ def workspace_data(
         "folders": folders,
         "settings": {
             "python.defaultInterpreterPath": f"{PROJECT_WORKSPACE_FOLDER}/.venv/bin/python",
-            "python.languageServer": "Pylance",
+            "python.languageServer": "None",
             "python.analysis.extraPaths": python_extra_paths,
             "python.testing.pytestEnabled": False,
             "python.testing.unittestEnabled": False,

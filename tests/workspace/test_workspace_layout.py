@@ -34,6 +34,7 @@ def test_workspace_uses_portable_project_paths_and_absolute_sources(tmp_path: Pa
     assert workspace["folders"][0] == {"name": "gOdoo", "path": "."}
     assert workspace["folders"][1]["path"] == str(source_path)
     assert workspace["settings"]["python.defaultInterpreterPath"] == "${workspaceFolder:gOdoo}/.venv/bin/python"
+    assert workspace["settings"]["python.languageServer"] == "None"
     assert workspace["settings"]["python.analysis.extraPaths"] == [
         "${workspaceFolder:gOdoo}/addons",
         str(source_path),
