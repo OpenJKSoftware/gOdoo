@@ -129,7 +129,6 @@ def test_custom_restore_validates_then_restores_database_and_filestore(
     assert set(calls[1][1:-1]) == {
         "--no-owner",
         "--no-privileges",
-        "--verbose",
         "--jobs=1",
         "--dbname",
         staged_database,

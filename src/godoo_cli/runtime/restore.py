@@ -115,7 +115,6 @@ def _restore_database_dump(
         "pg_restore",
         "--no-owner",
         "--no-privileges",
-        "--verbose",
         f"--jobs={restore_jobs}",
         *postgres_argv(connection, database=staged_database),
         str(dump_path),
