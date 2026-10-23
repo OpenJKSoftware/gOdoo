@@ -87,26 +87,72 @@ The `init` service runs `godoo runtime init` after PostgreSQL is healthy. The `a
 only after init completes successfully (`service_completed_successfully`). Start downstream debug services before using
 the attach-only `gOdoo: attach` VS Code configuration.
 
-To seed an init service from a fixed dataset, mount its directory read-only and set `GODOO_DUMP_PATH` to that mount. The
-plain source is `odoo.dump` plus `odoo_filestore/filestore/odoo`; adding `--migration-dir` selects the paired
-`upgraded.zip`. Do not mount or rely on a stale `upgrade_extract` directory.
+## Restore dataset storage
 
-For repeated development restores on a Docker VM, downstream can keep this dataset in a named external volume shared by
-projects. Create it explicitly and use a fixed volume name so `compose down --volumes` retains it. Mount the source
-read-only for init and read-write only for explicit import, pull, and upgrade jobs. Put the extracted original filestore
-there too; storing only the ZIP would leave attachment copies crossing the host boundary.
+gOdoo reads paths visible to its process. Downstream Compose files decide whether those paths are host bind mounts or
+Docker volumes; setting `GODOO_DUMP_PATH` alone does not create, mount, or move storage.
 
-Import existing host files once, excluding stale extraction directories. Pull later backups directly into the volume and
-keep the upgrade client's output and private resume state there. Keep each project's database and runtime filestore in
-separate volumes. When source and destination support reflinks on the same filesystem, gOdoo clones the original
-attachments and later writes allocate private blocks; otherwise it falls back to rsync. Downstream owns volume names,
-SSH forwarding, ownership, import commands, and writer coordination. Do not update a shared dataset while another
-project is restoring from it. Logical directory sizes can count shared reflink extents more than once.
+Keep the matching database and original attachments together:
+
+```text
+<dataset>/
+├── odoo.dump
+├── upgraded.zip
+└── odoo_filestore/filestore/odoo/
+```
+
+Plain init selects `odoo.dump` and its original filestore. Adding `--migration-dir` selects `upgraded.zip` and overlays
+its new attachments on the original filestore. Keep each upgraded ZIP paired with the backup submitted to the upgrade
+service. Do not mount or rely on a stale `upgrade_extract` directory.
+
+| Setting                                             | Owner and meaning                                                                                                                                                                                                                     |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GODOO_DUMP_PATH` / `--dump-path`                   | gOdoo dataset directory inside the running process, for example `/odoo_restore`. A downstream wrapper may also use the host value as an import source or production bind-mount source, then override it inside the container.         |
+| `GODOO_RUNTIME_SEED` / `--seed`                     | Explicit ZIP input; takes precedence over automatic dataset selection. Usually unnecessary with the paired layout above.                                                                                                              |
+| `GODOO_ORIGINAL_FILESTORE` / `--original-filestore` | Explicit original attachment directory. Otherwise inferred from the paired dataset when its upgraded ZIP is selected.                                                                                                                 |
+| `GODOO_DUMP_VOLUME`                                 | Downstream Compose setting, not a gOdoo CLI option. The Wetech development stack defaults to the external volume `godoo-restore-datasets`.                                                                                            |
+| `TMPDIR`                                            | Temporary-file location inherited by `godoo upgrade` and the official client. The Wetech upgrade job sets it to `/odoo_restore/.upgrade` so temporary work stays in the dataset volume. Runtime init has its own process environment. |
+| `GODOO_SSH_AUTH_SOCK`, `GODOO_SSH_KNOWN_HOSTS`      | Wetech tooling-container mount settings for the host SSH agent socket and a read-only `known_hosts` file. These are not gOdoo runtime options.                                                                                        |
+
+In the Wetech downstream, `make import-dump` copies an existing host directory into the volume once. Later `make pull`,
+`make upgrade`, and review-transfer commands write directly to that volume; `make dev` reads it. `make prod` continues
+reading its host `GODOO_DUMP_PATH` bind mount. These are separate copies: updating the development volume does not
+update the production host directory. Stage the matching dataset in the directory that the selected runtime actually
+mounts.
+
+A one-off Compose `dataset` service provides writable volume access for imports, SSH/rsync transfers, and the official
+upgrade client without starting PostgreSQL or Odoo. It exits after its command and is removed with `run --rm`; it is not
+another daemon or a gOdoo requirement. Keep restore mounts read-only. Reusing init for these jobs would require
+overriding its mounts, user, command, and dependencies on every invocation. A tooling service can use a CLI/tools image
+without Odoo sources, addon dependencies, or debugger packages; the current Wetech wrapper instead builds its full
+development image if missing, so even an import can require source setup and an application dependency build.
+
+### Docker performance and lifetime
+
+On macOS and Windows, host bind mounts cross the Docker VM's file-sharing boundary. Large filestores amplify the cost
+through many small file and metadata operations. Importing both the dump and extracted original filestore once into a
+native Linux volume avoids repeating that host transfer on later restores; keeping only the ZIP there leaves original
+attachment copies crossing the boundary. Pulling and upgrading directly in the volume also avoids staging their output
+on the host. See Docker's [volume guidance](https://docs.docker.com/engine/storage/volumes/) and
+[host-to-VM file-sharing explanation](https://docs.docker.com/desktop/features/synchronized-file-sharing/).
+
+A volume does not guarantee reflinks or a particular speedup. When source and destination support cloning on the same
+filesystem, gOdoo clones attachment data and later writes allocate private blocks. Otherwise it falls back to rsync,
+then a Python copy if rsync is unavailable. Separate Docker volumes may share a backing filesystem; their names alone do
+not establish clone support. Use gOdoo's copy-method logs to check the actual path. Native Linux bind mounts do not have
+the same desktop VM boundary, so a named volume is not automatically faster there. ZIP decompression, PostgreSQL
+restore, and reconciliation still take time; moving storage does not remove those phases.
+
+Use an explicitly named external source volume so `compose down --volumes` retains it. Keep each project's database and
+runtime filestore in separate volumes. The source consumes persistent disk space alongside runtime and reset-baseline
+data; logical directory sizes can count shared reflink extents more than once. External volumes survive project teardown
+but are not backups. Downstream owns volume names, SSH forwarding, UID/GID ownership, imports, and writer coordination.
+Do not update a shared dataset while another job is writing it or another project is restoring from it.
 
 For Odoo's upgrade client and restore workflow, see [the runtime lifecycle guide](lifecycle.md). The downstream
-`make upgrade` target calls `godoo upgrade` directly. It passes `GODOO_DUMP_PATH/odoo.dump` to `--dump`,
-`ODOO_UPGRADE_TARGET_VERSION` to `--target`, and `ODOO_ENTERPRISE_SUBCODE` to `--contract`. It also passes `-x` to
-suppress the official client's local restore.
+`make upgrade` target calls `godoo upgrade test` with the dataset's `odoo.dump`, `ODOO_UPGRADE_TARGET_VERSION`, and
+`ODOO_ENTERPRISE_SUBCODE`, plus `-x` to suppress the official client's local restore. This does not change an existing
+runtime database.
 
 ## Select a migration transition
 
