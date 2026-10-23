@@ -370,7 +370,7 @@ def _validate_native_runtime_archive_contents(  # noqa: C901
                 extracting_members = extract_to is not None and not verify_archive_crc
                 if extracting_members:
                     LOGGER.info(
-                        "Validating archive structure and identity; extracting dump and filestore with ZIP CRC checks."
+                        "Extracting SQL dump and filestore; ZIP CRC checks run during extraction (full-archive scan disabled)."
                     )
                 progress_label = (
                     "Extracting runtime archive" if extracting_members else "Validating runtime archive CRCs"
@@ -479,7 +479,8 @@ def _validate_native_runtime_archive(
     verify_archive_crc: bool = False,
 ) -> _ValidatedNativeArchive:
     """Validate a native archive while optionally reporting full CRC scan progress."""
-    with _ProgressPhase("Validating runtime archive", heartbeat=False, logger=LOGGER):
+    phase = "Preparing runtime archive for restore" if extract_to is not None else "Validating runtime archive"
+    with _ProgressPhase(phase, heartbeat=False, logger=LOGGER):
         return _validate_native_runtime_archive_contents(
             archive_path,
             extract_to=extract_to,
@@ -637,10 +638,9 @@ def load_runtime_archive(  # noqa: C901
                     _open_validated_archive(archive_path, validated_archive) as source,
                 ):
                     source.extract("dump.sql", extracted.name)
-            with _open_validated_archive(archive_path, validated_archive) as source:
-                for member in source.namelist():
-                    if member.startswith("filestore/") and not member.endswith("/"):
-                        source.extract(member, extracted.name)
+                    for member in source.namelist():
+                        if member.startswith("filestore/") and not member.endswith("/"):
+                            source.extract(member, extracted.name)
             command = [
                 "psql",
                 "--quiet",

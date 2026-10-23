@@ -31,7 +31,7 @@ from ...runtime.odoo import (
     set_report_url,
     x_sendfile_enabled,
 )
-from ...runtime.restore import restore_custom_runtime
+from ...runtime.restore import RuntimeRestoreError, restore_custom_runtime
 from ..common import CommonCLI
 from ..configuration import resolve_command_config
 
@@ -293,20 +293,24 @@ def deployment_init_odoo_runtime(  # noqa: C901
         )
         raise typer.BadParameter(message, param_hint="--expected-odoo-major")
     _validate_pre_upgrade_options(seed, pre_upgrade_scripts, update_modules, after_restore_dirs)
-    validated_archive = None
     if x_sendfile_enabled(config, x_sendfile) and not report_url:
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")
     runtime_seed = seed
     validated_archive = None
-    if dataset is None or dataset.kind == "archive":
+
+    def prepare_seed(_conf: GodooConfig) -> None:
+        """Validate restore inputs before creating initialization recovery state."""
+        nonlocal validated_archive
+        if dataset is not None and dataset.kind == "custom":
+            return
         try:
             validated_archive = prepare_archive_with_original_filestore(
                 runtime_seed,
                 original_filestore,
                 verify_archive_crc=verify_archive_crc,
             )
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, RuntimeRestoreError) as error:
             raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
 
     def already_prepared(_conf: GodooConfig) -> None:
@@ -381,6 +385,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
                 install_modules,
                 ignore_missing_installed_modules=bool(pre_upgrade_scripts),
             ),
+            seed_preflight=prepare_seed,
             post_restore_preflight=lambda conf: preflight_reconcile_dependencies(
                 conf,
                 update_modules,
@@ -414,5 +419,8 @@ def deployment_init_odoo_runtime(  # noqa: C901
     except (ValueError, RuntimeError, OSError, psycopg2.Error):
         LOGGER.exception("Deployment initialization failed")
         return CLI.returner(1)
+    finally:
+        if validated_archive is not None:
+            validated_archive.cleanup()
     LOGGER.info("Runtime initialization outcome: %s", outcome.value)
     return CLI.returner(result)

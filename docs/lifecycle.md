@@ -79,8 +79,18 @@ ZIP restores validate the archive structure, required dump, filestore paths, and
 `--verify-archive-crc` to `godoo db restore` or `godoo runtime init`, or set `GODOO_VERIFY_ARCHIVE_CRC=true`, to verify
 all ZIP members before restore. The default is false; `--no-verify-archive-crc` overrides an enabled environment value.
 CRC checks detect accidental corruption, not the archive's origin. Restored members always retain Python's ZIP CRC
-checks during extraction. With an original filestore, preflight already extracts the SQL dump and archive overlay; that
-work remains necessary, and enabling full verification also checks unused ZIP members in the same pass.
+checks during extraction. With an original filestore, restore preparation extracts the SQL dump and archive overlay once
+and reuses those staged files. Enabling full verification also checks unused ZIP members in the same pass.
+
+Init checks module dependencies before reading ZIP payloads. It prepares the archive only when a missing or empty
+database requires a restore. An existing bootstrapped database, including an incomplete initialization retry, skips ZIP
+extraction and resumes reconciliation and hooks. A missing-addon error during preflight therefore fails without
+extracting the archive.
+
+`Preparing runtime archive for restore` identifies necessary extraction work. ZIP CRC checks run while reading the SQL
+dump and filestore; the default log explicitly says the full-archive scan is disabled. The reported extraction bytes are
+uncompressed content processed. `GODOO_VERIFY_ARCHIVE_CRC=false` skips the optional scan, but does not disable integrity
+checks on extracted members or the extraction needed for a restore.
 
 Filestore transfers from a host bind mount into a VM volume must read and create each file across the filesystem
 boundary. A fast SSD does not eliminate that per-file cost. For repeated restores, keeping a reusable source in a native

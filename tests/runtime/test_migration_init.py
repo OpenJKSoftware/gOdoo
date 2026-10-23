@@ -2,6 +2,7 @@
 
 import zipfile
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -12,8 +13,12 @@ from click import unstyle
 from typer.testing import CliRunner
 
 from godoo_cli.commands.runtime import init as runtime_init
+from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
+from godoo_cli.runtime import archive as runtime_archive
+from godoo_cli.runtime import lifecycle as runtime_lifecycle
 from godoo_cli.runtime.lifecycle import LifecycleOutcome
+from godoo_cli.runtime.locks import runtime_readiness_marker, write_runtime_lifecycle
 from godoo_cli.runtime.migration import resolve_migration_directory
 
 CONFLICTING_ENVIRONMENT = (
@@ -81,6 +86,79 @@ def _app() -> typer.Typer:
     return app
 
 
+@pytest.mark.parametrize("pending", [False, True])
+@pytest.mark.parametrize("preflight_fails", [False, True])
+def test_existing_runtime_does_not_extract_seed(
+    migration_environment: tuple[Path, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    pending: bool,
+    preflight_fails: bool,
+) -> None:
+    """Existing databases and failed dependency checks never read ZIP payloads."""
+    _directory, environment = migration_environment
+    data_dir = Path(environment["ODOO_CONF_PATH"]).parent / "data"
+    marker = runtime_readiness_marker(data_dir, "runtime")
+    if pending:
+        write_runtime_lifecycle(marker, "runtime", outcome="restored")
+
+    def reject_payload_read(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("ZIP payload read without a restore")
+
+    def preflight(*_args: object, **_kwargs: object) -> None:
+        if preflight_fails:
+            message = "Module 'studio_customization' not found in addon-paths"
+            raise ValueError(message)
+
+    monkeypatch.setattr(zipfile.ZipFile, "open", reject_payload_read)
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
+    monkeypatch.setattr(runtime_init, "prepare_runtime", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runtime_init, "preflight_reconcile_dependencies", preflight)
+    monkeypatch.setattr(runtime_init, "reconcile_runtime", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(runtime_init, "run_lifecycle_hook", lambda *_args: 0)
+    monkeypatch.setattr(
+        runtime_init,
+        "deployment_init",
+        partial(runtime_lifecycle.deployment_init, status_getter=lambda _connection: DbBootstrapStatus.BOOTSTRAPPED),
+    )
+
+    result = CliRunner().invoke(_app(), ["--migration-dir", "transitions/16-19"], env=environment)
+
+    assert result.exit_code == (1 if preflight_fails else 0), result.output
+    assert marker.exists() == (pending and preflight_fails)
+
+
+@pytest.mark.parametrize("status", [DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB])
+@pytest.mark.parametrize("invalid_input", ["missing-zip", "corrupt-zip", "missing-filestore"])
+def test_invalid_restore_input_does_not_create_pending_marker(
+    migration_environment: tuple[Path, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_input: str,
+    status: DbBootstrapStatus,
+) -> None:
+    """Invalid restore inputs remain CLI errors without initialization recovery state."""
+    _directory, environment = migration_environment
+    archive = Path(environment["GODOO_RUNTIME_SEED"])
+    if invalid_input == "missing-zip":
+        archive.unlink()
+    elif invalid_input == "corrupt-zip":
+        archive.write_text("invalid ZIP")
+    else:
+        environment["GODOO_ORIGINAL_FILESTORE"] = str(archive.parent / "absent")
+    monkeypatch.setattr(runtime_lifecycle, "require_runtime_database_major", lambda _config: 19)
+    monkeypatch.setattr(runtime_init, "preflight_reconcile_dependencies", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runtime_init,
+        "deployment_init",
+        partial(runtime_lifecycle.deployment_init, status_getter=lambda _connection: status),
+    )
+
+    result = CliRunner().invoke(_app(), [], env=environment)
+
+    assert result.exit_code == 2, result.output
+    assert "--original-filestore" in result.output
+    assert not runtime_readiness_marker(archive.parent / "data", "runtime").exists()
+
+
 def test_dump_path_routes_plain_dataset_to_custom_restore(
     migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -102,6 +180,7 @@ def test_dump_path_routes_plain_dataset_to_custom_restore(
 
     def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
         observed.update(kwargs)
+        cast(Callable[[GodooConfig], None], kwargs["seed_preflight"])(config)
         cast(Callable[[GodooConfig], None], kwargs["seeder"])(config)
         return LifecycleOutcome.RESTORED, 0
 
@@ -117,8 +196,9 @@ def test_dump_path_routes_plain_dataset_to_custom_restore(
     assert restored["expected_dump_identity"] is not None
 
 
+@pytest.mark.parametrize("restore_fails", [False, True])
 def test_migration_dump_path_selects_paired_upgrade_archive(
-    migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch
+    migration_environment: tuple[Path, dict[str, str]], monkeypatch: pytest.MonkeyPatch, restore_fails: bool
 ) -> None:
     workspace, environment = migration_environment
     dataset = workspace / "dataset"
@@ -134,16 +214,30 @@ def test_migration_dump_path_selects_paired_upgrade_archive(
     loaded: dict[str, object] = {}
 
     def deployment(config: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
+        cast(Callable[[GodooConfig], None], kwargs["seed_preflight"])(config)
         cast(Callable[[GodooConfig], None], kwargs["seeder"])(config)
         return LifecycleOutcome.RESTORED, 0
 
     monkeypatch.setattr(runtime_init, "deployment_init", deployment)
-    monkeypatch.setattr(runtime_init, "load_runtime_archive", lambda **kwargs: loaded.update(kwargs) or 0)
+
+    def load(**kwargs: object) -> int:
+        loaded.update(kwargs)
+        token = kwargs["_validated_archive"]
+        assert isinstance(token, runtime_archive._ValidatedNativeArchive)
+        extracted = token.extracted
+        assert extracted is not None
+        assert (Path(extracted.name) / "dump.sql").read_text() == "select 1"
+        loaded["extraction_path"] = Path(extracted.name)
+        return 2 if restore_fails else 0
+
+    monkeypatch.setattr(runtime_init, "load_runtime_archive", load)
     result = CliRunner().invoke(_app(), ["--migration-dir", "transitions/16-19"], env=environment)
 
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == (1 if restore_fails else 0), result.output
     assert loaded["archive_path"] == archive.resolve()
     assert loaded["original_filestore"] == filestore
+
+    assert not cast(Path, loaded["extraction_path"]).exists()
 
 
 @pytest.mark.parametrize("modules", [None, "", "sale\nstock,sale\n"])

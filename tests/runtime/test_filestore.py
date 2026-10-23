@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
+from typing import IO, Literal
 
 import pytest
 
@@ -337,15 +338,20 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
         archive.writestr("filestore/addition", "added")
         archive.writestr("filestore/replaced-directory/nested", "new")
     original_open = zipfile.ZipFile.open
-    dump_reads = 0
+    payload_reads: list[str] = []
 
-    def count_dump_reads(archive: zipfile.ZipFile, name: str | zipfile.ZipInfo, *args: object, **kwargs: object):
-        nonlocal dump_reads
-        if getattr(name, "filename", name) == "dump.sql":
-            dump_reads += 1
-        return original_open(archive, name, *args, **kwargs)
+    def count_payload_reads(
+        archive: zipfile.ZipFile,
+        name: str | zipfile.ZipInfo,
+        mode: Literal["r", "w"] = "r",
+        pwd: bytes | None = None,
+        *,
+        force_zip64: bool = False,
+    ) -> IO[bytes]:
+        payload_reads.append(name.filename if isinstance(name, zipfile.ZipInfo) else name)
+        return original_open(archive, name, mode, pwd, force_zip64=force_zip64)
 
-    monkeypatch.setattr(zipfile.ZipFile, "open", count_dump_reads)
+    monkeypatch.setattr(zipfile.ZipFile, "open", count_payload_reads)
 
     monkeypatch.setattr("godoo_cli.runtime.archive.database_exists", lambda *_args, **_kwargs: False)
     monkeypatch.setattr("godoo_cli.runtime.archive._validate_staged_base_version", lambda *_args: None)
@@ -387,7 +393,12 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
     target = data_dir / "filestore" / "runtime"
     assert result == 0
     assert len(saved) == 1
-    assert dump_reads == 1
+    assert payload_reads == [
+        "dump.sql",
+        "filestore/collision",
+        "filestore/addition",
+        "filestore/replaced-directory/nested",
+    ]
     assert commands[0][0] == "psql"
     assert commands[0][1] == "--quiet"
     assert (target / "retained").read_text() == "old"

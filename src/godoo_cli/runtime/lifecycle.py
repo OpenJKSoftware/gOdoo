@@ -226,6 +226,7 @@ def deployment_init(
     reconciler: RuntimeReconciler,
     preparer: RuntimePreparer | None = None,
     preflight: RuntimePreparer | None = None,
+    seed_preflight: RuntimePreparer | None = None,
     post_restore_preflight: RuntimePreparer | None = None,
     after_bootstrap_dirs: list[Path] | None = None,
     after_restore_dirs: list[Path] | None = None,
@@ -242,6 +243,8 @@ def deployment_init(
         validate_initialization_state(config, status, allow_lifecycle_retry=True)
         if preflight:
             preflight(config)
+        if seed_requested and status in {DbBootstrapStatus.NO_DB, DbBootstrapStatus.EMPTY_DB} and seed_preflight:
+            seed_preflight(config)
         existing = read_runtime_lifecycle(runtime_readiness_marker(config.data_dir, config.db_name), config.db_name)
         marker = begin_runtime_lifecycle(
             config.data_dir, config.db_name, outcome=existing["outcome"] if existing else "ready"

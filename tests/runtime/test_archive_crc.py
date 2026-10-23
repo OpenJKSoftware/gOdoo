@@ -135,9 +135,10 @@ def test_default_original_filestore_preflight_reports_extraction(
 
     assert validated is not None
     assert (
-        "Validating archive structure and identity; extracting dump and filestore with ZIP CRC checks."
+        "Extracting SQL dump and filestore; ZIP CRC checks run during extraction (full-archive scan disabled)."
         in caplog.messages
     )
+    assert "Preparing runtime archive for restore started" in caplog.messages
     assert any(message.startswith("Extracted runtime archive:") for message in caplog.messages)
     assert not any("Validating runtime archive CRCs:" in message for message in caplog.messages)
     validated.cleanup()
@@ -164,6 +165,7 @@ def test_runtime_init_forwards_crc_option_from_environment(tmp_path: Path, monke
     monkeypatch.setattr(runtime_init, "load_runtime_archive", lambda **kwargs: observed.update(kwargs) or 0)
 
     def deployment(current: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
+        cast(Callable[[GodooConfig], None], kwargs["seed_preflight"])(current)
         cast(Callable[[GodooConfig], None], kwargs["seeder"])(current)
         return LifecycleOutcome.RESTORED, 0
 
