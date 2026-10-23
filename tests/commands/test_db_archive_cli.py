@@ -24,10 +24,19 @@ def test_restore_reads_original_filestore_from_environment(tmp_path: Path, monke
     original_validate = runtime_archive._validate_native_runtime_archive_contents
     validation_runs = 0
 
-    def count_validation_runs(archive_path: Path, **kwargs: Path | None) -> runtime_archive._ValidatedNativeArchive:
+    def count_validation_runs(
+        archive_path: Path,
+        *,
+        extract_to: Path | None = None,
+        verify_archive_crc: bool = False,
+    ) -> runtime_archive._ValidatedNativeArchive:
         nonlocal validation_runs
         validation_runs += 1
-        return original_validate(archive_path, **kwargs)
+        return original_validate(
+            archive_path,
+            extract_to=extract_to,
+            verify_archive_crc=verify_archive_crc,
+        )
 
     monkeypatch.setattr(runtime_archive, "_validate_native_runtime_archive_contents", count_validation_runs)
     connection = SimpleNamespace(db_name="target")
@@ -59,6 +68,7 @@ def test_restore_reads_original_filestore_from_environment(tmp_path: Path, monke
         "ODOO_CONF_PATH": str(tmp_path / "odoo.conf"),
         "GODOO_ORIGINAL_FILESTORE": str(original_filestore),
         "GODOO_KEEP_RESET_BASELINE": "true",
+        "GODOO_VERIFY_ARCHIVE_CRC": "true",
     }
 
     result = CliRunner().invoke(db_cli_app(), ["restore", str(archive_path)], env=env)
@@ -67,6 +77,7 @@ def test_restore_reads_original_filestore_from_environment(tmp_path: Path, monke
     assert observed["archive_path"] == archive_path
     assert observed["original_filestore"] == original_filestore
     assert observed["keep_reset_baseline"] is True
+    assert observed["verify_archive_crc"] is True
     assert observed["_validated_archive"] is not None
     assert validation_runs == 1
     validated_archive = observed["_validated_archive"]

@@ -113,6 +113,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
         ),
     ] = None,
     keep_reset_baseline: Annotated[bool, CLI.database.keep_reset_baseline] = False,
+    verify_archive_crc: Annotated[bool, CLI.database.verify_archive_crc] = False,
     restore_jobs: Annotated[
         int,
         typer.Option(
@@ -300,7 +301,11 @@ def deployment_init_odoo_runtime(  # noqa: C901
     validated_archive = None
     if dataset is None or dataset.kind == "archive":
         try:
-            validated_archive = prepare_archive_with_original_filestore(runtime_seed, original_filestore)
+            validated_archive = prepare_archive_with_original_filestore(
+                runtime_seed,
+                original_filestore,
+                verify_archive_crc=verify_archive_crc,
+            )
         except (OSError, ValueError) as error:
             raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
 
@@ -357,6 +362,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
             lifecycle_owner="init",
             require_same_archive_identity=True,
             keep_reset_baseline=keep_reset_baseline,
+            verify_archive_crc=verify_archive_crc,
         )
         if result:
             message = f"Odoo seed archive load failed for runtime '{conf.db_name}' (exit code {result})"

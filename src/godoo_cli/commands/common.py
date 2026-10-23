@@ -161,6 +161,12 @@ class DatabaseCLIArgs:
         help="Save the restored database and filestore before initialization for repeated resets.",
         rich_help_panel="Lifecycle Options",
     )
+    verify_archive_crc = Option(
+        "--verify-archive-crc/--no-verify-archive-crc",
+        envvar="GODOO_VERIFY_ARCHIVE_CRC",
+        help="Read every ZIP member before restore to verify its CRC.",
+        rich_help_panel="Lifecycle Options",
+    )
     empty_reset = Option(
         "--empty",
         help="drop only selected runtime state; do not use a template",

@@ -63,6 +63,7 @@ def load_database(
     force: Annotated[bool, typer.Option("--force", envvar="GODOO_DB_LOAD_FORCE")] = False,
     db_template: Annotated[str, CLI.database.db_template_name] = "template0",
     keep_reset_baseline: Annotated[bool, CLI.database.keep_reset_baseline] = False,
+    verify_archive_crc: Annotated[bool, CLI.database.verify_archive_crc] = False,
     original_filestore: Annotated[
         Path | None,
         typer.Option("--original-filestore", envvar="GODOO_ORIGINAL_FILESTORE"),
@@ -70,7 +71,11 @@ def load_database(
 ) -> int:
     """Load an archive through staged promotion."""
     try:
-        validated_archive = prepare_archive_with_original_filestore(archive_path, original_filestore)
+        validated_archive = prepare_archive_with_original_filestore(
+            archive_path,
+            original_filestore,
+            verify_archive_crc=verify_archive_crc,
+        )
     except (RuntimeRestoreError, OSError, ValueError) as error:
         raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
     try:
@@ -103,6 +108,7 @@ def load_database(
                 odoo_conf_path=odoo_conf_path,
                 force=force,
                 keep_reset_baseline=keep_reset_baseline,
+                verify_archive_crc=verify_archive_crc,
                 odoo_version=version.major,
                 original_filestore=original_filestore,
                 _validated_archive=validated_archive,

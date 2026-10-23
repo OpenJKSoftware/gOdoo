@@ -211,7 +211,11 @@ def test_failed_fast_copy_discards_partial_stage_before_fallback(
         return subprocess.CompletedProcess([], 1, "", "copy failed")
 
     monkeypatch.setattr("godoo_cli.runtime.filestore.shutil.which", lambda _command: "/usr/bin/cp")
+    monkeypatch.setattr("godoo_cli.runtime.filestore._clone_preflight", lambda *_args: None)
     monkeypatch.setattr("godoo_cli.runtime.filestore.subprocess.run", fail_copy)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.filestore._copy_with_rsync", lambda *_args: (False, "rsync is not available")
+    )
 
     copy_filestore(source, destination, platform_name="linux")
 
@@ -383,7 +387,7 @@ def test_original_filestore_restore_uses_staged_sql_and_overlay(
     target = data_dir / "filestore" / "runtime"
     assert result == 0
     assert len(saved) == 1
-    assert dump_reads == (1 if extract_during_validation else 2)
+    assert dump_reads == 1
     assert commands[0][0] == "psql"
     assert commands[0][1] == "--quiet"
     assert (target / "retained").read_text() == "old"
@@ -621,13 +625,13 @@ def test_replaced_archive_is_validated_again(tmp_path: Path, monkeypatch: pytest
         return original_open(archive, name, *args, **kwargs)
 
     monkeypatch.setattr(zipfile.ZipFile, "open", count_crc_reads)
-    validated = _validate_native_runtime_archive(archive_path)
+    validated = _validate_native_runtime_archive(archive_path, verify_archive_crc=True)
     replacement_path = tmp_path / "replacement.zip"
     with zipfile.ZipFile(replacement_path, "w") as archive:
         archive.writestr("dump.sql", "select 2")
     replacement_path.replace(archive_path)
 
-    refreshed = _reuse_or_validate_archive(archive_path, validated)
+    refreshed = _reuse_or_validate_archive(archive_path, validated, verify_archive_crc=True)
 
     assert refreshed.identity != validated.identity
     assert crc_reads >= 2
@@ -644,7 +648,7 @@ def test_archive_crc_progress_uses_five_second_interval(
     monotonic_values = iter((0.0, 4.0, 5.0, 5.0, 6.0))
     monkeypatch.setattr(runtime_archive.time, "monotonic", lambda: next(monotonic_values))
 
-    runtime_archive._validate_native_runtime_archive_contents(archive_path)
+    runtime_archive._validate_native_runtime_archive_contents(archive_path, verify_archive_crc=True)
 
     progress_messages = [
         record.getMessage()
@@ -783,7 +787,7 @@ def test_archive_rejects_corrupt_member_crc(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(zipfile.ZipFile, "open", corrupt_dump)
 
     with pytest.raises(RuntimeRestoreError, match=r"corrupt member 'dump\.sql'"):
-        validate_native_runtime_archive(archive_path)
+        validate_native_runtime_archive(archive_path, verify_archive_crc=True)
 
 
 def test_pv_progress_preserves_carriage_returns(

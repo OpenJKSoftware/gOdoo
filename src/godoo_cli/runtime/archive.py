@@ -93,6 +93,8 @@ class _ValidatedNativeArchive:
 def prepare_archive_with_original_filestore(
     archive_path: Path | None,
     original_filestore: Path | None,
+    *,
+    verify_archive_crc: bool = False,
 ) -> _ValidatedNativeArchive | None:
     """Validate the original filestore and extract the validated ZIP.
 
@@ -120,7 +122,7 @@ def prepare_archive_with_original_filestore(
     if not archive_path.is_file():
         message = f"Odoo ZIP archive does not exist: {archive_path}"
         raise ValueError(message)
-    return _extract_native_runtime_archive(archive_path)
+    return _extract_native_runtime_archive(archive_path, verify_archive_crc=verify_archive_crc)
 
 
 def _uses_native_db_commands(odoo_version: int | None, odoo_bin_path: Path | None = None) -> bool:
@@ -335,8 +337,9 @@ def _validate_native_runtime_archive_contents(  # noqa: C901
     archive_path: Path,
     *,
     extract_to: Path | None = None,
+    verify_archive_crc: bool = False,
 ) -> _ValidatedNativeArchive:
-    """Validate ZIP paths and CRCs, optionally extracting the dump and filestore."""
+    """Validate ZIP structure and optionally read members for CRC verification or extraction."""
     if not archive_path.is_file():
         message = f"Odoo runtime archive does not exist or is not a file: {archive_path}"
         raise RuntimeRestoreError(message)
@@ -356,6 +359,23 @@ def _validate_native_runtime_archive_contents(  # noqa: C901
                         message = f"Odoo runtime archive contains unsafe filestore path: {member}"
                         raise RuntimeRestoreError(message)
                 members = [info for info in infos if not info.is_dir()]
+                if extract_to is not None and not verify_archive_crc:
+                    members = [
+                        info
+                        for info in members
+                        if info.filename == "dump.sql" or info.filename.startswith("filestore/")
+                    ]
+                elif extract_to is None and not verify_archive_crc:
+                    members = []
+                extracting_members = extract_to is not None and not verify_archive_crc
+                if extracting_members:
+                    LOGGER.info(
+                        "Validating archive structure and identity; extracting dump and filestore with ZIP CRC checks."
+                    )
+                progress_label = (
+                    "Extracting runtime archive" if extracting_members else "Validating runtime archive CRCs"
+                )
+                complete_label = "Extracted runtime archive" if extracting_members else "Validated runtime archive CRCs"
                 total_bytes = sum(info.file_size for info in members)
                 read_bytes = 0
                 next_report = time.monotonic() + PROGRESS_INTERVAL_SECONDS
@@ -377,7 +397,8 @@ def _validate_native_runtime_archive_contents(  # noqa: C901
                                 read_bytes += len(chunk)
                                 if time.monotonic() >= next_report and total_bytes:
                                     LOGGER.info(
-                                        "Validating runtime archive CRCs: %d%% (%d/%d bytes)",
+                                        "%s: %d%% (%d/%d bytes)",
+                                        progress_label,
                                         read_bytes * 100 // total_bytes,
                                         read_bytes,
                                         total_bytes,
@@ -387,7 +408,7 @@ def _validate_native_runtime_archive_contents(  # noqa: C901
                         message = f"Odoo runtime archive contains corrupt member '{info.filename}': {archive_path}"
                         raise RuntimeRestoreError(message) from error
                 if total_bytes:
-                    LOGGER.info("Validated runtime archive CRCs: 100%% (%d/%d bytes)", read_bytes, total_bytes)
+                    LOGGER.info("%s: 100%% (%d/%d bytes)", complete_label, read_bytes, total_bytes)
             if identity != _archive_identity(os.fstat(archive_file.fileno())):
                 message = f"Odoo runtime archive changed while it was being validated: {archive_path}"
                 raise RuntimeRestoreError(message)
@@ -400,18 +421,23 @@ def _validate_native_runtime_archive_contents(  # noqa: C901
     return _ValidatedNativeArchive(identity)
 
 
-def validate_native_runtime_archive(archive_path: Path) -> None:
-    """Validate Odoo's ZIP structure and CRCs before allowing a forced load."""
-    _validate_native_runtime_archive(archive_path)
+def validate_native_runtime_archive(archive_path: Path, *, verify_archive_crc: bool = False) -> None:
+    """Validate Odoo's ZIP structure and optionally scan every member's CRC."""
+    _validate_native_runtime_archive(archive_path, verify_archive_crc=verify_archive_crc)
 
 
-def _extract_native_runtime_archive(archive_path: Path) -> _ValidatedNativeArchive:
+def _extract_native_runtime_archive(
+    archive_path: Path,
+    *,
+    verify_archive_crc: bool = False,
+) -> _ValidatedNativeArchive:
     """Validate a native archive and extract it to temporary storage."""
     extracted = tempfile.TemporaryDirectory(prefix="godoo-archive-")
     try:
         validated = _validate_native_runtime_archive(
             archive_path,
             extract_to=Path(extracted.name),
+            verify_archive_crc=verify_archive_crc,
         )
     except BaseException:
         extracted.cleanup()
@@ -450,10 +476,15 @@ def _validate_native_runtime_archive(
     archive_path: Path,
     *,
     extract_to: Path | None = None,
+    verify_archive_crc: bool = False,
 ) -> _ValidatedNativeArchive:
-    """Validate a native archive while reporting progress for CRC checks."""
+    """Validate a native archive while optionally reporting full CRC scan progress."""
     with _ProgressPhase("Validating runtime archive", heartbeat=False, logger=LOGGER):
-        return _validate_native_runtime_archive_contents(archive_path, extract_to=extract_to)
+        return _validate_native_runtime_archive_contents(
+            archive_path,
+            extract_to=extract_to,
+            verify_archive_crc=verify_archive_crc,
+        )
 
 
 def _reuse_or_validate_archive(
@@ -461,6 +492,7 @@ def _reuse_or_validate_archive(
     validated_archive: _ValidatedNativeArchive | None,
     *,
     require_same_identity: bool = False,
+    verify_archive_crc: bool = False,
 ) -> _ValidatedNativeArchive:
     if validated_archive is None and require_same_identity:
         message = "Lifecycle archive identity was not captured before initialization."
@@ -475,7 +507,7 @@ def _reuse_or_validate_archive(
         if require_same_identity:
             message = "Odoo runtime archive changed after lifecycle plan validation."
             raise RuntimeRestoreError(message)
-    return _validate_native_runtime_archive(archive_path)
+    return _validate_native_runtime_archive(archive_path, verify_archive_crc=verify_archive_crc)
 
 
 @contextmanager
@@ -483,7 +515,7 @@ def _open_validated_archive(
     archive_path: Path,
     validated_archive: _ValidatedNativeArchive,
 ) -> Iterator[zipfile.ZipFile]:
-    """Open the same archive file whose contents passed CRC validation."""
+    """Open the same archive file whose identity passed structure validation."""
     try:
         archive_file = archive_path.open("rb")
     except OSError as error:
@@ -551,6 +583,7 @@ def load_runtime_archive(  # noqa: C901
     lifecycle_owner: str | None = None,
     keep_reset_baseline: bool = False,
     require_same_archive_identity: bool = False,
+    verify_archive_crc: bool = False,
     runner: CommandRunner | None = None,
     database_creator: DatabaseCreator = create_database,
     database_cleaner: DatabaseCleaner = cleanup_database,
@@ -572,13 +605,17 @@ def load_runtime_archive(  # noqa: C901
         lock_names = (db_name, baseline_database_name(db_name)) if keep_reset_baseline else (db_name,)
         with runtime_locks(data_dir, *lock_names, odoo_conf_path=odoo_conf_path):
             if original_filestore is not None and _validated_archive is None:
-                validated_archive = _extract_native_runtime_archive(archive_path)
+                validated_archive = _extract_native_runtime_archive(
+                    archive_path,
+                    verify_archive_crc=verify_archive_crc,
+                )
                 resources.callback(validated_archive.cleanup)
             else:
                 validated_archive = _reuse_or_validate_archive(
                     archive_path,
                     _validated_archive,
                     require_same_identity=require_same_archive_identity,
+                    verify_archive_crc=verify_archive_crc,
                 )
             _require_original_filestore(original_filestore)
             runtime_data = runtime_data_directory(data_dir, odoo_conf_path)

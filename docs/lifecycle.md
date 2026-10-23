@@ -60,18 +60,33 @@ godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
   either runtime mode. Unset or blank banner settings skip this update. A failed update prevents server startup.
 - Runtime commands require Odoo 16 or newer. Backups use native Odoo commands on 19 or newer and PostgreSQL tools on
   16–18. ZIP restores stage SQL and filestore files before promotion; `runtime init` runs Odoo afterward. Archive
-  validation reports bytes checked, with updates at most every five seconds plus final measurements. Phases without
-  measured progress report elapsed time every ten seconds. Linux restores try filesystem cloning first; when cloning is
-  unavailable, rsync writes its progress and diagnostics directly to stdout when present, otherwise the existing Python
-  copy fallback reports elapsed phases. SQL staging sends native `pv` progress to stderr when present and reports bytes
-  sent otherwise. SQL restore discards query-result tables while keeping PostgreSQL diagnostics on stderr. Input
-  reaching 100% means the dump has been sent; PostgreSQL may still be working. The original-filestore copy and database
-  restore report start and completion or failure.
+  extraction and optional full CRC verification report bytes processed at most every five seconds plus final
+  measurements. Phases without measured progress report elapsed time every ten seconds. On Linux, gOdoo probes cloning
+  with one nonempty filestore file before attempting a recursive reflink copy. If cloning is unavailable, it immediately
+  falls back to rsync. INFO logs identify the selected copy method and any fallback or partial-stage cleanup. Rsync
+  writes its progress and diagnostics directly to stdout; when it is unavailable, gOdoo uses its Python copy fallback.
+  SQL staging sends native `pv` progress to stderr when present and reports bytes sent otherwise. SQL restore discards
+  query-result tables while keeping PostgreSQL diagnostics on stderr. Input reaching 100% means the dump has been sent;
+  PostgreSQL may still be working. The original-filestore copy and database restore report start and completion or
+  failure.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.
 - Hook directories run in configured order; each directory's `*.py` files run lexically, one Odoo shell session per
   file. Phases are at-least-once, so scripts must be safe to rerun. Contents may change at a selected path.
+
+ZIP restores validate the archive structure, required dump, filestore paths, and archive identity by default. Pass
+`--verify-archive-crc` to `godoo db restore` or `godoo runtime init`, or set `GODOO_VERIFY_ARCHIVE_CRC=true`, to verify
+all ZIP members before restore. The default is false; `--no-verify-archive-crc` overrides an enabled environment value.
+CRC checks detect accidental corruption, not the archive's origin. Restored members always retain Python's ZIP CRC
+checks during extraction. With an original filestore, preflight already extracts the SQL dump and archive overlay; that
+work remains necessary, and enabling full verification also checks unused ZIP members in the same pass.
+
+Filestore transfers from a host bind mount into a VM volume must read and create each file across the filesystem
+boundary. A fast SSD does not eliminate that per-file cost. For repeated restores, keeping a reusable source in a native
+Linux volume can avoid later host transfers and allow reflink copies when both locations support them. This adds a
+persistent source copy, so weigh the storage cost before changing a downstream mount. Reset baselines may share reflink
+extents with the runtime; logical directory sizes can count those shared bytes more than once.
 
 Dependency installation, custom dump checks and restores, and filestore copies report elapsed time every ten seconds.
 The official upgrade client records phase start, completion, or failure without a heartbeat, while its native output is
