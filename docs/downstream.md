@@ -101,14 +101,14 @@ Keep the matching database and original attachments together:
 └── odoo_filestore/filestore/odoo/
 ```
 
-Plain init selects `odoo.dump` and its original filestore. Adding `--migration-dir` selects `upgraded.zip` and overlays
-its new attachments on the original filestore. Keep each upgraded ZIP paired with the backup submitted to the upgrade
-service. Do not mount or rely on a stale `upgrade_extract` directory.
+Plain init selects `odoo.dump` and its original filestore. Explicit `--seed /restore/dataset/upgraded.zip` selects the
+upgraded archive and overlays its new attachments on the original filestore. Keep each upgraded ZIP paired with the
+backup submitted to the upgrade service. Do not mount or rely on a stale `upgrade_extract` directory.
 
 | Setting                                             | Owner and meaning                                                                                                                                                                                                                     |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GODOO_DUMP_PATH` / `--dump-path`                   | gOdoo dataset directory inside the running process, for example `/odoo_restore`. A downstream wrapper may also use the host value as an import source or production bind-mount source, then override it inside the container.         |
-| `GODOO_RUNTIME_SEED` / `--seed`                     | Explicit ZIP input; takes precedence over automatic dataset selection. Usually unnecessary with the paired layout above.                                                                                                              |
+| `GODOO_RUNTIME_SEED` / `--seed`                     | Explicit ZIP input; takes precedence over plain dataset selection. Set it for the official upgrade result; unset it when switching to ordinary 19 dump restores.                                                                      |
 | `GODOO_ORIGINAL_FILESTORE` / `--original-filestore` | Explicit original attachment directory. Otherwise inferred from the paired dataset when its upgraded ZIP is selected.                                                                                                                 |
 | `GODOO_DUMP_VOLUME`                                 | Downstream Compose setting, not a gOdoo CLI option. The Wetech development stack defaults to the external volume `godoo-restore-datasets`.                                                                                            |
 | `TMPDIR`                                            | Temporary-file location inherited by `godoo upgrade` and the official client. The Wetech upgrade job sets it to `/odoo_restore/.upgrade` so temporary work stays in the dataset volume. Runtime init has its own process environment. |
@@ -154,18 +154,20 @@ For Odoo's upgrade client and restore workflow, see [the runtime lifecycle guide
 `ODOO_ENTERPRISE_SUBCODE`, plus `-x` to suppress the official client's local restore. This does not change an existing
 runtime database.
 
-## Select a migration transition
+## Configure native migrations and lifecycle hooks
 
-gOdoo owns transition-directory validation and converts `--migration-dir` (`GODOO_MIGRATION_DIR`) into existing init
-inputs. Run from the downstream workspace root for relative paths, or provide an absolute mounted directory. Mount the
-selected transition, native seed ZIP, and nonempty original filestore into the init environment. See
-[migration directories](lifecycle.md#migration-directories) for the required files and reconciliation rules.
+Mount project hook directories and select them through repeatable `--hooks-dir` or `GODOO_HOOK_DIRS`. Use the same
+[hook interface](hooks.md) for module requests, bootstrap/restore setup, and after-reconcile environment policy.
+Preparation hooks declare update/install requests; database hooks declare their applicable outcomes and environments,
+then check actual state with `needs_run(ctx)`. gOdoo batches database hooks by phase and commits each successful hook
+separately. Keep hook imports free of Odoo dependencies until their database callback runs.
 
-A downstream wrapper may forward its positional scripts directory as `--migration-dir`. It should leave version, script,
-module-list, archive, and filestore checks to gOdoo. Pass intentional project hooks with explicit
-`--after-reconcile-dir` options; they run after the transition's final hooks. Generic reconcile and phase-hook
-environment defaults must be unset in migration mode, because init rejects conflicting defaults before mutation.
-Downstream still owns Compose mounts, service ordering, and project shell scripts. gOdoo launch applies the bundled
+Keep versioned data repairs in native Odoo migrations. Forward `--upgrade-path` and `--pre-upgrade-script` explicitly
+when required. There is no version-pair directory or special major-upgrade lifecycle. An old `upgraded.zip` beside a new
+19 dump cannot select itself; only an explicit seed selects it. Native pre-upgrade scripts must tolerate an already
+upgraded database by checking module/data state before applying cleanup.
+
+Downstream owns mounts, service ordering, environment selection, and project hooks. gOdoo launch applies the bundled
 banner when `ODOO_BANNER_TEXT` or `ODOO_BANNER_BG_COLOR` is non-empty, independently of development mode.
 
 Selected inputs and dependency checks that can run before restore fail before mutation. Dependencies discovered only

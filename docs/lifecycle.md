@@ -45,14 +45,13 @@ database.
 For a custom-format `odoo.dump`, set `GODOO_RESTORE_JOBS` or pass `--restore-jobs` to control `pg_restore` workers. It
 defaults to one. ZIP dataset restores use `psql` and cannot parallelize this way.
 
-With `--migration-dir`, init instead selects `upgraded.zip` from the same directory and overlays it on the original
-filestore. `--seed` remains authoritative; when it selects that paired `upgraded.zip`, init infers the original
-filestore unless `--original-filestore` names one explicitly. Invalid dumps, ZIPs, or required filestores fail before
-init changes the database or filestore.
+For an official major upgrade, explicitly select `upgraded.zip` with `--seed` and overlay it on the original filestore.
+When `--seed` selects that paired `upgraded.zip`, init infers the original filestore unless `--original-filestore` names
+one explicitly. Invalid dumps, ZIPs, or required filestores fail before init changes the database or filestore.
 
 ```bash
 godoo runtime init --dump-path /restore/dataset
-godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
+godoo runtime init --dump-path /restore/dataset --seed /restore/dataset/upgraded.zip
 ```
 
 - Launch checks the Odoo version, pending recovery, and process dependencies before starting the server.
@@ -72,8 +71,9 @@ godoo runtime init --dump-path /restore/dataset --migration-dir migrations/16-19
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.
-- Hook directories run in configured order; each directory's `*.py` files run lexically, one Odoo shell session per
-  file. Phases are at-least-once, so scripts must be safe to rerun. Contents may change at a selected path.
+- Select lifecycle hooks with repeatable `--hooks-dir` or `GODOO_HOOK_DIRS`. Each file declares its phase, applicable
+  outcomes, and environments, with optional `needs_run(ctx)`. Database hooks share one Odoo registry per phase and use
+  separate transactions. Preparation hooks run without starting Odoo. See the [hook contract](hooks.md).
 
 ZIP restores validate the archive structure, required dump, filestore paths, and archive identity by default. Pass
 `--verify-archive-crc` to `godoo db restore` or `godoo runtime init`, or set `GODOO_VERIFY_ARCHIVE_CRC=true`, to verify
@@ -102,48 +102,24 @@ Dependency installation, custom dump checks and restores, and filestore copies r
 The official upgrade client records phase start, completion, or failure without a heartbeat, while its native output is
 unchanged. Child output, including interactive shells and the running Odoo server, keeps its native streams.
 
-## Migration directories
+## Native migrations and reconciliation hooks
 
-Run init from the downstream workspace root to select a transition directory:
+Major and minor upgrades use the same native Odoo reconciliation. Select modules directly with `--update` and
+`--install`, or declare them in a `prepare` hook using `ctx.request_modules`. Requests merge and deduplicate; there is
+no implicit update of all modules. Native `--upgrade-path` and `--pre-upgrade-script` remain explicit inputs.
 
-```bash
-godoo runtime init --migration-dir migration/transitions/16-19 \
-  --seed /restore/upgraded.zip --original-filestore /restore/original-filestore
-```
+Versioned schema and data repairs belong in Odoo addon `migrations/<version>/pre-*.py`, `post-*.py`, or `end-*.py`,
+including external migration roots passed with `--upgrade-path`. The migration version must lie above the installed
+version and at or below the manifest version. Fresh installations need their own install behavior.
 
-`GODOO_MIGRATION_DIR` is the environment fallback. Relative directories resolve from the current working directory;
-absolute mounted directories work too. The basename must be an increasing version pair such as `16-19`. Init derives the
-target major and checks the configured Odoo runtime before changing configuration, database, or filestore state. A
-matching `--expected-odoo-major` is allowed; a different major is rejected.
+Use [gOdoo hooks](hooks.md) for module requests and recurring environment policy. All hooks declare `HOOK = Hook(...)`
+and implement `run(ctx)`, with optional read-only `needs_run(ctx)`. Database hooks receive `ctx.env`, `ctx.environment`,
+and the original `ctx.outcome`; they do not read lifecycle marker files. A failed hook keeps init incomplete. Retrying
+checks current state again and preserves the restore/bootstrap outcome until initialization succeeds.
 
-The directory must contain `pre-upgrade.py` and at least one direct `after-reconcile/*.py` file. Init requires an
-explicit native seed ZIP and a nonempty original filestore directory. Demo data cannot be combined with a migration.
-
-Directory names and files, module lists, hook entrypoints, selected roots, seed and filestore inputs, the configured
-runtime target, and dependencies known before restore are checked before mutation. Init checks dependencies again after
-restoring the seed, when restored database state may reveal additional requirements. If that check fails, the restore
-has already completed and init remains incomplete. Fix the dependency and rerun init; the existing database is kept, and
-initialization hooks and reconciliation run again.
-
-| Transition input               | Init behavior                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Missing `update_modules.txt`   | Update `all`.                                                                                    |
-| Empty `update_modules.txt`     | Skip native updates, pre-upgrade scripts, and upgrade roots; installs and final hooks still run. |
-| Nonempty `update_modules.txt`  | Update the listed modules.                                                                       |
-| Optional `install_modules.txt` | Install the listed modules.                                                                      |
-
-Module files accept one module per line and comma-separated values; whitespace and duplicates are removed. Upgrade roots
-run in this order: workspace `migration/upgrade` if present, transition `upgrades` if present, then explicit
-`--upgrade-path` additions. Selected roots must exist. Transition final hooks run first, followed by explicit
-`--after-reconcile-dir` additions. Each directory's Python files run lexically through the existing hook runner.
-
-Generic `--update`, `--install`, `--pre-upgrade-script`, `--after-bootstrap-dir`, and `--after-restore-dir` options
-cannot be combined with migration selection. Unset `GODOO_RECONCILE_UPDATE`, `GODOO_RECONCILE_INSTALL`,
-`GODOO_RECONCILE_PRE_UPGRADE_SCRIPTS`, `GODOO_RECONCILE_UPGRADE_PATH`, and the `GODOO_AFTER_*_DIRS` phase defaults;
-nonempty values are rejected even when a CLI option would override them. Use explicit CLI options for additional upgrade
-roots and final project hooks.
-
-Ordinary init without a migration directory keeps its direct flags and environment defaults.
+Hook declarations, configured runtime version, and dependencies known before restore are checked before mutation.
+Dependencies discovered from the restored database are checked afterward. A failure at that point leaves init
+incomplete: repair the dependency and rerun init without restoring the seed again.
 
 ## Official and major-version upgrades
 
@@ -180,8 +156,8 @@ godoo db restore RESULT.zip --original-filestore /path/to/filestore/SOURCE_DB --
 ```
 
 - `--pre-upgrade-script` runs before Odoo opens the registry and requires `--update`.
-- With `--seed` and `--pre-upgrade-script`, do not set `--after-restore-dir`; that restore hook opens the registry
-  first. Seeded pre-upgrade SQL staging works without an after-restore hook.
+- Do not select an applicable `after_restore` database hook together with `--pre-upgrade-script`; it would open the
+  registry first. Put environment setup in `after_reconcile` so native pre-upgrade work runs first.
 - `--upgrade-path` also requires `--update`. Keep the source dump and filestore for recovery; completed Odoo changes are
   not automatically rolled back.
 

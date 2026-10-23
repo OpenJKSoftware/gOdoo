@@ -35,7 +35,6 @@ def test_plain_dataset_selects_source_database_filestore(tmp_path: Path) -> None
         dataset_root=root,
         seed=None,
         original_filestore=None,
-        migration_requested=False,
     )
 
     assert resolved is not None
@@ -54,26 +53,24 @@ def test_plain_dataset_honors_explicit_original_filestore(tmp_path: Path) -> Non
         dataset_root=root,
         seed=None,
         original_filestore=explicit,
-        migration_requested=False,
     )
 
     assert resolved is not None
     assert resolved.original_filestore == explicit
 
 
-def test_migration_selects_paired_upgrade_and_infers_original_filestore(tmp_path: Path) -> None:
+def test_plain_dataset_does_not_implicitly_select_paired_upgrade(tmp_path: Path) -> None:
     root, filestore = _dataset_root(tmp_path)
 
     resolved = dataset_module.resolve_runtime_dataset(
         dataset_root=root,
         seed=None,
         original_filestore=None,
-        migration_requested=True,
     )
 
     assert resolved is not None
-    assert resolved.kind == "archive"
-    assert resolved.source == root / "upgraded.zip"
+    assert resolved.kind == "custom"
+    assert resolved.source == root / "odoo.dump"
     assert resolved.original_filestore == filestore
 
 
@@ -88,7 +85,6 @@ def test_explicit_seed_wins_and_explicit_original_overrides_inference(tmp_path: 
         dataset_root=root,
         seed=explicit_seed,
         original_filestore=explicit_original,
-        migration_requested=True,
     )
 
     assert resolved is not None
@@ -104,7 +100,6 @@ def test_explicit_seed_ignores_missing_unused_dataset_root(tmp_path: Path) -> No
         dataset_root=tmp_path / "missing-dataset",
         seed=seed,
         original_filestore=None,
-        migration_requested=False,
     )
 
     assert resolved is not None
@@ -119,7 +114,6 @@ def test_equivalent_paired_seed_path_infers_original_filestore(tmp_path: Path) -
         dataset_root=root,
         seed=paired_seed,
         original_filestore=None,
-        migration_requested=False,
     )
 
     assert resolved is not None
@@ -136,18 +130,16 @@ def test_missing_plain_filestore_fails_before_runtime_work(tmp_path: Path) -> No
             dataset_root=root,
             seed=None,
             original_filestore=None,
-            migration_requested=False,
         )
 
 
-def test_archive_selection_defers_integrity_validation_to_init(tmp_path: Path) -> None:
+def test_explicit_paired_upgrade_defers_integrity_validation_to_init(tmp_path: Path) -> None:
     root, _filestore = _dataset_root(tmp_path)
 
     resolved = dataset_module.resolve_runtime_dataset(
         dataset_root=root,
-        seed=None,
+        seed=root / "upgraded.zip",
         original_filestore=None,
-        migration_requested=True,
     )
 
     assert resolved is not None
@@ -164,7 +156,6 @@ def test_dump_replaced_during_validation_is_rejected(tmp_path: Path, monkeypatch
             dataset_root=root,
             seed=None,
             original_filestore=None,
-            migration_requested=False,
         )
 
 

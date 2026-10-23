@@ -29,11 +29,8 @@ def _config(tmp_path: Path) -> GodooConfig:
     )
 
 
-def test_init_retries_restore_hooks_after_final_hook_failure(tmp_path: Path) -> None:
+def test_init_retries_restore_hooks_with_persisted_outcome(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = _config(tmp_path)
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    (hooks / "10_policy.py").write_text("pass\n")
     status = DbBootstrapStatus.NO_DB
     calls: list[str] = []
     attempts = 0
@@ -43,8 +40,11 @@ def test_init_retries_restore_hooks_after_final_hook_failure(tmp_path: Path) -> 
         calls.append("seed")
         status = DbBootstrapStatus.BOOTSTRAPPED
 
-    def hook(_config: GodooConfig, _script: Path) -> int:
+    def hook(_config: GodooConfig, _hooks: object, *, phase: str, outcome: str, **_kwargs: object) -> int:
         nonlocal attempts
+        if phase != "after_restore":
+            return 0
+        assert outcome == "restored"
         attempts += 1
         calls.append(f"hook-{attempts}")
         return 7 if attempts == 1 else 0
@@ -54,9 +54,9 @@ def test_init_retries_restore_hooks_after_final_hook_failure(tmp_path: Path) -> 
         "seeder": seed,
         "reconciler": lambda _config: calls.append("reconcile") or 0,
         "status_getter": lambda _connection: status,
-        "hook_runner": hook,
     }
-    selected = {"after_restore_dirs": [hooks]}
+    monkeypatch.setattr(runtime_lifecycle, "run_hook_phase", hook)
+    selected = {"hooks": []}
     assert deployment_init(config, **actions, seed_requested=True, **selected) == (
         LifecycleOutcome.RESTORED,
         7,
@@ -107,11 +107,10 @@ def test_major_version_failure_prevents_marker_and_callbacks(tmp_path: Path, mon
     assert not runtime_readiness_marker(config.data_dir, config.db_name).exists()
 
 
-def test_bootstrap_hook_failure_retries_bootstrap_hooks_after_database_exists(tmp_path: Path) -> None:
+def test_bootstrap_hook_failure_retries_bootstrap_hooks_after_database_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = _config(tmp_path)
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    (hooks / "10_bootstrap.py").write_text("pass\n")
     status = DbBootstrapStatus.NO_DB
     attempts = 0
 
@@ -120,8 +119,11 @@ def test_bootstrap_hook_failure_retries_bootstrap_hooks_after_database_exists(tm
         status = DbBootstrapStatus.BOOTSTRAPPED
         return True
 
-    def hook(_config: GodooConfig, _script: Path) -> int:
+    def hook(_config: GodooConfig, _hooks: object, *, phase: str, outcome: str, **_kwargs: object) -> int:
         nonlocal attempts
+        if phase != "after_bootstrap":
+            return 0
+        assert outcome == "bootstrapped"
         attempts += 1
         return 5 if attempts == 1 else 0
 
@@ -129,9 +131,9 @@ def test_bootstrap_hook_failure_retries_bootstrap_hooks_after_database_exists(tm
         "ensure": ensure,
         "reconciler": lambda _config: 0,
         "status_getter": lambda _connection: status,
-        "hook_runner": hook,
     }
-    selected = {"after_bootstrap_dirs": [hooks]}
+    monkeypatch.setattr(runtime_lifecycle, "run_hook_phase", hook)
+    selected = {"hooks": []}
     assert deployment_init(config, **actions, **selected) == (LifecycleOutcome.BOOTSTRAPPED, 5)
     assert deployment_init(config, **actions, **selected) == (LifecycleOutcome.READY, 0)
     assert attempts == 2
@@ -161,11 +163,8 @@ def test_init_runs_preflight_before_preparer_and_preserves_state_on_failure(tmp_
     assert not runtime_readiness_marker(tmp_path / "failed" / "data", "runtime").exists()
 
 
-def test_init_seeds_runs_restore_hooks_then_reconciles(tmp_path: Path) -> None:
+def test_init_seeds_runs_restore_hooks_then_reconciles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = _config(tmp_path)
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    (hooks / "10_restore.py").write_text("pass\n")
     status = DbBootstrapStatus.NO_DB
     calls: list[str] = []
 
@@ -189,21 +188,27 @@ def test_init_seeds_runs_restore_hooks_then_reconciles(tmp_path: Path) -> None:
         "seeder": seed,
         "reconciler": lambda _config: calls.append("reconcile") or 0,
         "status_getter": lambda _connection: status,
-        "hook_runner": lambda _config, _script: calls.append("restore-hook") or 0,
         "post_restore_preflight": post_restore,
     }
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "run_hook_phase",
+        lambda _config, _hooks, *, phase, **_kwargs: (
+            calls.append("restore-hook") or 0 if phase == "after_restore" else 0
+        ),
+    )
     with pytest.raises(RuntimeError, match="dependencies unavailable"):
         deployment_init(
             config,
             **actions,
             seed_requested=True,
-            after_restore_dirs=[hooks],
+            hooks=[],
         )
     assert calls == ["seed", "preflight-1"]
     result = deployment_init(
         config,
         **actions,
-        after_restore_dirs=[hooks],
+        hooks=[],
     )
     assert result == (LifecycleOutcome.READY, 0)
     assert calls == ["seed", "preflight-1", "preflight-2", "restore-hook", "reconcile"]

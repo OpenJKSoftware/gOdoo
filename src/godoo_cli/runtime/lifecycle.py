@@ -11,6 +11,7 @@ from ..database.connection import DBConnection
 from ..database.state import DbBootstrapStatus, classify_bootstrap_state
 from ..models import GodooConfig
 from .baseline import baseline_database_name
+from .hooks import HookDefinition, run_hook_phase
 from .locks import (
     begin_runtime_lifecycle,
     finish_runtime_lifecycle,
@@ -35,7 +36,6 @@ RuntimePreparer = Callable[[GodooConfig], None]
 BootstrapStatusGetter = Callable[[DBConnection], DbBootstrapStatus]
 RuntimeBootstrapper = Callable[..., int]
 RuntimeReconciler = Callable[[GodooConfig], int]
-HookRunner = Callable[[GodooConfig, Path], int]
 
 
 class LifecycleOutcome(StrEnum):
@@ -129,28 +129,12 @@ def ensure_runtime(
         return True
 
 
-def run_hook_directories(config: GodooConfig, directories: list[Path], runner: HookRunner) -> int:
-    """Run Python hooks in supplied directory and filename order."""
-    for directory in directories:
-        if not directory.is_dir():
-            message = f"Lifecycle hook directory does not exist: {directory}"
-            raise ValueError(message)
-        for script in sorted(directory.glob("*.py")):
-            LOGGER.info("Running lifecycle hook %s", script)
-            result = runner(config, script)
-            if result:
-                return result
-    return 0
-
-
 def reconcile_runtime(
     config: GodooConfig,
     *,
     preparer: RuntimePreparer | None = prepare_runtime,
     status_getter: BootstrapStatusGetter = classify_bootstrap_state,
     reconciler: RuntimeReconciler | None = None,
-    after_reconcile_dirs: list[Path] | None = None,
-    hook_runner: HookRunner | None = None,
     allow_lifecycle_retry: bool = False,
 ) -> int:
     """Prepare and update an existing runtime without bootstrapping or resetting it."""
@@ -166,8 +150,6 @@ def reconcile_runtime(
             result = reconciler(config)
             if result:
                 return result
-        if hook_runner:
-            return run_hook_directories(config, after_reconcile_dirs or [], hook_runner)
         return 0
 
 
@@ -200,23 +182,6 @@ def _initialize_runtime(
     return LifecycleOutcome.BOOTSTRAPPED
 
 
-def _run_outcome_hooks(
-    config: GodooConfig,
-    outcome: LifecycleOutcome,
-    after_bootstrap_dirs: list[Path] | None,
-    after_restore_dirs: list[Path] | None,
-    hook_runner: HookRunner | None,
-) -> int:
-    """Run the hook phase selected by the initialization outcome."""
-    if hook_runner is None:
-        return 0
-    if outcome == LifecycleOutcome.BOOTSTRAPPED:
-        return run_hook_directories(config, after_bootstrap_dirs or [], hook_runner)
-    if outcome == LifecycleOutcome.RESTORED:
-        return run_hook_directories(config, after_restore_dirs or [], hook_runner)
-    return 0
-
-
 def deployment_init(
     config: GodooConfig,
     *,
@@ -228,11 +193,10 @@ def deployment_init(
     preflight: RuntimePreparer | None = None,
     seed_preflight: RuntimePreparer | None = None,
     post_restore_preflight: RuntimePreparer | None = None,
-    after_bootstrap_dirs: list[Path] | None = None,
-    after_restore_dirs: list[Path] | None = None,
-    after_reconcile_dirs: list[Path] | None = None,
+    hooks: list[HookDefinition] | None = None,
+    environment: str | None = None,
+    upgrade_path: list[Path] | Path | None = None,
     status_getter: BootstrapStatusGetter = classify_bootstrap_state,
-    hook_runner: HookRunner | None = None,
     keep_reset_baseline: bool = False,
 ) -> tuple[LifecycleOutcome, int]:
     """Run one explicit initialization attempt and clear the marker only on success."""
@@ -263,16 +227,37 @@ def deployment_init(
             hook_outcome = outcome
         if hook_outcome == LifecycleOutcome.RESTORED and post_restore_preflight:
             post_restore_preflight(config)
-        result = _run_outcome_hooks(config, hook_outcome, after_bootstrap_dirs, after_restore_dirs, hook_runner)
+        phase = {
+            LifecycleOutcome.BOOTSTRAPPED: "after_bootstrap",
+            LifecycleOutcome.RESTORED: "after_restore",
+        }.get(hook_outcome)
+        result = (
+            run_hook_phase(
+                config,
+                hooks or [],
+                phase=phase,
+                outcome=hook_outcome.value,
+                environment=environment,
+                upgrade_path=upgrade_path,
+            )
+            if phase is not None
+            else 0
+        )
         if result:
             return outcome, result
         result = reconciler(config)
         if result:
             return outcome, result
-        if hook_runner:
-            result = run_hook_directories(config, after_reconcile_dirs or [], hook_runner)
-            if result:
-                return outcome, result
+        result = run_hook_phase(
+            config,
+            hooks or [],
+            phase="after_reconcile",
+            outcome=hook_outcome.value,
+            environment=environment,
+            upgrade_path=upgrade_path,
+        )
+        if result:
+            return outcome, result
         finish_runtime_lifecycle(marker)
         return outcome, 0
 

@@ -31,13 +31,12 @@ def resolve_runtime_dataset(
     dataset_root: Path | None,
     seed: Path | None,
     original_filestore: Path | None,
-    migration_requested: bool,
 ) -> RuntimeDataset | None:
     """Choose and validate one runtime seed without changing runtime state.
 
     An explicit seed remains authoritative. A dataset root selects its plain
-    custom dump by default and its upgraded ZIP only for a migration. The
-    original filestore is inferred only when that upgraded ZIP is selected.
+    custom dump by default. An explicitly selected paired upgraded ZIP infers
+    the original filestore.
 
     Returns:
         The selected source, or None when neither a dataset nor a seed was supplied.
@@ -62,15 +61,8 @@ def resolve_runtime_dataset(
         raise ValueError(message)
 
     dataset_root = dataset_root.resolve()
-    upgraded = dataset_root / "upgraded.zip"
     plain_dump = dataset_root / "odoo.dump"
     plain_filestore = _plain_filestore(dataset_root)
-    selected_seed = upgraded if migration_requested else None
-
-    if selected_seed is not None:
-        inferred_original = plain_filestore if selected_seed.resolve() == upgraded else None
-        selected_original = original_filestore or inferred_original
-        return RuntimeDataset("archive", selected_seed, selected_original)
 
     dump_identity = custom_dump_identity(plain_dump)
     validate_custom_dump(plain_dump)

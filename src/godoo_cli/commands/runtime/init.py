@@ -11,6 +11,7 @@ import typer
 from ...models import GodooConfig
 from ...runtime.archive import load_runtime_archive, prepare_archive_with_original_filestore
 from ...runtime.dataset import resolve_runtime_dataset
+from ...runtime.hooks import discover_hooks, has_eligible_hooks, run_prepare_hooks
 from ...runtime.lifecycle import (
     LifecycleBootstrapError,
     deployment_init,
@@ -18,10 +19,10 @@ from ...runtime.lifecycle import (
     preflight_reconcile_dependencies,
     reconcile_modules,
     reconcile_runtime,
-    run_lifecycle_hook,
     split_lifecycle_values,
+    split_upgrade_paths,
 )
-from ...runtime.migration import resolve_migration_directory
+from ...runtime.locks import read_runtime_lifecycle, runtime_readiness_marker
 from ...runtime.nginx import write_nginx_static_config
 from ...runtime.odoo import (
     SUPPORTED_ODOO_VERSION_SPECIFIER,
@@ -40,50 +41,38 @@ CLI = CommonCLI()
 
 
 def _validate_pre_upgrade_options(
-    seed: Path | None,
+    restore_requested: bool,
     pre_upgrade_scripts: list[Path] | None,
     update_modules: list[str] | None,
-    after_restore_dirs: list[Path] | None,
+    after_restore_hooks_selected: bool,
 ) -> None:
     """Reject hook combinations that would start Odoo before pre-upgrade scripts."""
-    if seed is not None and pre_upgrade_scripts and after_restore_dirs:
-        message = "--after-restore-dir cannot run with --pre-upgrade-script because restore hooks start Odoo first."
-        raise typer.BadParameter(message, param_hint="--after-restore-dir")
+    if restore_requested and pre_upgrade_scripts and after_restore_hooks_selected:
+        message = "An eligible after_restore hook cannot run with --pre-upgrade-script because it starts Odoo first."
+        raise typer.BadParameter(message, param_hint="--hooks-dir")
     if pre_upgrade_scripts and not split_lifecycle_values(update_modules):
         message = "--pre-upgrade-script requires at least one --update module."
         raise typer.BadParameter(message, param_hint="--update")
 
 
-def _validate_migration_overrides(
-    update_modules: list[str] | None,
-    install_modules: list[str] | None,
-    pre_upgrade_scripts: list[Path] | None,
-    after_bootstrap_dirs: list[Path] | None,
-    after_restore_dirs: list[Path] | None,
-) -> None:
-    """Prevent generic defaults from changing a selected migration."""
-    for variable in (
-        "GODOO_RECONCILE_UPDATE",
-        "GODOO_RECONCILE_INSTALL",
-        "GODOO_RECONCILE_PRE_UPGRADE_SCRIPTS",
-        "GODOO_RECONCILE_UPGRADE_PATH",
-        "GODOO_AFTER_BOOTSTRAP_DIRS",
-        "GODOO_AFTER_RESTORE_DIRS",
-        "GODOO_AFTER_RECONCILE_DIRS",
-    ):
-        if os.environ.get(variable, "").strip():
-            message = f"Unset {variable} when selecting --migration-dir; the transition supplies those inputs."
-            raise typer.BadParameter(message, param_hint="--migration-dir")
-    for option, value in (
-        ("--update", update_modules),
-        ("--install", install_modules),
-        ("--pre-upgrade-script", pre_upgrade_scripts),
-        ("--after-bootstrap-dir", after_bootstrap_dirs),
-        ("--after-restore-dir", after_restore_dirs),
-    ):
-        if value:
-            message = f"{option} cannot be combined with --migration-dir."
-            raise typer.BadParameter(message, param_hint=option)
+def _validate_native_paths(
+    upgrade_path: list[Path] | None, pre_upgrade_scripts: list[Path] | None, update_modules: list[str] | None
+) -> tuple[list[Path], list[Path] | None]:
+    """Resolve native upgrade inputs before lifecycle state can change."""
+    upgrade_paths = split_upgrade_paths(upgrade_path)
+    for path in upgrade_paths:
+        if not path.is_dir():
+            message = f"Native upgrade directory does not exist: {path}"
+            raise typer.BadParameter(message, param_hint="--upgrade-path")
+    scripts = [path.expanduser().resolve() for path in pre_upgrade_scripts or []]
+    for path in scripts:
+        if not path.is_file():
+            message = f"Native pre-upgrade script does not exist: {path}"
+            raise typer.BadParameter(message, param_hint="--pre-upgrade-script")
+    if (upgrade_paths or scripts) and not split_lifecycle_values(update_modules):
+        message = "Native upgrade paths and pre-upgrade scripts require at least one --update module."
+        raise typer.BadParameter(message, param_hint="--update")
+    return upgrade_paths, scripts or None
 
 
 # Keep validation and execution ordering visible at this public command boundary.
@@ -123,14 +112,6 @@ def deployment_init_odoo_runtime(  # noqa: C901
             help="Parallel pg_restore jobs for custom-format dataset imports.",
         ),
     ] = 1,
-    migration_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--migration-dir",
-            envvar="GODOO_MIGRATION_DIR",
-            help="Migration transition directory; relative paths start at the workspace working directory.",
-        ),
-    ] = None,
     original_filestore: Annotated[
         Path | None,
         typer.Option("--original-filestore", envvar="GODOO_ORIGINAL_FILESTORE"),
@@ -161,17 +142,13 @@ def deployment_init_odoo_runtime(  # noqa: C901
             help="URL Odoo uses to fetch PDF report assets.",
         ),
     ] = None,
-    after_bootstrap_dirs: Annotated[
+    hooks_dir: Annotated[
         list[Path] | None,
-        typer.Option("--after-bootstrap-dir", envvar="GODOO_AFTER_BOOTSTRAP_DIRS"),
-    ] = None,
-    after_restore_dirs: Annotated[
-        list[Path] | None,
-        typer.Option("--after-restore-dir", envvar="GODOO_AFTER_RESTORE_DIRS"),
-    ] = None,
-    after_reconcile_dirs: Annotated[
-        list[Path] | None,
-        typer.Option("--after-reconcile-dir", envvar="GODOO_AFTER_RECONCILE_DIRS"),
+        typer.Option(
+            "--hooks-dir",
+            envvar="GODOO_HOOK_DIRS",
+            help="Directory containing lifecycle hook declarations; repeat to preserve ordering.",
+        ),
     ] = None,
     expected_odoo_major: Annotated[
         int | None,
@@ -209,7 +186,6 @@ def deployment_init_odoo_runtime(  # noqa: C901
             dataset_root=dump_path,
             seed=seed,
             original_filestore=original_filestore,
-            migration_requested=migration_dir is not None,
         )
     except (RuntimeError, OSError, ValueError) as error:
         raise typer.BadParameter(str(error), param_hint="--dump-path") from error
@@ -217,53 +193,15 @@ def deployment_init_odoo_runtime(  # noqa: C901
         seed = dataset.source
         original_filestore = dataset.original_filestore
 
-    migration = None
-    if migration_dir is not None:
-        _validate_migration_overrides(
-            update_modules,
-            install_modules,
-            pre_upgrade_scripts,
-            after_bootstrap_dirs,
-            after_restore_dirs,
-        )
-        if odoo_demo:
-            message = "--migration-dir cannot be combined with demo data."
-            raise typer.BadParameter(message, param_hint="--odoo-demo")
-        if seed is None:
-            message = "--migration-dir requires a seed ZIP archive or --dump-path."
-            raise typer.BadParameter(message, param_hint="--seed")
-        if original_filestore is None:
-            message = "--migration-dir requires a nonempty original filestore directory."
-            raise typer.BadParameter(message, param_hint="--original-filestore")
-        try:
-            filestore_nonempty = original_filestore.is_dir() and any(
-                path.is_file() for path in original_filestore.rglob("*")
-            )
-        except OSError as error:
-            raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
-        if not filestore_nonempty:
-            message = f"Original filestore directory is missing or empty: {original_filestore}"
-            raise typer.BadParameter(message, param_hint="--original-filestore")
-        try:
-            migration = resolve_migration_directory(
-                migration_dir,
-                workspace_root=Path.cwd(),
-                additional_upgrade_paths=upgrade_path,
-            )
-        except (OSError, ValueError) as error:
-            raise typer.BadParameter(str(error), param_hint="--migration-dir") from error
-        if expected_odoo_major is not None and expected_odoo_major != migration.target_major:
-            message = f"Migration transition {migration.directory.name} requires Odoo {migration.target_major}.x."
-            raise typer.BadParameter(message, param_hint="--expected-odoo-major")
-        expected_odoo_major = migration.target_major
-        update_modules = list(migration.update_modules)
-        install_modules = list(migration.install_modules)
-        pre_upgrade_scripts = [migration.pre_upgrade_script] if update_modules else None
-        upgrade_path = list(migration.upgrade_paths) if update_modules else None
-        after_reconcile_dirs = [
-            migration.after_reconcile_dir,
-            *(after_reconcile_dirs or []),
-        ]
+    try:
+        hooks = discover_hooks(hooks_dir or [])
+        prepared_modules = run_prepare_hooks(hooks, environment=os.environ.get("GODOO_ENVIRONMENT") or None)
+    except (OSError, TypeError, ValueError) as error:
+        raise typer.BadParameter(str(error), param_hint="--hooks-dir") from error
+    update_modules = list(dict.fromkeys([*split_lifecycle_values(update_modules), *prepared_modules.update])) or None
+    install_modules = list(dict.fromkeys([*split_lifecycle_values(install_modules), *prepared_modules.install])) or None
+    upgrade_path, pre_upgrade_scripts = _validate_native_paths(upgrade_path, pre_upgrade_scripts, update_modules)
+    environment = os.environ.get("GODOO_ENVIRONMENT") or None
     if report_url is not None:
         report_url = report_url.strip()
     config = resolve_command_config(
@@ -289,10 +227,16 @@ def deployment_init_odoo_runtime(  # noqa: C901
     if expected_odoo_major is not None and runtime_version.major != expected_odoo_major:
         message = (
             f"Configured Odoo runtime is {runtime_version.raw}; "
-            f"the selected transition requires Odoo {expected_odoo_major}.x."
+            f"the selected runtime requires Odoo {expected_odoo_major}.x."
         )
         raise typer.BadParameter(message, param_hint="--expected-odoo-major")
-    _validate_pre_upgrade_options(seed, pre_upgrade_scripts, update_modules, after_restore_dirs)
+    persisted = read_runtime_lifecycle(runtime_readiness_marker(config.data_dir, config.db_name), config.db_name)
+    _validate_pre_upgrade_options(
+        seed is not None or (persisted is not None and persisted["outcome"] == "restored"),
+        pre_upgrade_scripts,
+        update_modules,
+        has_eligible_hooks(hooks, phase="after_restore", outcome="restored", environment=environment),
+    )
     if x_sendfile_enabled(config, x_sendfile) and not report_url:
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")
@@ -405,10 +349,9 @@ def deployment_init_odoo_runtime(  # noqa: C901
                     log_handlers=log_handlers,
                 ),
             ),
-            after_bootstrap_dirs=after_bootstrap_dirs,
-            after_restore_dirs=after_restore_dirs,
-            after_reconcile_dirs=after_reconcile_dirs,
-            hook_runner=run_lifecycle_hook,
+            hooks=hooks,
+            environment=environment,
+            upgrade_path=upgrade_path,
             keep_reset_baseline=keep_reset_baseline,
         )
         if result == 0 and report_url:

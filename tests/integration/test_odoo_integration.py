@@ -17,13 +17,14 @@ from psycopg2 import sql
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime.archive import dump_runtime_archive, load_runtime_archive
 from godoo_cli.runtime.baseline import baseline_database_name, save_runtime_baseline
+from godoo_cli.runtime.hooks import discover_hooks
 from godoo_cli.runtime.lifecycle import (
     LifecycleOutcome,
     deployment_init,
     ensure_runtime,
     reconcile_runtime,
-    run_lifecycle_hook,
 )
+from godoo_cli.runtime.locks import read_runtime_lifecycle, runtime_readiness_marker
 from godoo_cli.runtime.promotion import drop_database_strict
 from godoo_cli.runtime.reset import reset_empty_runtime, reset_runtime_from_template
 from godoo_cli.runtime.restore import RuntimeRestoreError, restore_custom_runtime, runtime_filestore_path
@@ -219,24 +220,37 @@ def live_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Liv
 
 
 def test_real_lifecycle_bootstraps_and_runs_ordered_hooks(live_stack: LiveStack, tmp_path: Path) -> None:
-    """Proves a live bootstrap runs hook files in lexical order and repeats them only for a ready runtime."""
+    """Proves hooks share a registry, commit separately, and skip satisfied state on repeat init."""
     db_name = live_stack.new_database_name("lifecycle")
     config = live_stack.config(db_name)
     after_reconcile_hooks = tmp_path / "after-reconcile"
     after_reconcile_hooks.mkdir()
     (after_reconcile_hooks / "20_second.py").write_text(
-        "params = env['ir.config_parameter'].sudo()\n"
-        "value = params.get_param('godoo.integration.lifecycle')\n"
-        "assert value.endswith('pre-launch-10'), value\n"
-        "params.set_param('godoo.integration.lifecycle', value + ',pre-launch-20')\n"
-        "env.cr.commit()\n"
+        "import os\n"
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.second', phase='after_reconcile')\n"
+        "def needs_run(ctx):\n"
+        "    return not bool(ctx.env['ir.config_parameter'].sudo().get_param('godoo.integration.second'))\n"
+        "def run(ctx):\n"
+        "    params = ctx.env['ir.config_parameter'].sudo()\n"
+        "    first = params.get_param('godoo.integration.first')\n"
+        "    assert first, 'first hook must commit before second hook starts'\n"
+        "    ctx.env.cr.execute('SELECT txid_current()')\n"
+        "    txid = ctx.env.cr.fetchone()[0]\n"
+        "    value = f'{os.getpid()}/{id(ctx.env.registry)}/{txid}/{ctx.outcome}'\n"
+        "    params.set_param('godoo.integration.second', value)\n"
     )
     (after_reconcile_hooks / "10_first.py").write_text(
-        "params = env['ir.config_parameter'].sudo()\n"
-        "value = params.get_param('godoo.integration.lifecycle', '')\n"
-        "separator = ',' if value else ''\n"
-        "params.set_param('godoo.integration.lifecycle', value + separator + 'pre-launch-10')\n"
-        "env.cr.commit()\n"
+        "import os\n"
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.first', phase='after_reconcile')\n"
+        "def needs_run(ctx):\n"
+        "    return not bool(ctx.env['ir.config_parameter'].sudo().get_param('godoo.integration.first'))\n"
+        "def run(ctx):\n"
+        "    ctx.env.cr.execute('SELECT txid_current()')\n"
+        "    txid = ctx.env.cr.fetchone()[0]\n"
+        "    value = f'{os.getpid()}/{id(ctx.env.registry)}/{txid}/{ctx.outcome}'\n"
+        "    ctx.env['ir.config_parameter'].sudo().set_param('godoo.integration.first', value)\n"
     )
 
     def ensure(conf: GodooConfig) -> bool:
@@ -256,17 +270,22 @@ def test_real_lifecycle_bootstraps_and_runs_ordered_hooks(live_stack: LiveStack,
         seeder=None,
         ensure=ensure,
         reconciler=reconcile,
-        hook_runner=run_lifecycle_hook,
-        after_reconcile_dirs=[after_reconcile_hooks],
+        hooks=discover_hooks([after_reconcile_hooks]),
     )
 
     assert result == (LifecycleOutcome.BOOTSTRAPPED, 0)
-    assert (
-        live_stack.scalar(
-            db_name,
-            "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.lifecycle'",
-        )
-        == "pre-launch-10,pre-launch-20"
+    values = [
+        str(live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = %s", (key,)))
+        for key in ("godoo.integration.first", "godoo.integration.second")
+    ]
+    first_pid, first_registry, first_txid, first_outcome = values[0].split("/")
+    second_pid, second_registry, second_txid, second_outcome = values[1].split("/")
+    assert first_pid == second_pid
+    assert first_registry == second_registry
+    assert first_txid != second_txid
+    assert first_outcome == second_outcome == "bootstrapped"
+    previous_write_date = live_stack.scalar(
+        db_name, "SELECT max(write_date)::text FROM ir_config_parameter WHERE key LIKE 'godoo.integration.%'"
     )
 
     result = deployment_init(
@@ -274,17 +293,77 @@ def test_real_lifecycle_bootstraps_and_runs_ordered_hooks(live_stack: LiveStack,
         seeder=None,
         ensure=ensure,
         reconciler=reconcile,
-        hook_runner=run_lifecycle_hook,
-        after_reconcile_dirs=[after_reconcile_hooks],
+        hooks=discover_hooks([after_reconcile_hooks]),
     )
 
     assert result == (LifecycleOutcome.READY, 0)
     assert (
         live_stack.scalar(
             db_name,
-            "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.lifecycle'",
+            "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.first'",
         )
-        == "pre-launch-10,pre-launch-20,pre-launch-10,pre-launch-20"
+        == values[0]
+    )
+    assert (
+        live_stack.scalar(
+            db_name, "SELECT max(write_date)::text FROM ir_config_parameter WHERE key LIKE 'godoo.integration.%'"
+        )
+        == previous_write_date
+    )
+
+
+def test_real_hook_retry_preserves_committed_work_and_original_outcome(live_stack: LiveStack, tmp_path: Path) -> None:
+    """Proves a partial internal commit survives failure and its state guard makes retry safe."""
+    db_name = live_stack.new_database_name("hook_retry")
+    config = live_stack.config(db_name)
+    hook_dir = tmp_path / "retry-hooks"
+    hook_dir.mkdir()
+    (hook_dir / "10_partial.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.partial', phase='after_reconcile', on=('bootstrapped',))\n"
+        "def needs_run(ctx):\n"
+        "    return not bool(ctx.env['ir.config_parameter'].sudo().get_param('godoo.integration.partial'))\n"
+        "def run(ctx):\n"
+        "    ctx.env['ir.config_parameter'].sudo().set_param('godoo.integration.partial', 'committed')\n"
+        "    ctx.env.cr.commit()\n"
+        "    raise RuntimeError('integration failure after internal commit')\n"
+    )
+    (hook_dir / "20_finish.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.finish', phase='after_reconcile', on=('bootstrapped',))\n"
+        "def run(ctx):\n"
+        "    assert ctx.outcome == 'bootstrapped'\n"
+        "    ctx.env['ir.config_parameter'].sudo().set_param('godoo.integration.finish', 'done')\n"
+    )
+
+    def ensure(conf: GodooConfig) -> bool:
+        return ensure_runtime(
+            conf,
+            preparer=lambda _config: None,
+            bootstrapper=live_stack.initialize,
+            install_workspace_modules=False,
+            allow_lifecycle_retry=True,
+        )
+
+    arguments = {
+        "ensure": ensure,
+        "reconciler": lambda _config: 0,
+        "hooks": discover_hooks([hook_dir]),
+    }
+    outcome, result = deployment_init(config, **arguments)
+    assert outcome == LifecycleOutcome.BOOTSTRAPPED
+    assert result != 0
+    marker = runtime_readiness_marker(config.data_dir, db_name)
+    assert read_runtime_lifecycle(marker, db_name) == {"database": db_name, "outcome": "bootstrapped"}
+    assert (
+        live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.partial'")
+        == "committed"
+    )
+    assert deployment_init(config, **arguments) == (LifecycleOutcome.READY, 0)
+    assert not marker.exists()
+    assert (
+        live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.integration.finish'")
+        == "done"
     )
 
 

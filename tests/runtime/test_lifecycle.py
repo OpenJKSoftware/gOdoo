@@ -28,22 +28,6 @@ def _config(tmp_path: Path) -> GodooConfig:
     )
 
 
-def test_hook_directories_preserve_order(tmp_path: Path) -> None:
-    first, second = tmp_path / "first", tmp_path / "second"
-    first.mkdir()
-    second.mkdir()
-    (first / "10.py").write_text("first")
-    (second / "10.py").write_text("second")
-    calls: list[str] = []
-    assert (
-        lifecycle.run_hook_directories(
-            _config(tmp_path), [second, first], lambda _config, path: calls.append(path.read_text()) or 0
-        )
-        == 0
-    )
-    assert calls == ["second", "first"]
-
-
 def test_upgrade_options_require_update(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="require at least one --update"):
         lifecycle.reconcile_modules(_config(tmp_path), None, None, upgrade_path=tmp_path / "upgrades")
