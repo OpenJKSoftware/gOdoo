@@ -91,6 +91,18 @@ To seed an init service from a fixed dataset, mount its directory read-only and 
 plain source is `odoo.dump` plus `odoo_filestore/filestore/odoo`; adding `--migration-dir` selects the paired
 `upgraded.zip`. Do not mount or rely on a stale `upgrade_extract` directory.
 
+For repeated development restores on a Docker VM, downstream can keep this dataset in a named external volume shared by
+projects. Create it explicitly and use a fixed volume name so `compose down --volumes` retains it. Mount the source
+read-only for init and read-write only for explicit import, pull, and upgrade jobs. Put the extracted original filestore
+there too; storing only the ZIP would leave attachment copies crossing the host boundary.
+
+Import existing host files once, excluding stale extraction directories. Pull later backups directly into the volume and
+keep the upgrade client's output and private resume state there. Keep each project's database and runtime filestore in
+separate volumes. When source and destination support reflinks on the same filesystem, gOdoo clones the original
+attachments and later writes allocate private blocks; otherwise it falls back to rsync. Downstream owns volume names,
+SSH forwarding, ownership, import commands, and writer coordination. Do not update a shared dataset while another
+project is restoring from it. Logical directory sizes can count shared reflink extents more than once.
+
 For Odoo's upgrade client and restore workflow, see [the runtime lifecycle guide](lifecycle.md). The downstream
 `make upgrade` target calls `godoo upgrade` directly. It passes `GODOO_DUMP_PATH/odoo.dump` to `--dump`,
 `ODOO_UPGRADE_TARGET_VERSION` to `--target`, and `ODOO_ENTERPRISE_SUBCODE` to `--contract`. It also passes `-x` to
