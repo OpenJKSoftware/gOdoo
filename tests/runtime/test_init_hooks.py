@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 import typer
+from click import unstyle
 from typer.testing import CliRunner
 
 from godoo_cli.commands.runtime import init as runtime_init
@@ -69,7 +70,7 @@ def test_native_upgrade_path_requires_update_before_runtime_configuration(
     result = CliRunner().invoke(_app(), ["--upgrade-path", str(upgrade_path)], env=_environment(tmp_path))
 
     assert result.exit_code == 2, result.output
-    assert "require at least one --update" in result.output
+    assert "require at least one --update" in unstyle(result.output)
 
 
 def test_after_restore_hooks_are_rejected_before_native_pre_upgrade(

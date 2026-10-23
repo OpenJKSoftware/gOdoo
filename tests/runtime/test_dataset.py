@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from click import unstyle
 from typer.testing import CliRunner
 
 import godoo_cli.runtime.dataset as dataset_module
@@ -183,4 +184,4 @@ def test_demo_seed_conflict_rejects_before_dataset_or_runtime_work(
     )
 
     assert result.exit_code == 2, result.output
-    assert "--seed cannot be combined with demo data" in result.output
+    assert "--seed cannot be combined with demo data" in unstyle(result.output)
