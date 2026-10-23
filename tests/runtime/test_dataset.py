@@ -159,11 +159,28 @@ def test_dump_replaced_during_validation_is_rejected(tmp_path: Path, monkeypatch
         )
 
 
-def test_demo_dataset_conflict_rejects_before_resolver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_demo_seed_conflict_rejects_before_dataset_or_runtime_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     app = typer.Typer()
     app.command()(runtime_init.deployment_init_odoo_runtime)
     monkeypatch.setattr(runtime_init, "resolve_runtime_dataset", lambda **_kwargs: pytest.fail("resolver must not run"))
+    monkeypatch.setattr(runtime_init, "discover_hooks", lambda *_args: pytest.fail("hooks must not run"))
+    monkeypatch.setattr(runtime_init, "resolve_command_config", lambda **_kwargs: pytest.fail("config must not run"))
+    monkeypatch.setattr(runtime_init, "deployment_init", lambda *_args, **_kwargs: pytest.fail("init must not run"))
 
-    result = CliRunner().invoke(app, ["--dump-path", str(tmp_path), "--odoo-demo"])
+    result = CliRunner().invoke(
+        app,
+        ["--seed", str(tmp_path / "seed.zip"), "--odoo-demo"],
+        env={
+            "ODOO_MAIN_FOLDER": str(tmp_path / "odoo"),
+            "ODOO_WORKSPACE_ADDON_LOCATION": str(tmp_path / "addons"),
+            "ODOO_CONF_PATH": str(tmp_path / "odoo.conf"),
+            "ODOO_DB_FILTER": ".*",
+            "ODOO_MAIN_DB": "runtime",
+            "ODOO_DB_USER": "odoo",
+        },
+    )
 
     assert result.exit_code == 2, result.output
+    assert "--seed cannot be combined with demo data" in result.output

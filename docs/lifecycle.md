@@ -10,11 +10,16 @@ restore, clone, or replacement; gOdoo locks coordinate gOdoo operations only.
 
 ```mermaid
 flowchart TD
-    Init[runtime init] --> Check[Prepare and preflight]
+    Init[runtime init] --> Needed{--if-needed?}
+    Needed -->|no| Check[Prepare and preflight]
+    Needed -->|yes| Status[Read-only runtime status]
+    Status -->|ready| Skip[Exit successfully without changes]
+    Status -->|missing, empty, incomplete| Check
+    Status -->|inconsistent or unavailable| Fail[Stop; preserve data]
     Check --> State{Database state}
     State -->|ready| Reconcile[Reconcile selected modules]
     State -->|missing or empty| Seed{Seed supplied?}
-    State -->|inconsistent| Fail[Stop; preserve data]
+    State -->|inconsistent| Fail
     Seed -->|yes| Restore[Restore database and filestore]
     Seed -->|no| Bootstrap[Bootstrap database]
     Restore --> RestoreHooks[after-restore hooks]
@@ -35,6 +40,23 @@ flowchart TD
 godoo runtime init \
   && godoo runtime launch
 ```
+
+### Conditional initialization
+
+Use `godoo runtime init --if-needed` or set `GODOO_INIT_IF_EMPTY=true` for normal startup. It reads runtime status
+before loading datasets, hooks, or Odoo. A ready runtime exits successfully without reconciliation or configuration
+writes. Missing (20), empty (21), and incomplete (23) runtimes continue initialization; inconsistent (22) and
+unavailable (1) runtimes stop with the status exit code. The check prints the same JSON status payload as
+`runtime status --json`.
+
+The default remains explicit reconciliation, including on a ready database. Use `--no-if-needed` to request that
+behavior when the environment enables conditional initialization. Deployment jobs that apply module updates or hooks
+should use explicit reconciliation. The readiness check uses the same resolved database and data directory as init; the
+existing lifecycle checks still validate state when initialization proceeds.
+
+Demo mode (`--odoo-demo` or `GODOO_RUNTIME_DEMO=true`) selects bootstrap with demo data and ignores configured dataset
+and original-filestore paths. An explicit seed combined with demo mode is an error. Conditional initialization of a
+ready runtime skips these restore-input checks too.
 
 ### Fixed runtime datasets
 

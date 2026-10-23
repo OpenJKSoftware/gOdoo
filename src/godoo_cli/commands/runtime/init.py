@@ -1,5 +1,6 @@
 """High-level, testable gOdoo runtime lifecycle commands."""
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -33,6 +34,7 @@ from ...runtime.odoo import (
     x_sendfile_enabled,
 )
 from ...runtime.restore import RuntimeRestoreError, restore_custom_runtime
+from ...runtime.status import inspect_runtime
 from ..common import CommonCLI
 from ..configuration import resolve_command_config
 
@@ -101,6 +103,14 @@ def deployment_init_odoo_runtime(  # noqa: C901
             help="Fixed dataset directory containing odoo.dump and odoo_filestore.",
         ),
     ] = None,
+    if_needed: Annotated[
+        bool,
+        typer.Option(
+            "--if-needed/--no-if-needed",
+            envvar="GODOO_INIT_IF_EMPTY",
+            help="Skip a ready runtime; initialize missing/empty state or resume incomplete initialization.",
+        ),
+    ] = False,
     keep_reset_baseline: Annotated[bool, CLI.database.keep_reset_baseline] = False,
     verify_archive_crc: Annotated[bool, CLI.database.verify_archive_crc] = False,
     restore_jobs: Annotated[
@@ -177,10 +187,44 @@ def deployment_init_odoo_runtime(  # noqa: C901
     extra_bootstrap_args: Annotated[list[str] | None, CLI.odoo_launch.extra_cmd_args_bootstrap] = None,
     nginx_config: Annotated[Path | None, CLI.odoo_paths.nginx_config] = None,
 ) -> int:
-    """One-shot init: seed or bootstrap, reconcile, run phase hooks, then exit."""
-    if odoo_demo and dump_path is not None:
-        message = "--dump-path cannot be combined with demo data."
-        raise typer.BadParameter(message, param_hint="--odoo-demo")
+    """Initialize and reconcile once, optionally skipping a ready runtime."""
+
+    def resolve_config() -> GodooConfig:
+        """Resolve the same runtime target for readiness and initialization."""
+        return resolve_command_config(
+            odoo_main_path=odoo_main_path,
+            workspace_addon_path=workspace_addon_path,
+            odoo_conf_path=odoo_conf_path,
+            data_dir=data_dir,
+            db_filter=db_filter,
+            db_name=db_name,
+            db_user=db_user,
+            db_host=db_host,
+            db_port=db_port,
+            db_password=db_password,
+            extra={
+                "multithread_worker_count": multithread_worker_count,
+                "languages": languages,
+            },
+        )
+
+    config = None
+    if if_needed:
+        config = resolve_config()
+        payload, status = inspect_runtime(
+            config.db_connection.with_db(config.db_name, readonly=True),
+            config.data_dir,
+            Path("/odoo/godoo-source-provenance.json"),
+        )
+        typer.echo(json.dumps(payload, sort_keys=True))
+        if status not in (20, 21, 23):
+            return CLI.returner(status)
+
+    if odoo_demo:
+        if seed is not None:
+            message = "--seed cannot be combined with demo data."
+            raise typer.BadParameter(message, param_hint="--odoo-demo")
+        dump_path = original_filestore = None
     try:
         dataset = resolve_runtime_dataset(
             dataset_root=dump_path,
@@ -204,22 +248,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
     environment = os.environ.get("GODOO_ENVIRONMENT") or None
     if report_url is not None:
         report_url = report_url.strip()
-    config = resolve_command_config(
-        odoo_main_path=odoo_main_path,
-        workspace_addon_path=workspace_addon_path,
-        odoo_conf_path=odoo_conf_path,
-        data_dir=data_dir,
-        db_filter=db_filter,
-        db_name=db_name,
-        db_user=db_user,
-        db_host=db_host,
-        db_port=db_port,
-        db_password=db_password,
-        extra={
-            "multithread_worker_count": multithread_worker_count,
-            "languages": languages,
-        },
-    )
+    config = config or resolve_config()
     try:
         runtime_version = require_odoo_version(config.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
     except OdooVersionError as error:

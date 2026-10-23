@@ -83,9 +83,17 @@ The image includes the checked-out CLI and materialized runtime sources; it is s
 `/odoo/odoo`, `/odoo/godoo_workspace`, `/odoo/thirdparty`, and `/odoo/config/odoo.conf`. Do not mount
 `GODOO_SOURCES_ROOT` into `init` or `app`, and do not bake database passwords into the image.
 
-The `init` service runs `godoo runtime init` after PostgreSQL is healthy. The `app` service runs `godoo runtime launch`
-only after init completes successfully (`service_completed_successfully`). Start downstream debug services before using
-the attach-only `gOdoo: attach` VS Code configuration.
+The `init` service runs `godoo runtime init` directly after PostgreSQL is healthy. Set `GODOO_INIT_IF_EMPTY=true` for
+startup that skips ready runtimes; keep it false for deployment jobs that reconcile modules and hooks. An explicit
+`--no-if-needed` overrides an enabled environment setting. Demo mode ignores mounted restore inputs and rejects an
+explicit seed.
+
+Configure project paths with `GODOO_HOOK_DIRS`, `GODOO_RECONCILE_UPGRADE_PATH`, and
+`GODOO_RECONCILE_PRE_UPGRADE_SCRIPTS`, or their CLI options. gOdoo does not infer project-specific migration locations
+or restrict hook environment names. Project preparation hooks can validate their supported environments.
+
+The `app` service runs `godoo runtime launch` only after init completes successfully (`service_completed_successfully`).
+Start downstream debug services before using the attach-only `gOdoo: attach` VS Code configuration.
 
 ## Restore dataset storage
 
