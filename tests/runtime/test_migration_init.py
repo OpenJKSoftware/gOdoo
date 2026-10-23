@@ -155,7 +155,7 @@ def test_invalid_restore_input_does_not_create_pending_marker(
     result = CliRunner().invoke(_app(), [], env=environment)
 
     assert result.exit_code == 2, result.output
-    assert "--original-filestore" in result.output
+    assert "--original-filestore" in unstyle(result.output)
     assert not runtime_readiness_marker(archive.parent / "data", "runtime").exists()
 
 
