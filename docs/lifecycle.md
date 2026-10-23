@@ -86,10 +86,11 @@ godoo runtime init --dump-path /restore/dataset --seed /restore/dataset/upgraded
   with one nonempty filestore file before attempting a recursive reflink copy. If cloning is unavailable, it immediately
   falls back to rsync. INFO logs identify the selected copy method and any fallback or partial-stage cleanup. Rsync
   writes its progress and diagnostics directly to stdout; when it is unavailable, gOdoo uses its Python copy fallback.
-  SQL staging sends native `pv` progress to stderr when present and reports bytes sent otherwise. SQL restore discards
-  query-result tables while keeping PostgreSQL diagnostics on stderr. Input reaching 100% means the dump has been sent;
-  PostgreSQL may still be working. The original-filestore copy and database restore report start and completion or
-  failure.
+  SQL staging uses the native `pv` bar when stderr is a terminal and `pv` is available. Otherwise, it logs bytes sent
+  and percentages as complete lines so Compose and other log collectors show progress during the transfer. SQL restore
+  discards query-result tables while keeping PostgreSQL diagnostics on stderr. Input reaching 100% means the dump has
+  been sent; PostgreSQL may still be working. The original-filestore copy and database restore report start and
+  completion or failure.
 - `runtime status` is read-only. `runtime shell` and `runtime shell-script` start explicit Odoo shell sessions.
 - `--update` and `--install` select module reconciliation. `--report-url` or `GODOO_REPORT_URL` sets Odoo's `report.url`
   after successful init; it is required when `--x-sendfile` or `GODOO_X_SENDFILE` is enabled.

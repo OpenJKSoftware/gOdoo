@@ -8,6 +8,7 @@ import posixpath
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -157,7 +158,7 @@ def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> i
 
         psql_command = list(command)
         psql_command[file_index + 1] = "-"
-        if not shutil.which("pv"):
+        if not sys.stderr.isatty() or not shutil.which("pv"):
             return _stream_sql_input(psql_command, dump_path, environment)
         LOGGER.info("Sending SQL input from %s", dump_path)
         producer = subprocess.Popen(
@@ -204,7 +205,7 @@ def _run_postgres_command(command: Sequence[str], connection: DBConnection) -> i
 
 
 def _stream_sql_input(command: Sequence[str], dump_path: Path, environment: dict[str, str]) -> int:
-    """Send SQL through psql while reporting measured input bytes without pv."""
+    """Send SQL through psql with newline-separated byte and percentage logs."""
     total_bytes = dump_path.stat().st_size
     sent_bytes = 0
     last_report = time.monotonic()

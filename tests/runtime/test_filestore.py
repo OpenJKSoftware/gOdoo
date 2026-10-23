@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
+import select
 import subprocess
 import sys
 import threading
+import time
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -38,6 +40,7 @@ def _fake_progress_tools(
 ) -> Path:
     tools = tmp_path / "tools"
     tools.mkdir()
+    monkeypatch.setattr(runtime_archive.sys.stderr, "isatty", lambda: True)
     monkeypatch.setenv("GODOO_PV_ARGS", str(tools / "pv-args"))
     pv = tools / "pv"
     pv.write_text(
@@ -801,7 +804,7 @@ def test_archive_rejects_corrupt_member_crc(tmp_path: Path, monkeypatch: pytest.
         validate_native_runtime_archive(archive_path, verify_archive_crc=True)
 
 
-def test_pv_progress_preserves_carriage_returns(
+def test_terminal_pv_progress_preserves_carriage_returns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfdbinary: pytest.CaptureFixture[bytes]
 ) -> None:
     """Keep native progress and PostgreSQL diagnostics on stderr."""
@@ -819,3 +822,59 @@ def test_pv_progress_preserves_carriage_returns(
     assert b"12%\r100%\n" in captured.err
     assert b"fake psql diagnostic\n" in captured.err
     assert captured.out == b""
+
+
+def test_piped_sql_progress_arrives_before_transfer_finishes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deliver complete progress lines while a slow SQL consumer is running."""
+    tools = _fake_progress_tools(tmp_path, monkeypatch, psql_status=0, pv_status=99)
+    dump = tmp_path / "dump.sql"
+    dump.write_bytes(b"select 1;\n" * (400 * 1024))
+    captured_sql = tmp_path / "captured.sql"
+    (tools / "psql").write_text(
+        f"#!{sys.executable}\n"
+        "import sys, time\n"
+        f"with open({str(captured_sql)!r}, 'wb') as captured:\n"
+        "    while chunk := sys.stdin.buffer.read(65536):\n"
+        "        captured.write(chunk)\n"
+        "        time.sleep(0.02)\n",
+        encoding="utf-8",
+    )
+    wrapper_code = (
+        "import logging, sys\n"
+        "from pathlib import Path\n"
+        "from godoo_cli.database.connection import DBConnection\n"
+        "from godoo_cli.runtime import archive\n"
+        "logging.basicConfig(level=logging.INFO)\n"
+        "archive.PROGRESS_INTERVAL_SECONDS = 0.01\n"
+        "sys.exit(archive._run_postgres_command(\n"
+        "    ['psql', '--file', sys.argv[1]], DBConnection('', 0, '', '', 'test')\n"
+        "))\n"
+    )
+    with subprocess.Popen(
+        [sys.executable, "-c", wrapper_code, str(dump)], stderr=subprocess.PIPE, stdout=subprocess.PIPE
+    ) as wrapper:
+        assert wrapper.stderr is not None
+        output = b""
+        deadline = time.monotonic() + 5
+        try:
+            while b"1048576/4096000 bytes sent (25.6%)\n" not in output:
+                remaining = deadline - time.monotonic()
+                assert remaining > 0, output
+                assert select.select([wrapper.stderr], [], [], remaining)[0], output
+                chunk = os.read(wrapper.stderr.fileno(), 4096)
+                assert chunk, output
+                output += chunk
+            assert wrapper.poll() is None
+            stdout, remainder = wrapper.communicate(timeout=5)
+        finally:
+            if wrapper.poll() is None:
+                wrapper.kill()
+                wrapper.wait(timeout=5)
+
+    assert wrapper.returncode == 0
+    assert stdout == b""
+    assert b"\r" not in output + remainder
+    assert b"bytes sent (100.0%)\n" in remainder
+    assert b"PostgreSQL restore completed\n" in remainder
+    assert not (tools / "pv-args").exists()
+    assert captured_sql.read_bytes() == dump.read_bytes()
