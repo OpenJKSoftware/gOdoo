@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import signal
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, cast
 from urllib.error import URLError
@@ -24,8 +26,35 @@ LOGGER = logging.getLogger(__name__)
 UPGRADE_CLIENT_URL = "https://upgrade.odoo.com/upgrade"
 
 
+def _log_upgrade_sources(arguments: list[str]) -> None:
+    """Log the selected dump and paired local filestore before the client starts."""
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument("-i", "--dump", type=Path)
+    try:
+        options, _ = parser.parse_known_args(arguments)
+    except argparse.ArgumentError:
+        # Odoo's client owns argument validation and its error messages.
+        return
+    if options.dump is None:
+        return
+
+    dump = options.dump.absolute()
+    sources = (
+        ("Dump change date (upload)", dump),
+        ("Filestore change date (local restore)", dump.parent / "odoo_filestore"),
+    )
+    for label, path in sources:
+        try:
+            modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).astimezone()
+        except OSError as error:
+            LOGGER.warning("Could not read %s (%s): %s", label, path, error)
+            continue
+        LOGGER.info("%s: %s (%s)", label, modified_at.isoformat(timespec="seconds"), path)
+
+
 def _run_upgrade_client(arguments: list[str]) -> int:
     """Download and run Odoo's official upgrade client with its arguments."""
+    _log_upgrade_sources(arguments)
     ssl_disabled = os.getenv("GODOO_UPGRADE_SSL") == "0"
     context = ssl._create_unverified_context() if ssl_disabled else None
     try:

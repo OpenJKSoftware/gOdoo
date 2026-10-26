@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import os
 import signal
 import ssl
 import sys
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock
@@ -194,3 +196,70 @@ def test_upgrade_cli_preserves_nonzero_client_status(monkeypatch: pytest.MonkeyP
     result = CliRunner().invoke(main_cli(), ["upgrade", "status", "token"])
 
     assert result.exit_code == 23, result.output
+
+
+@pytest.mark.parametrize("dump_option", ["-i", "--dump", "--dump=", "-i-attached"])
+def test_upgrade_logs_source_dates_before_download_and_client(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    dump_option: str,
+) -> None:
+    """The actual selected file and paired directory are logged before network work."""
+    dataset = tmp_path / "dataset with spaces"
+    dataset.mkdir()
+    dump = dataset / "source.dump"
+    dump.touch()
+    filestore = dataset / "odoo_filestore"
+    filestore.mkdir()
+    os.utime(dump, (1700000000, 1700000000))
+    os.utime(filestore, (1600000000, 1600000000))
+    monkeypatch.chdir(tmp_path)
+    relative_dump = str(dump.relative_to(tmp_path))
+    if dump_option == "--dump=":
+        selection = [f"--dump={relative_dump}"]
+    elif dump_option == "-i-attached":
+        selection = [f"-i{relative_dump}"]
+    else:
+        selection = [dump_option, relative_dump]
+    arguments = ["test", *selection, "--future-official-option", "value", "-x"]
+    caplog.set_level(logging.INFO, logger=upgrade_command.LOGGER.name)
+
+    def download(*_args: object, **_kwargs: object) -> BytesIO:
+        assert (
+            f"Dump change date (upload): {datetime.fromtimestamp(1700000000, UTC).astimezone().isoformat()} ({dump})"
+            in caplog.text
+        )
+        assert (
+            f"Filestore change date (local restore): {datetime.fromtimestamp(1600000000, UTC).astimezone().isoformat()} ({filestore})"
+            in caplog.text
+        )
+        return BytesIO(b"official client")
+
+    child = Mock(return_value=Mock(wait=lambda: 0, pid=42))
+    monkeypatch.setattr(upgrade_command, "urlopen", download)
+    monkeypatch.setattr(upgrade_command.subprocess, "Popen", child)
+
+    assert upgrade_command._run_upgrade_client(arguments) == 0
+    assert child.call_args.args[0][2:] == arguments
+
+
+def test_upgrade_missing_source_metadata_does_not_replace_client_validation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Missing timestamps produce warnings while the official client keeps ownership."""
+    dump = tmp_path / "missing.dump"
+    monkeypatch.setattr(upgrade_command, "urlopen", lambda *_args, **_kwargs: BytesIO(b""))
+    monkeypatch.setattr(upgrade_command, "_run_process", lambda *_args, **_kwargs: 23)
+
+    assert upgrade_command._run_upgrade_client(["test", "-i", str(dump)]) == 23
+    assert f"Could not read Dump change date (upload) ({dump})" in caplog.text
+    assert f"Could not read Filestore change date (local restore) ({tmp_path / 'odoo_filestore'})" in caplog.text
+
+
+@pytest.mark.parametrize("arguments", [["status", "token"], ["test", "--dbname", "database"], ["test", "-i"]])
+def test_upgrade_skips_source_logging_without_a_dump(arguments: list[str], caplog: pytest.LogCaptureFixture) -> None:
+    """Database mode, status, and malformed dump options stay with the official client."""
+    caplog.set_level(logging.INFO, logger=upgrade_command.LOGGER.name)
+    upgrade_command._log_upgrade_sources(arguments)
+    assert not caplog.records

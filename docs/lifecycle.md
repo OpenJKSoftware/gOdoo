@@ -178,6 +178,12 @@ sequenceDiagram
     Maintainer->>Maintainer: Review Odoo's report before restoring into a test runtime
 ```
 
+Before downloading the official client, `godoo upgrade` logs the modification date and absolute path of the dump
+selected by `-i` / `--dump` and the adjacent `odoo_filestore` directory. Dates include the local timezone offset. The
+filestore stays local for restoring the result. Its directory timestamp reflects changes to immediate entries, not
+changes throughout the attachment tree or proof that the dump and filestore were captured together. Missing metadata
+produces a warning; the official client still owns input validation. Commands without a dump do not log source dates.
+
 HTTPS certificate and hostname verification is enabled by default. `GODOO_UPGRADE_SSL=0` disables verification for both
 the download and client while retaining HTTPS encryption; use it only for an endpoint whose certificate the host cannot
 verify.
