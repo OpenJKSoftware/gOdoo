@@ -112,9 +112,9 @@ filestore, SQL and archive overlays are staged once and reused. Disabling the fu
 checks. CRC checks detect accidental corruption; they do not establish the archive's origin.
 
 On Linux, gOdoo probes one nonempty file before recursive reflink copying, then falls back to rsync or Python copying.
-Desktop bind mounts can make many small attachment copies expensive; see
-[dataset storage](downstream.md#restore-dataset-storage). Reset baselines can share reflink extents, so logical sizes
-may count shared data more than once.
+Rsync shows progress only when stdout is a terminal; diagnostics remain visible in captured output. Desktop bind mounts
+can make many small attachment copies expensive; see [dataset storage](downstream.md#restore-dataset-storage). Reset
+baselines can share reflink extents, so logical sizes may count shared data more than once.
 
 The official upgrade client reports phase start and completion or failure without a heartbeat. Child processes retain
 their native streams. gOdoo forwards SIGINT/SIGTERM, waits for shutdown, and preserves child exit status.
