@@ -235,14 +235,17 @@ def _fake_rsync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, status: int)
     rsync.write_text(
         "#!/bin/sh\n"
         'printf \'%s\\n\' "$@" > "$GODOO_RSYNC_ARGS"\n'
-        "printf '12%%\\rdiagnostic one\\n34%%\\rdiagnostic two\\n56%%\\r78%%\\n'\n"
+        'if [ "$3" = "--info=progress2" ]; then\n'
+        "    printf '12%%\\rdiagnostic one\\n34%%\\rdiagnostic two\\n56%%\\r78%%\\n'\n"
+        "    shift\n"
+        "fi\n"
         "printf 'rsync diagnostic\\n' >&2\n"
         f"if [ {status} -ne 0 ]; then\n"
-        '    mkdir -p "$5"\n'
-        '    printf stale > "$5/stale"\n'
+        '    mkdir -p "$4"\n'
+        '    printf stale > "$4/stale"\n'
         f"    exit {status}\n"
         "fi\n"
-        'cp -RL "$4/." "$5"\n'
+        'cp -RL "$3/." "$4"\n'
         f"exit {status}\n",
         encoding="utf-8",
     )
@@ -252,12 +255,16 @@ def _fake_rsync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, status: int)
     return rsync
 
 
+@pytest.mark.parametrize("interactive", [False, True])
 def test_rsync_copy_passes_output_directly_to_stdout_and_materializes_symlinks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     capfdbinary: pytest.CaptureFixture[bytes],
+    interactive: bool,
 ) -> None:
+    monkeypatch.setattr("godoo_cli.runtime.filestore.sys.stdout.isatty", lambda: interactive)
+    monkeypatch.setattr("godoo_cli.runtime.filestore.sys.stderr.isatty", lambda: not interactive)
     source = tmp_path / "source"
     source.mkdir()
     (source / "kept").write_text("original")
@@ -277,13 +284,14 @@ def test_rsync_copy_passes_output_directly_to_stdout_and_materializes_symlinks(
     assert (tmp_path / "rsync-args").read_text().splitlines() == [
         "-rLpt",
         "--human-readable",
-        "--info=progress2",
+        *(["--info=progress2"] if interactive else []),
         f"{source}/",
         str(destination),
     ]
     assert "-a" not in (tmp_path / "rsync-args").read_text().splitlines()
     captured = capfdbinary.readouterr()
-    assert captured.out == b"12%\rdiagnostic one\n34%\rdiagnostic two\n56%\r78%\nrsync diagnostic\n"
+    progress = b"12%\rdiagnostic one\n34%\rdiagnostic two\n56%\r78%\n" if interactive else b""
+    assert captured.out == progress + b"rsync diagnostic\n"
     assert captured.err == b""
     assert not caplog.records
 

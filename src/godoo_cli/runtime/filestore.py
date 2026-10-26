@@ -85,7 +85,10 @@ def _copy_with_rsync(source: Path, destination: Path) -> tuple[bool, str | None]
     if not shutil.which("rsync"):
         return False, "rsync is not available"
 
-    command = ["rsync", "-rLpt", "--human-readable", "--info=progress2", f"{source}/", str(destination)]
+    command = ["rsync", "-rLpt", "--human-readable"]
+    if sys.stdout.isatty():
+        command.append("--info=progress2")
+    command.extend([f"{source}/", str(destination)])
     try:
         process = subprocess.Popen(command, stdout=None, stderr=subprocess.STDOUT)
     except OSError as error:
