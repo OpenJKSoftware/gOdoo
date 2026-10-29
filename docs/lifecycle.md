@@ -267,7 +267,9 @@ make dev
 
 `godoo db reset` performs the pair operation; callers must stop writers first. `--db-template` selects another database
 with its matching filestore; `--empty` retains drop-only behavior. Reset copies the database and uses rsync to delete
-filestore files absent from the baseline. PostgreSQL's faster copy method is used when available.
+filestore files absent from the baseline. PostgreSQL's faster copy method is used when available. At default verbosity,
+reset logs lock waiting, baseline checks, database and filestore operations, lifecycle updates, and successful
+completion. `--empty` logs database removal and filestore cleanup too.
 
 An interrupted reset can leave an incomplete active filestore: its marker blocks init, so rerun reset. A missing or
 incomplete baseline needs a fresh restore. The next init reruns restore hooks, native reconciliation, and final hooks.
