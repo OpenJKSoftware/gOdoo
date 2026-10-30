@@ -15,6 +15,8 @@ from ..workspace.types import ResolvedSource
 LOGGER = logging.getLogger(__name__)
 
 
+# Resolve distinct CLI, config, and argv inputs before constructing GodooConfig; override precedence stays explicit.
+# pylint: disable-next=too-many-arguments
 def resolve_command_config(
     *,
     odoo_main_path: Path,

@@ -50,6 +50,8 @@ def dump_database(
         return CLI.returner(1)
 
 
+# Typer declares each archive-restore option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def load_database(
     db_name: Annotated[str, CLI.database.db_name],
     archive_path: Annotated[Path, typer.Argument()],

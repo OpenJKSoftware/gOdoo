@@ -205,6 +205,8 @@ def replace_filestore(stage: Path, target: Path) -> Path | None:
     return previous if moved_previous else None
 
 
+# Keep pair-promotion state and injectable rollback operations explicit at this recovery boundary.
+# pylint: disable-next=too-many-arguments
 def complete_runtime_promotion(
     *,
     connection: DBConnection,

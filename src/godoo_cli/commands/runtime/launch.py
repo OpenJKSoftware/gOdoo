@@ -29,6 +29,8 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
+# Typer declares each server and debugger option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def launch_odoo(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],

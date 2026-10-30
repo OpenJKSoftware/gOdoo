@@ -126,6 +126,8 @@ def _restore_database_dump(
 
 
 # Keep staging, promotion, and failure cleanup together.
+# Preserve the public custom-restore API, including its native options and injectable pair-recovery operations.
+# pylint: disable-next=too-many-arguments
 def restore_custom_runtime(  # noqa: C901
     *,
     connection: DBConnection,

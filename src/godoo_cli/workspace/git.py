@@ -748,6 +748,8 @@ def _create_worktree(
                     _merge_command("-C", str(pool), "update-ref", "-d", branch_ref, abandoned)
 
 
+# Map the nine Git and workspace identity fields directly into the shared ResolvedSource record.
+# pylint: disable-next=too-many-arguments
 def _resolved_source(
     repo: GodooGitRepo,
     *,

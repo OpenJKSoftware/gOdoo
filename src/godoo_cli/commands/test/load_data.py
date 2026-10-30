@@ -16,6 +16,8 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
+# Typer declares each fixture-loading option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def odoo_load_test_data(
     test_modules: Annotated[
         list[str],

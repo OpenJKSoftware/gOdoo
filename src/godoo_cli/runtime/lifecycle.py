@@ -79,6 +79,8 @@ def validate_initialization_state(
         raise ValueError(message)
 
 
+# Preserve the bootstrap service API: native policy flags and independently injectable lifecycle operations.
+# pylint: disable-next=too-many-arguments
 def ensure_runtime(
     godoo_config: GodooConfig,
     *,
@@ -182,6 +184,8 @@ def _initialize_runtime(
     return LifecycleOutcome.BOOTSTRAPPED
 
 
+# Preserve the lifecycle service API and its independently injectable restore, reconciliation, and recovery steps.
+# pylint: disable-next=too-many-arguments
 def deployment_init(
     config: GodooConfig,
     *,

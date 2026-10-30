@@ -78,6 +78,8 @@ def _validate_native_paths(
 
 
 # Keep validation and execution ordering visible at this public command boundary.
+# Typer declares each public CLI option in this callback signature.
+# pylint: disable-next=too-many-arguments
 def deployment_init_odoo_runtime(  # noqa: C901
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
