@@ -17,7 +17,7 @@ from psycopg2 import sql
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime.archive import dump_runtime_archive, load_runtime_archive
 from godoo_cli.runtime.baseline import baseline_database_name, save_runtime_baseline
-from godoo_cli.runtime.hooks import discover_hooks
+from godoo_cli.runtime.hooks import discover_hooks, run_hook_phase
 from godoo_cli.runtime.lifecycle import (
     LifecycleOutcome,
     deployment_init,
@@ -629,3 +629,39 @@ def test_real_saved_baseline_supports_repeated_resets(live_stack: LiveStack) -> 
         drop_database_strict(baseline_connection)
         if baseline_filestore.exists():
             shutil.rmtree(baseline_filestore)
+
+
+def test_real_once_hook_receipt_commits_with_action_and_survives_retry(live_stack: LiveStack, tmp_path: Path) -> None:
+    """Earlier transactional repairs remain complete after a later hook failure."""
+    db_name = live_stack.new_database_name("once_hooks")
+    config = live_stack.config(db_name)
+    assert live_stack.initialize(config) == 0
+    directory = tmp_path / "once-hooks"
+    directory.mkdir()
+    (directory / "10_repair.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.repair', phase='after_reconcile', once=True)\n"
+        "def run(ctx):\n"
+        "    params = ctx.env['ir.config_parameter'].sudo()\n"
+        "    params.set_param('godoo.it.count', int(params.get_param('godoo.it.count', '0')) + 1)\n"
+    )
+    (directory / "20_later.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.later', phase='after_reconcile', once=True)\n"
+        "def run(ctx):\n"
+        "    params = ctx.env['ir.config_parameter'].sudo()\n"
+        "    params.set_param('godoo.it.partial', 'must roll back on failure')\n"
+        "    if not params.get_param('godoo.it.allow'): raise RuntimeError('later repair failed')\n"
+    )
+    selected = discover_hooks([directory])
+
+    def run() -> int:
+        return run_hook_phase(config, selected, phase="after_reconcile", outcome="ready", environment="review")
+
+    assert run() != 0
+    assert live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.it.count'") == "1"
+    assert live_stack.scalar(db_name, "SELECT count(*) FROM ir_config_parameter WHERE key = 'godoo.it.partial'") == 0
+    live_stack.execute(db_name, "INSERT INTO ir_config_parameter (key, value) VALUES ('godoo.it.allow', '1')")
+    assert run() == 0
+    assert run() == 0
+    assert live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.it.count'") == "1"

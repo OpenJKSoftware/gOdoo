@@ -18,7 +18,7 @@ Ordinary restores and major upgrades share the same initialization flow.
 
 Native migration versions must be above the installed version and at or below the manifest version. Fresh installs need
 their own install behavior. There is no transition directory, version-pair selector, implicit module list, or hook
-completion ledger.
+implicit migration scheduler. Ordinary database hooks can opt into transactional one-shot completion with `once=True`.
 
 ## Discover and select hooks
 
@@ -49,6 +49,7 @@ actual boolean. A missing predicate runs whenever eligible; an exception fails i
 | `phase`        | `prepare`, `after_bootstrap`, `after_restore`, or `after_reconcile`.                                                             |
 | `on`           | Tuple of `ready`, `bootstrapped`, and/or `restored`; defaults to all. Custom outcome filters are invalid for preparation.        |
 | `environments` | Optional tuple of exact `GODOO_ENVIRONMENT` values. Omitted means unrestricted; an allowlist never matches an unset environment. |
+| `once`         | Optional boolean, default false. Record successful database-hook completion; preparation hooks cannot use it.                    |
 
 Environment is a deployment input, never inferred from database contents.
 
@@ -147,8 +148,20 @@ already satisfied, running, completed, or failed. Do not log passwords or comple
 
 ## Idempotence and recovery
 
-Hooks run **at least once**. There is no `once=True`, file-hash cache, or generic success ledger. `on=("restored",)`
-means eligible during restore initialization and its retries, rather than exactly one execution.
+Ordinary hooks run whenever eligible, subject to `needs_run`. `on=("restored",)` selects restore initialization and its
+retries; it is not a completion record.
+
+Use `Hook(id="project.repair.2026_10", phase="after_reconcile", once=True)` for a transactional one-shot repair. IDs are
+immutable: use a new ID for a new repair. The runner stores completion in `ir_config_parameter` under
+`godoo.hooks.once.<identity-hash>`, in the same transaction as the action. Unrestricted hooks complete globally in that
+database; environment-restricted hooks complete separately for each selected environment. Restores and baseline resets
+carry or rewind the records with the database. Declaration filters still apply, and duplicate IDs remain invalid.
+
+Completed hooks skip `needs_run`. A false predicate means the desired state is already satisfied and records completion
+atomically without running the action. An exception rolls back the action and its completion record. A later hook's
+failure preserves earlier committed repairs. Hooks that commit internally or change external systems still need their
+own idempotency: the runner cannot promise exactly-once external effects. Keep recurring environment policy repeatable,
+with state predicates, so ordinary drift is repaired after every controlled start.
 
 | Attempt                                        | Outcome visible to hooks                                                            |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------- |

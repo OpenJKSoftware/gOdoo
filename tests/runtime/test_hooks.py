@@ -240,3 +240,122 @@ def test_database_batch_rolls_back_and_stops_after_action_failure(
             SimpleNamespace(registry=registry, uid=3, context={}), [str(source)], outcome="restored", environment=None
         )
     assert (cursor.commits, cursor.rollbacks) == (1, 1)
+
+
+@pytest.fixture
+def once_registry(monkeypatch: pytest.MonkeyPatch) -> tuple[SimpleNamespace, dict[str, str]]:  # noqa: C901
+    """Model committed database parameters and per-hook transaction rollback."""
+    values: dict[str, str] = {}
+
+    class Cursor:
+        def __init__(self) -> None:
+            self.values = dict(values)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def commit(self) -> None:
+            values.clear()
+            values.update(self.values)
+
+        def rollback(self) -> None:
+            self.values = dict(values)
+
+    class Environment:
+        def __init__(self, cursor: Cursor, _uid: int, _context: dict[str, object]) -> None:
+            self.cr = cursor
+
+        def __getitem__(self, name: str) -> Self:
+            assert name == "ir.config_parameter"
+            return self
+
+        def sudo(self) -> Self:
+            return self
+
+        def get_param(self, key: str, default: str | bool = False) -> str | bool:
+            return self.cr.values.get(key, default)
+
+        def set_param(self, key: str, value: object) -> None:
+            self.cr.values[key] = str(value)
+
+        def flush_all(self) -> None:
+            return None
+
+    odoo = ModuleType("odoo")
+    api = ModuleType("odoo.api")
+    monkeypatch.setattr(api, "Environment", Environment, raising=False)
+    monkeypatch.setitem(sys.modules, "odoo", odoo)
+    monkeypatch.setitem(sys.modules, "odoo.api", api)
+    shell = SimpleNamespace(registry=SimpleNamespace(cursor=Cursor), uid=1, context={})
+    return shell, values
+
+
+@pytest.mark.parametrize("scoped", [False, True])
+def test_once_completion_scope_and_restored_history(
+    tmp_path: Path, once_registry: tuple[SimpleNamespace, dict[str, str]], scoped: bool
+) -> None:
+    shell, values = once_registry
+    source = tmp_path / "once.py"
+    declaration = ", environments=('review', 'production')" if scoped else ""
+    _hook(
+        source,
+        "HOOK = Hook(id='repair.2026_10', phase='after_reconcile', once=True" + declaration + ")\n"
+        "def run(ctx):\n"
+        "    params = ctx.env['ir.config_parameter']\n"
+        "    params.set_param('count', int(params.get_param('count', '0')) + 1)\n",
+    )
+    for environment in ("review", "review", "production"):
+        hooks._run_database_hook_batch(shell, [str(source)], outcome="ready", environment=environment)
+    assert values["count"] == ("2" if scoped else "1")
+    # A restored database carries these same committed parameters; an outcome change is not a new receipt scope.
+    hooks._run_database_hook_batch(shell, [str(source)], outcome="restored", environment="production")
+    assert values["count"] == ("2" if scoped else "1")
+
+
+def test_once_satisfied_predicate_is_committed_and_not_evaluated_again(
+    tmp_path: Path, once_registry: tuple[SimpleNamespace, dict[str, str]]
+) -> None:
+    shell, values = once_registry
+    source = tmp_path / "satisfied.py"
+    _hook(
+        source,
+        "HOOK = Hook(id='satisfied', phase='after_reconcile', once=True)\n"
+        "def needs_run(ctx): return False\n"
+        "def run(ctx): raise AssertionError('satisfied hook must not run')\n",
+    )
+    hooks._run_database_hook_batch(shell, [str(source)], outcome="ready", environment=None)
+    assert len(values) == 1
+    assert next(iter(values)).startswith("godoo.hooks.once.")
+    _hook(
+        source,
+        "HOOK = Hook(id='satisfied', phase='after_reconcile', once=True)\n"
+        "def needs_run(ctx): raise AssertionError('completed hook predicate must not run')\n"
+        "def run(ctx): raise AssertionError('completed hook must not run')\n",
+    )
+    hooks._run_database_hook_batch(shell, [str(source)], outcome="ready", environment=None)
+    assert len(values) == 1
+
+
+def test_once_failure_rolls_back_action_and_receipt(
+    tmp_path: Path, once_registry: tuple[SimpleNamespace, dict[str, str]]
+) -> None:
+    shell, values = once_registry
+    source = tmp_path / "failed.py"
+    _hook(
+        source,
+        "HOOK = Hook(id='failed', phase='after_reconcile', once=True)\n"
+        "def run(ctx):\n"
+        "    ctx.env['ir.config_parameter'].set_param('repair', 'partial')\n"
+        "    raise RuntimeError('repair failed')\n",
+    )
+    with pytest.raises(RuntimeError, match="repair failed"):
+        hooks._run_database_hook_batch(shell, [str(source)], outcome="ready", environment=None)
+    assert values == {}
+
+
+def test_once_prepare_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Preparation hooks cannot declare once"):
+        hooks.Hook(id="prepare", phase="prepare", once=True)
