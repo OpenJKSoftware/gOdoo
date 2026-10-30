@@ -71,7 +71,7 @@ def test_runtime_exposes_canonical_commands():
     output = unstyle(result.output)
     assert result.exit_code == 0
     commands = set(re.findall(r"^│ ([\w-]+)\s", output, re.MULTILINE)) - {"--help"}
-    assert commands == {"dependencies", "init", "launch", "shell", "shell-script", "status"}
+    assert commands == {"dependencies", "init", "start", "launch", "shell", "shell-script", "status"}
 
 
 def test_database_help_preserves_public_database_commands():

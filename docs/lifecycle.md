@@ -16,23 +16,28 @@ Run in the configured downstream runtime environment. CLI values override export
 ```bash
 # Prepare and reconcile explicitly, including on an already ready database.
 # Other Odoo writers must be stopped.
-godoo runtime init --update-changed && godoo runtime launch
+godoo runtime start --update-changed
 
-# For ordinary startup, skip initialization when the runtime is already ready.
+# Optional maintenance policy: skip all hooks and reconciliation on a ready runtime.
 godoo runtime init --if-needed && godoo runtime launch
 
 # Inspect state without changing the runtime.
 godoo runtime status --json
 ```
 
-These are alternative startup policies. Set `GODOO_INIT_IF_EMPTY=true` for conditional startup; use `--no-if-needed` to
-override it for deployment jobs that must apply updates or hooks. Conditional init prints the same JSON payload as
+`runtime start` uses the existing init and launch options, resolves one target, and always initializes explicitly before
+serving. It ignores `GODOO_INIT_IF_EMPTY` and has no `--if-needed` option. Bootstrap arguments apply only to
+initialization; server/debugger arguments apply only to launch. Failed initialization returns nonzero without launching,
+and lifecycle locks are released before the server lifetime.
+
+For separate maintenance commands, set `GODOO_INIT_IF_EMPTY=true` for conditional init; use `--no-if-needed` to override
+it for deployment jobs that must apply updates or hooks. Conditional init prints the same JSON payload as
 `runtime status --json` and checks readiness before loading datasets, hooks, or Odoo.
 
 The diagram below starts when initialization is required or explicitly requested. A ready runtime skipped by
 `--if-needed` exits before this work. Each arrow means the preceding step succeeded; failures stop initialization.
-Launching the server is a separate caller action. The bootstrap/restore branches show first initialization; recovery
-retries rerun hooks for the original outcome, as described under
+`runtime start` launches after this work succeeds; `runtime init` exits without serving. The bootstrap/restore branches
+show first initialization; recovery retries rerun hooks for the original outcome, as described under
 [incomplete initialization](#incomplete-initialization).
 
 ```mermaid
@@ -49,12 +54,13 @@ flowchart TD
     OutcomeHooks --> Reconcile["Native module reconciliation"]
     Reconcile --> Baseline["Verify and save the planned source baseline when enabled"]
     Baseline --> Finalize["Eligible after_reconcile hooks"]
-    Finalize --> Ready["Clear pending lifecycle state and exit"]
-    Ready -->|caller runs a separate command| Launch["godoo runtime launch<br/>Start the prepared Odoo server"]
+    Finalize --> Ready["Clear pending lifecycle state"]
+    Ready --> Launch["runtime start launches Odoo<br/>runtime init exits"]
 ```
 
-Init is a one-shot job. In Compose, launch depends on init's `service_completed_successfully`; gOdoo does not start
-downstream services itself.
+Use `runtime start` as the app entrypoint so Docker restarts also prepare the runtime. Keep `runtime init` as explicit
+maintenance tooling; do not also run a second init service during ordinary startup. gOdoo does not start downstream
+services itself.
 
 ### Source-driven native reconciliation
 

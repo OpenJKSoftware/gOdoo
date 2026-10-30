@@ -28,9 +28,9 @@ environment options, source paths, lifecycle hooks, or generated proxy configura
 upstream; downstream owns images, Compose, mounts, runtime users, service ordering, and project hooks. Check whether the
 downstream pin includes the required fix before proposing another implementation.
 
-`runtime init` owns restore, bootstrap, and reconciliation as a one-shot job. `runtime launch` only starts prepared
-state. Keep `init` ahead of `app` with `service_completed_successfully`. gOdoo provides no downstream service
-orchestration.
+`runtime start` initializes and reconciles explicitly before launching the same target on every app process start. Keep
+maintenance `runtime init` out of ordinary startup; the app depends on a healthy database. `runtime launch` starts
+prepared state only. gOdoo provides no downstream service orchestration.
 
 Use the downstream Make/Compose path for authorized runtime validation. Reuse host-resolved workspace paths rather than
 assembling a substitute container with guessed addon mounts. A pin change needs a rebuilt artifact and, when live

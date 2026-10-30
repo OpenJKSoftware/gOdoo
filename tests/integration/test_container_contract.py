@@ -29,8 +29,8 @@ def _compose(name: str) -> dict[str, Any]:
     return yaml.load((REPOSITORY_ROOT / "docker" / name).read_text(encoding="utf-8"))
 
 
-def test_example_initializes_before_launching() -> None:
-    """The application launches only after deployment initialization succeeds."""
+def test_example_app_owns_startup_and_init_is_maintenance() -> None:
+    """Every app process prepares itself; the maintenance service is not a startup dependency."""
     compose = _compose("docker-compose.base.yml")
     services = compose["services"]
     initialization = services["init"]
@@ -46,11 +46,13 @@ def test_example_initializes_before_launching() -> None:
     assert application["command"] == [
         "godoo",
         "runtime",
-        "launch",
+        "start",
         "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--proxy-mode",
     ]
     assert "GODOO_DEV_MODE" not in application["environment"]
-    assert application["depends_on"]["init"] == {"condition": "service_completed_successfully"}
+    assert initialization["profiles"] == ["maintenance"]
+    assert application["depends_on"] == {"db": {"condition": "service_healthy"}}
+    assert application["environment"]["GODOO_UPDATE_CHANGED"] == "${GODOO_UPDATE_CHANGED:-true}"
     assert compose["x-runtime"]["environment"]["GODOO_X_SENDFILE"] == "${GODOO_X_SENDFILE:-true}"
     nginx = services["nginx"]
     assert nginx["depends_on"]["app"] == {"condition": "service_started"}
@@ -162,7 +164,7 @@ def test_development_override_mounts_one_source_root() -> None:
         "-m",
         "godoo_cli",
         "runtime",
-        "launch",
+        "start",
         "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--workers=0 --proxy-mode",
     ]
     assert app["environment"]["GODOO_DEV_MODE"] == "1"

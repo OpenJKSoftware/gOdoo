@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     && chown -R odoo:odoo "$VIRTUAL_ENV"
 WORKDIR /odoo/godoo_workspace
 USER odoo
-CMD ["python", "-m", "godoo_cli", "runtime", "launch"]
+CMD ["python", "-m", "godoo_cli", "runtime", "start"]
 
 # Materialize selected sources from read-only mounts without Git commands or worktree scans.
 FROM dependencies AS materialized
@@ -86,4 +86,4 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
 COPY --from=materialized --chown=odoo:odoo /image/odoo/ /odoo/
 WORKDIR /odoo/godoo_workspace
 USER odoo
-CMD ["godoo", "runtime", "launch"]
+CMD ["godoo", "runtime", "start"]

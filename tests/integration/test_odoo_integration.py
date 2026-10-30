@@ -732,3 +732,63 @@ def test_real_once_hook_receipt_commits_with_action_and_survives_retry(live_stac
     assert run() == 0
     assert run() == 0
     assert live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.it.count'") == "1"
+
+
+def test_real_runtime_start_reuses_one_target_and_ignores_conditional_init(
+    live_stack: LiveStack, tmp_path: Path
+) -> None:
+    """The actual composed CLI prepares the fixture twice and launches only prepared state."""
+    db_name = live_stack.new_database_name("start")
+    config = live_stack.config(db_name)
+    assert live_stack.initialize(config) == 0
+    # Isolate child startup policy from the hosting application's project hooks and restore inputs.
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GODOO_")
+        and name not in {"ODOO_BIN_ARGS", "ODOO_BIN_BOOTSTRAP_ARGS", "ODOO_BANNER_TEXT", "ODOO_BANNER_BG_COLOR"}
+    }
+    environment.update(
+        GODOO_RUNTIME_MATERIALIZED="1",
+        GODOO_INIT_IF_EMPTY="true",
+        GODOO_X_SENDFILE="false",
+        VIRTUAL_ENV=str(live_stack.python_path.parent.parent),
+        DEBUG="0",
+    )
+    command = [
+        str(live_stack.python_path),
+        "-m",
+        "godoo_cli",
+        "runtime",
+        "start",
+        "--update-changed",
+        "--odoo-main-path",
+        str(live_stack.odoo_path),
+        "--workspace-addon-path",
+        str(live_stack.workspace_addons),
+        "--odoo-conf-path",
+        str(config.odoo_conf_path),
+        "--data-dir",
+        str(config.data_dir),
+        "--db-name",
+        db_name,
+        "--db-filter",
+        db_name,
+        "--db-user",
+        live_stack.db_user,
+        "--no-install-workspace-modules",
+        "--no-install-base-modules",
+        "--extra-args=--stop-after-init --no-http",
+    ]
+    previous = None
+    for _attempt in range(2):
+        result = subprocess.run(
+            command, cwd=tmp_path, env=environment, text=True, capture_output=True, check=False, timeout=60
+        )
+        assert result.returncode == 0, result.stderr[-12000:]
+        baseline = live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = %s", (BASELINE_KEY,))
+        assert baseline is not None
+        if previous is not None:
+            assert baseline == previous
+        previous = baseline
+        assert not runtime_readiness_marker(config.data_dir, db_name).exists()

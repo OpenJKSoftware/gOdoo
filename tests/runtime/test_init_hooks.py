@@ -268,7 +268,6 @@ def test_checksum_checkpoint_precedes_post_hooks_and_is_not_saved_on_native_fail
         return LifecycleOutcome.READY, 9
 
     monkeypatch.setattr(runtime_init, "deployment_init", deploy)
-    monkeypatch.setattr(runtime_init, "resolve_command_config", lambda **_kwargs: config)
-    result = CliRunner().invoke(_app(), ["--update-changed", "--no-if-needed"], env=_environment(tmp_path))
-    assert result.exit_code == (native_status or 9), result.exception
+    result = runtime_init.initialize_odoo_runtime(lambda: config, runtime_init.InitOptions(update_changed=True))
+    assert result == (native_status or 9)
     assert events == ([] if native_status else ["checkpoint", "failing-post-hook"])

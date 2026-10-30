@@ -7,6 +7,7 @@ from typing import Annotated
 
 import typer
 
+from ...models import GodooConfig
 from ...runtime.lifecycle import run_lifecycle_hook
 from ...runtime.nginx import write_nginx_static_config
 from ...runtime.odoo import (
@@ -64,7 +65,6 @@ def launch_odoo(
     nginx_config: Annotated[Path | None, CLI.odoo_paths.nginx_config] = None,
 ):
     """Launch Odoo without initialization or reconciliation, after additive dependency preflight."""
-    parent_debugger = odoo_debugger_attached()
     launch_args = _extra_args_argv(extra_args or [])
     godoo_conf = resolve_command_config(
         odoo_main_path=odoo_main_path,
@@ -80,6 +80,32 @@ def launch_odoo(
         arguments=launch_args,
         extra={"multithread_worker_count": multithread_worker_count, "languages": languages},
     )
+    return CLI.returner(
+        launch_prepared_runtime(
+            godoo_conf,
+            extra_args=extra_args,
+            log_file_path=log_file_path,
+            dev_mode=dev_mode,
+            debug_listen=debug_listen,
+            debug_wait_for_client=debug_wait_for_client,
+            nginx_config=nginx_config,
+        )
+    )
+
+
+def launch_prepared_runtime(
+    godoo_conf: GodooConfig,
+    *,
+    extra_args: list[str] | None = None,
+    log_file_path: Path | None = None,
+    dev_mode: bool = False,
+    debug_listen: str | None = None,
+    debug_wait_for_client: bool = False,
+    nginx_config: Path | None = None,
+):
+    """Launch an already-resolved runtime after readiness and dependency checks."""
+    parent_debugger = odoo_debugger_attached()
+    launch_args = _extra_args_argv(extra_args or [])
     runtime_version = require_cli_odoo_version(godoo_conf.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
     if log_file_path is not None:
         log_file_path.unlink(missing_ok=True)
@@ -110,7 +136,7 @@ def launch_odoo(
         result = run_lifecycle_hook(godoo_conf, SHELL_SCRIPTS_PATH / "odoo_banner.py")
         if result:
             LOGGER.error("Odoo banner update failed (exit code %s)", result)
-            return CLI.returner(result)
+            return result
 
-    LOGGER.info("Launching Odoo on database '%s' using config %s", db_name, odoo_conf_path)
-    return CLI.returner(run_odoo_command(launch_cmd).returncode)
+    LOGGER.info("Launching Odoo on database '%s' using config %s", godoo_conf.db_name, godoo_conf.odoo_conf_path)
+    return run_odoo_command(launch_cmd).returncode
