@@ -102,8 +102,9 @@ Database contexts expose `ctx.env`, `ctx.environment`, and the original `ctx.out
 lifecycle markers as an API, rebuild the registry, or perform immediate module installs/updates. Module loading belongs
 in native reconciliation.
 
-An eligible `after_restore` database hook conflicts with native pre-upgrade scripts because it would open the registry
-first. The combination is rejected before mutation. Put post-upgrade environment setup in `after_reconcile`.
+An eligible `after_restore` database hook conflicts with selected native pre-upgrade scripts because it would open the
+registry first. `--update-changed` requires database hooks to use `after_reconcile`; it rejects eligible `after_restore`
+and `after_bootstrap` declarations rather than changing their order. Put post-upgrade setup in `after_reconcile`.
 
 ## Execution and transaction boundaries
 

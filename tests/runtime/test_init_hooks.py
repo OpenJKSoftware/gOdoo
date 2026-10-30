@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import typer
-from click import unstyle
 from typer.testing import CliRunner
 
 from godoo_cli.commands.runtime import init as runtime_init
@@ -58,19 +58,15 @@ def test_native_upgrade_inputs_are_validated_before_runtime_configuration(
     assert "Native upgrade directory does not exist" in result.output
 
 
-def test_native_upgrade_path_requires_update_before_runtime_configuration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_native_upgrade_paths_can_be_dormant(tmp_path: Path) -> None:
     upgrade_path = tmp_path / "upgrades"
     upgrade_path.mkdir()
-    monkeypatch.setattr(
-        runtime_init, "resolve_command_config", lambda **_kwargs: pytest.fail("config must not be read")
+    script = tmp_path / "pre.py"
+    script.write_text("def migrate(cr, version): pass\n")
+    assert runtime_init._validate_native_paths([upgrade_path], [script]) == (
+        [upgrade_path.resolve()],
+        [script.resolve()],
     )
-
-    result = CliRunner().invoke(_app(), ["--upgrade-path", str(upgrade_path)], env=_environment(tmp_path))
-
-    assert result.exit_code == 2, result.output
-    assert "require at least one --update" in unstyle(result.output)
 
 
 def test_after_restore_hooks_are_rejected_before_native_pre_upgrade(
@@ -244,3 +240,35 @@ def test_environment_excluded_after_restore_hook_allows_native_pre_upgrade(
     )
 
     assert result.exit_code == 0, result.output
+
+
+@pytest.mark.parametrize("native_status", [0, 8])
+def test_checksum_checkpoint_precedes_post_hooks_and_is_not_saved_on_native_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_status: int
+) -> None:
+    from types import SimpleNamespace
+
+    from godoo_cli.models import OdooVersion
+
+    events: list[str] = []
+    config = _config(tmp_path)
+    plan = SimpleNamespace(updates=["base"], installs=[], finish=lambda _config: events.append("checkpoint"))
+    monkeypatch.setattr(runtime_init, "require_odoo_version", lambda *_args: OdooVersion("Odoo", 19, 0))
+    monkeypatch.setattr(runtime_init, "x_sendfile_enabled", lambda *_args: False)
+    monkeypatch.setattr(runtime_init, "plan_module_changes", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr(runtime_init, "reconcile_modules", lambda *_args, **_kwargs: native_status)
+    monkeypatch.setattr(runtime_init, "reconcile_runtime", lambda conf, *, reconciler, **_kwargs: reconciler(conf))
+
+    def deploy(conf: GodooConfig, **callbacks: Any) -> tuple[LifecycleOutcome, int]:
+        callbacks["reconcile_preflight"](conf)
+        result = callbacks["reconciler"](conf)
+        if result:
+            return LifecycleOutcome.READY, result
+        events.append("failing-post-hook")
+        return LifecycleOutcome.READY, 9
+
+    monkeypatch.setattr(runtime_init, "deployment_init", deploy)
+    monkeypatch.setattr(runtime_init, "resolve_command_config", lambda **_kwargs: config)
+    result = CliRunner().invoke(_app(), ["--update-changed", "--no-if-needed"], env=_environment(tmp_path))
+    assert result.exit_code == (native_status or 9), result.exception
+    assert events == ([] if native_status else ["checkpoint", "failing-post-hook"])

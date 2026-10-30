@@ -17,14 +17,17 @@ from psycopg2 import sql
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime.archive import dump_runtime_archive, load_runtime_archive
 from godoo_cli.runtime.baseline import baseline_database_name, save_runtime_baseline
+from godoo_cli.runtime.checksums import BASELINE_KEY, plan_module_changes
 from godoo_cli.runtime.hooks import discover_hooks, run_hook_phase
 from godoo_cli.runtime.lifecycle import (
     LifecycleOutcome,
     deployment_init,
     ensure_runtime,
+    reconcile_modules,
     reconcile_runtime,
 )
 from godoo_cli.runtime.locks import read_runtime_lifecycle, runtime_readiness_marker
+from godoo_cli.runtime.odoo import odoo_bin_get_version, resolve_odoo_config
 from godoo_cli.runtime.promotion import drop_database_strict
 from godoo_cli.runtime.reset import reset_empty_runtime, reset_runtime_from_template
 from godoo_cli.runtime.restore import RuntimeRestoreError, restore_custom_runtime, runtime_filestore_path
@@ -629,6 +632,70 @@ def test_real_saved_baseline_supports_repeated_resets(live_stack: LiveStack) -> 
         drop_database_strict(baseline_connection)
         if baseline_filestore.exists():
             shutil.rmtree(baseline_filestore)
+
+
+def test_real_checksum_upgrade_precedes_registry_and_installs_new_dependency(
+    live_stack: LiveStack, tmp_path: Path
+) -> None:
+    """Native selection handles changed schema and new dependencies before registry hooks."""
+    version = f"{odoo_bin_get_version(live_stack.odoo_path).major}.0.1.0.0"
+    addons = tmp_path / "source-addons"
+    module = addons / "godoo_it_source"
+    dependency = addons / "godoo_it_dependency"
+    module.mkdir(parents=True)
+    dependency.mkdir()
+    (module / "__manifest__.py").write_text(
+        repr({"name": "gOdoo source fixture", "version": version, "depends": ["base"]})
+    )
+    (module / "__init__.py").write_text("from . import models\n")
+    (module / "models.py").write_text(
+        "from odoo import fields, models\nclass Partner(models.Model):\n    _inherit = 'res.partner'\n    godoo_before = fields.Char()\n"
+    )
+    (dependency / "__manifest__.py").write_text(
+        repr({"name": "gOdoo dependency fixture", "version": version, "depends": ["base"]})
+    )
+    (dependency / "__init__.py").write_text("")
+    db_name = live_stack.new_database_name("source_upgrade")
+    config = resolve_odoo_config(live_stack.config(db_name, extra_addon_paths=[addons]))
+    assert live_stack.initialize(config) == 0
+    assert reconcile_modules(config, [], ["godoo_it_source"]) == 0
+    first = plan_module_changes(config, [], [])
+    assert "base" in first.updates
+    assert reconcile_modules(config, first.updates, first.installs) == 0
+    first.finish(config)
+    assert plan_module_changes(config, [], []).updates == []
+    (module / "__manifest__.py").write_text(
+        repr({"name": "gOdoo source fixture", "version": version, "depends": ["base", "godoo_it_dependency"]})
+    )
+    with (module / "models.py").open("a") as stream:
+        stream.write(
+            "    godoo_after = fields.Char()\n    def _register_hook(self):\n        result = super()._register_hook()\n        self.env.cr.execute('SELECT godoo_after FROM res_partner LIMIT 1')\n        return result\n"
+        )
+    changed = plan_module_changes(config, [], [])
+    assert changed.updates == ["godoo_it_source"]
+    assert changed.installs == []
+    assert reconcile_modules(config, changed.updates, changed.installs) == 0
+    changed.finish(config)
+    assert (
+        live_stack.scalar(db_name, "SELECT state FROM ir_module_module WHERE name = 'godoo_it_dependency'")
+        == "installed"
+    )
+    assert (
+        live_stack.scalar(
+            db_name,
+            "SELECT count(*) FROM information_schema.columns WHERE table_name = 'res_partner' AND column_name = 'godoo_after'",
+        )
+        == 1
+    )
+    assert plan_module_changes(config, [], []).updates == []
+    previous = live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = %s", (BASELINE_KEY,))
+    with (module / "models.py").open("a") as stream:
+        stream.write("    def _register_hook(self):\n        raise RuntimeError('intentional failed native upgrade')\n")
+    failed = plan_module_changes(config, [], [])
+    assert reconcile_modules(config, failed.updates, failed.installs) != 0
+    assert (
+        live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = %s", (BASELINE_KEY,)) == previous
+    )
 
 
 def test_real_once_hook_receipt_commits_with_action_and_survives_retry(live_stack: LiveStack, tmp_path: Path) -> None:

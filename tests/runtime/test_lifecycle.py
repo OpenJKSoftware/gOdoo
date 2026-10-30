@@ -28,9 +28,14 @@ def _config(tmp_path: Path) -> GodooConfig:
     )
 
 
-def test_upgrade_options_require_update(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="require at least one --update"):
-        lifecycle.reconcile_modules(_config(tmp_path), None, None, upgrade_path=tmp_path / "upgrades")
+def test_native_paths_are_dormant_without_native_selections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(lifecycle, "run_odoo_command", lambda *_args, **_kwargs: pytest.fail("must not start Odoo"))
+    assert (
+        lifecycle.reconcile_modules(
+            _config(tmp_path), [], [], upgrade_path=[tmp_path], pre_upgrade_scripts=[tmp_path / "pre.py"]
+        )
+        == 0
+    )
 
 
 def test_reconcile_modules_passes_selected_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

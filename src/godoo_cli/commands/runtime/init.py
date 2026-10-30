@@ -11,6 +11,7 @@ import typer
 
 from ...models import GodooConfig
 from ...runtime.archive import load_runtime_archive, prepare_archive_with_original_filestore
+from ...runtime.checksums import ModulePlan, module_states, pending_installs, plan_module_changes
 from ...runtime.dataset import resolve_runtime_dataset
 from ...runtime.hooks import discover_hooks, has_eligible_hooks, run_prepare_hooks
 from ...runtime.lifecycle import (
@@ -49,16 +50,13 @@ def _validate_pre_upgrade_options(
     after_restore_hooks_selected: bool,
 ) -> None:
     """Reject hook combinations that would start Odoo before pre-upgrade scripts."""
-    if restore_requested and pre_upgrade_scripts and after_restore_hooks_selected:
+    if restore_requested and pre_upgrade_scripts and update_modules and after_restore_hooks_selected:
         message = "An eligible after_restore hook cannot run with --pre-upgrade-script because it starts Odoo first."
         raise typer.BadParameter(message, param_hint="--hooks-dir")
-    if pre_upgrade_scripts and not split_lifecycle_values(update_modules):
-        message = "--pre-upgrade-script requires at least one --update module."
-        raise typer.BadParameter(message, param_hint="--update")
 
 
 def _validate_native_paths(
-    upgrade_path: list[Path] | None, pre_upgrade_scripts: list[Path] | None, update_modules: list[str] | None
+    upgrade_path: list[Path] | None, pre_upgrade_scripts: list[Path] | None
 ) -> tuple[list[Path], list[Path] | None]:
     """Resolve native upgrade inputs before lifecycle state can change."""
     upgrade_paths = split_upgrade_paths(upgrade_path)
@@ -71,9 +69,6 @@ def _validate_native_paths(
         if not path.is_file():
             message = f"Native pre-upgrade script does not exist: {path}"
             raise typer.BadParameter(message, param_hint="--pre-upgrade-script")
-    if (upgrade_paths or scripts) and not split_lifecycle_values(update_modules):
-        message = "Native upgrade paths and pre-upgrade scripts require at least one --update module."
-        raise typer.BadParameter(message, param_hint="--update")
     return upgrade_paths, scripts or None
 
 
@@ -130,6 +125,14 @@ def deployment_init_odoo_runtime(  # noqa: C901
     ] = None,
     update_modules: Annotated[list[str] | None, typer.Option("--update", envvar="GODOO_RECONCILE_UPDATE")] = None,
     install_modules: Annotated[list[str] | None, typer.Option("--install", envvar="GODOO_RECONCILE_INSTALL")] = None,
+    update_changed: Annotated[
+        bool,
+        typer.Option(
+            "--update-changed/--no-update-changed",
+            envvar="GODOO_UPDATE_CHANGED",
+            help="Select native upgrades from a database-backed source checksum baseline.",
+        ),
+    ] = False,
     upgrade_path: Annotated[
         list[Path] | None,
         typer.Option("--upgrade-path", envvar="GODOO_RECONCILE_UPGRADE_PATH"),
@@ -221,32 +224,36 @@ def deployment_init_odoo_runtime(  # noqa: C901
         typer.echo(json.dumps(payload, sort_keys=True))
         if status not in (20, 21, 23):
             return CLI.returner(status)
-
     if odoo_demo:
         if seed is not None:
             message = "--seed cannot be combined with demo data."
             raise typer.BadParameter(message, param_hint="--odoo-demo")
         dump_path = original_filestore = None
     try:
-        dataset = resolve_runtime_dataset(
-            dataset_root=dump_path,
-            seed=seed,
-            original_filestore=original_filestore,
-        )
+        dataset = resolve_runtime_dataset(dataset_root=dump_path, seed=seed, original_filestore=original_filestore)
     except (RuntimeError, OSError, ValueError) as error:
         raise typer.BadParameter(str(error), param_hint="--dump-path") from error
     if dataset is not None:
         seed = dataset.source
         original_filestore = dataset.original_filestore
-
     try:
         hooks = discover_hooks(hooks_dir or [])
         prepared_modules = run_prepare_hooks(hooks, environment=os.environ.get("GODOO_ENVIRONMENT") or None)
     except (OSError, TypeError, ValueError) as error:
         raise typer.BadParameter(str(error), param_hint="--hooks-dir") from error
+    if update_changed and any(
+        (
+            has_eligible_hooks(
+                hooks, phase=phase, outcome=outcome, environment=os.environ.get("GODOO_ENVIRONMENT") or None
+            )
+            for phase, outcome in (("after_restore", "restored"), ("after_bootstrap", "bootstrapped"))
+        )
+    ):
+        message = "--update-changed requires database hooks to use after_reconcile."
+        raise typer.BadParameter(message, param_hint="--hooks-dir")
     update_modules = list(dict.fromkeys([*split_lifecycle_values(update_modules), *prepared_modules.update])) or None
     install_modules = list(dict.fromkeys([*split_lifecycle_values(install_modules), *prepared_modules.install])) or None
-    upgrade_path, pre_upgrade_scripts = _validate_native_paths(upgrade_path, pre_upgrade_scripts, update_modules)
+    upgrade_path, pre_upgrade_scripts = _validate_native_paths(upgrade_path, pre_upgrade_scripts)
     environment = os.environ.get("GODOO_ENVIRONMENT") or None
     if report_url is not None:
         report_url = report_url.strip()
@@ -256,10 +263,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
     except OdooVersionError as error:
         raise typer.BadParameter(str(error), param_hint="--odoo-main-path") from error
     if expected_odoo_major is not None and runtime_version.major != expected_odoo_major:
-        message = (
-            f"Configured Odoo runtime is {runtime_version.raw}; "
-            f"the selected runtime requires Odoo {expected_odoo_major}.x."
-        )
+        message = f"Configured Odoo runtime is {runtime_version.raw}; the selected runtime requires Odoo {expected_odoo_major}.x."
         raise typer.BadParameter(message, param_hint="--expected-odoo-major")
     persisted = read_runtime_lifecycle(runtime_readiness_marker(config.data_dir, config.db_name), config.db_name)
     _validate_pre_upgrade_options(
@@ -268,7 +272,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
         update_modules,
         has_eligible_hooks(hooks, phase="after_restore", outcome="restored", environment=environment),
     )
-    if x_sendfile_enabled(config, x_sendfile) and not report_url:
+    if x_sendfile_enabled(config, x_sendfile) and (not report_url):
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")
     runtime_seed = seed
@@ -281,9 +285,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
             return
         try:
             validated_archive = prepare_archive_with_original_filestore(
-                runtime_seed,
-                original_filestore,
-                verify_archive_crc=verify_archive_crc,
+                runtime_seed, original_filestore, verify_archive_crc=verify_archive_crc
             )
         except (OSError, ValueError, RuntimeRestoreError) as error:
             raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
@@ -347,6 +349,40 @@ def deployment_init_odoo_runtime(  # noqa: C901
             message = f"Odoo seed archive load failed for runtime '{conf.db_name}' (exit code {result})"
             raise RuntimeError(message)
 
+    plan: ModulePlan | None = None
+    selected_updates = split_lifecycle_values(update_modules)
+    selected_installs = split_lifecycle_values(install_modules)
+
+    def plan_reconciliation(conf: GodooConfig) -> None:
+        """Select native work under the lifecycle lock before any database hook."""
+        nonlocal plan, selected_updates, selected_installs
+        if update_changed:
+            plan = plan_module_changes(
+                conf, selected_updates, selected_installs, pre_upgrade_scripts=bool(pre_upgrade_scripts)
+            )
+            selected_updates, selected_installs = (plan.updates, plan.installs)
+        elif selected_installs:
+            selected_installs = pending_installs(module_states(conf), selected_installs)
+
+    def reconcile(conf: GodooConfig) -> int:
+        """Run native reconciliation and checkpoint only verified source state."""
+        result = reconcile_runtime(
+            conf,
+            preparer=already_prepared,
+            allow_lifecycle_retry=True,
+            reconciler=lambda runtime: reconcile_modules(
+                runtime,
+                selected_updates,
+                selected_installs,
+                upgrade_path=upgrade_path,
+                pre_upgrade_scripts=pre_upgrade_scripts,
+                log_handlers=log_handlers,
+            ),
+        )
+        if result == 0 and plan is not None:
+            plan.finish(conf)
+        return result
+
     try:
         outcome, result = deployment_init(
             config,
@@ -355,31 +391,14 @@ def deployment_init_odoo_runtime(  # noqa: C901
             ensure=ensure,
             preparer=prepare,
             preflight=lambda conf: preflight_reconcile_dependencies(
-                conf,
-                update_modules,
-                install_modules,
-                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+                conf, update_modules, install_modules, ignore_missing_installed_modules=bool(pre_upgrade_scripts)
             ),
             seed_preflight=prepare_seed,
             post_restore_preflight=lambda conf: preflight_reconcile_dependencies(
-                conf,
-                update_modules,
-                install_modules,
-                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+                conf, update_modules, install_modules, ignore_missing_installed_modules=bool(pre_upgrade_scripts)
             ),
-            reconciler=lambda conf: reconcile_runtime(
-                conf,
-                preparer=already_prepared,
-                allow_lifecycle_retry=True,
-                reconciler=lambda runtime: reconcile_modules(
-                    runtime,
-                    update_modules,
-                    install_modules,
-                    upgrade_path=upgrade_path,
-                    pre_upgrade_scripts=pre_upgrade_scripts,
-                    log_handlers=log_handlers,
-                ),
-            ),
+            reconcile_preflight=plan_reconciliation,
+            reconciler=reconcile,
             hooks=hooks,
             environment=environment,
             upgrade_path=upgrade_path,
