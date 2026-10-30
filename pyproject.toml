@@ -168,6 +168,7 @@ disable = [
     "wrong-import-order",  # Handled by isort
 ]
 enable = [
+    "too-many-arguments",  # R0913; annotate justified public signatures locally.
     "eval-used",
     "license-allowed",
     "manifest-required-author",

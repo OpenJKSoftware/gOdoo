@@ -17,14 +17,17 @@ from psycopg2 import sql
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime.archive import dump_runtime_archive, load_runtime_archive
 from godoo_cli.runtime.baseline import baseline_database_name, save_runtime_baseline
-from godoo_cli.runtime.hooks import discover_hooks
+from godoo_cli.runtime.checksums import BASELINE_KEY, plan_module_changes
+from godoo_cli.runtime.hooks import discover_hooks, run_hook_phase
 from godoo_cli.runtime.lifecycle import (
     LifecycleOutcome,
     deployment_init,
     ensure_runtime,
+    reconcile_modules,
     reconcile_runtime,
 )
 from godoo_cli.runtime.locks import read_runtime_lifecycle, runtime_readiness_marker
+from godoo_cli.runtime.odoo import odoo_bin_get_version, resolve_odoo_config
 from godoo_cli.runtime.promotion import drop_database_strict
 from godoo_cli.runtime.reset import reset_empty_runtime, reset_runtime_from_template
 from godoo_cli.runtime.restore import RuntimeRestoreError, restore_custom_runtime, runtime_filestore_path
@@ -629,3 +632,163 @@ def test_real_saved_baseline_supports_repeated_resets(live_stack: LiveStack) -> 
         drop_database_strict(baseline_connection)
         if baseline_filestore.exists():
             shutil.rmtree(baseline_filestore)
+
+
+def test_real_checksum_upgrade_precedes_registry_and_installs_new_dependency(
+    live_stack: LiveStack, tmp_path: Path
+) -> None:
+    """Native selection handles changed schema and new dependencies before registry hooks."""
+    version = f"{odoo_bin_get_version(live_stack.odoo_path).major}.0.1.0.0"
+    addons = tmp_path / "source-addons"
+    module = addons / "godoo_it_source"
+    dependency = addons / "godoo_it_dependency"
+    module.mkdir(parents=True)
+    dependency.mkdir()
+    (module / "__manifest__.py").write_text(
+        repr({"name": "gOdoo source fixture", "version": version, "depends": ["base"]})
+    )
+    (module / "__init__.py").write_text("from . import models\n")
+    (module / "models.py").write_text(
+        "from odoo import fields, models\nclass Partner(models.Model):\n    _inherit = 'res.partner'\n    godoo_before = fields.Char()\n"
+    )
+    (dependency / "__manifest__.py").write_text(
+        repr({"name": "gOdoo dependency fixture", "version": version, "depends": ["base"]})
+    )
+    (dependency / "__init__.py").write_text("")
+    db_name = live_stack.new_database_name("source_upgrade")
+    config = resolve_odoo_config(live_stack.config(db_name, extra_addon_paths=[addons]))
+    assert live_stack.initialize(config) == 0
+    assert reconcile_modules(config, [], ["godoo_it_source"]) == 0
+    first = plan_module_changes(config, [], [])
+    assert "base" in first.updates
+    assert reconcile_modules(config, first.updates, first.installs) == 0
+    first.finish(config)
+    assert plan_module_changes(config, [], []).updates == []
+    (module / "__manifest__.py").write_text(
+        repr({"name": "gOdoo source fixture", "version": version, "depends": ["base", "godoo_it_dependency"]})
+    )
+    with (module / "models.py").open("a") as stream:
+        stream.write(
+            "    godoo_after = fields.Char()\n    def _register_hook(self):\n        result = super()._register_hook()\n        self.env.cr.execute('SELECT godoo_after FROM res_partner LIMIT 1')\n        return result\n"
+        )
+    changed = plan_module_changes(config, [], [])
+    assert changed.updates == ["godoo_it_source"]
+    assert changed.installs == []
+    assert reconcile_modules(config, changed.updates, changed.installs) == 0
+    changed.finish(config)
+    assert (
+        live_stack.scalar(db_name, "SELECT state FROM ir_module_module WHERE name = 'godoo_it_dependency'")
+        == "installed"
+    )
+    assert (
+        live_stack.scalar(
+            db_name,
+            "SELECT count(*) FROM information_schema.columns WHERE table_name = 'res_partner' AND column_name = 'godoo_after'",
+        )
+        == 1
+    )
+    assert plan_module_changes(config, [], []).updates == []
+    previous = live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = %s", (BASELINE_KEY,))
+    with (module / "models.py").open("a") as stream:
+        stream.write("    def _register_hook(self):\n        raise RuntimeError('intentional failed native upgrade')\n")
+    failed = plan_module_changes(config, [], [])
+    assert reconcile_modules(config, failed.updates, failed.installs) != 0
+    assert (
+        live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = %s", (BASELINE_KEY,)) == previous
+    )
+
+
+def test_real_once_hook_receipt_commits_with_action_and_survives_retry(live_stack: LiveStack, tmp_path: Path) -> None:
+    """Earlier transactional repairs remain complete after a later hook failure."""
+    db_name = live_stack.new_database_name("once_hooks")
+    config = live_stack.config(db_name)
+    assert live_stack.initialize(config) == 0
+    directory = tmp_path / "once-hooks"
+    directory.mkdir()
+    (directory / "10_repair.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.repair', phase='after_reconcile', once=True)\n"
+        "def run(ctx):\n"
+        "    params = ctx.env['ir.config_parameter'].sudo()\n"
+        "    params.set_param('godoo.it.count', int(params.get_param('godoo.it.count', '0')) + 1)\n"
+    )
+    (directory / "20_later.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='integration.later', phase='after_reconcile', once=True)\n"
+        "def run(ctx):\n"
+        "    params = ctx.env['ir.config_parameter'].sudo()\n"
+        "    params.set_param('godoo.it.partial', 'must roll back on failure')\n"
+        "    if not params.get_param('godoo.it.allow'): raise RuntimeError('later repair failed')\n"
+    )
+    selected = discover_hooks([directory])
+
+    def run() -> int:
+        return run_hook_phase(config, selected, phase="after_reconcile", outcome="ready", environment="review")
+
+    assert run() != 0
+    assert live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.it.count'") == "1"
+    assert live_stack.scalar(db_name, "SELECT count(*) FROM ir_config_parameter WHERE key = 'godoo.it.partial'") == 0
+    live_stack.execute(db_name, "INSERT INTO ir_config_parameter (key, value) VALUES ('godoo.it.allow', '1')")
+    assert run() == 0
+    assert run() == 0
+    assert live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = 'godoo.it.count'") == "1"
+
+
+def test_real_runtime_start_reuses_one_target_and_ignores_conditional_init(
+    live_stack: LiveStack, tmp_path: Path
+) -> None:
+    """The actual composed CLI prepares the fixture twice and launches only prepared state."""
+    db_name = live_stack.new_database_name("start")
+    config = live_stack.config(db_name)
+    assert live_stack.initialize(config) == 0
+    # Isolate child startup policy from the hosting application's project hooks and restore inputs.
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GODOO_")
+        and name not in {"ODOO_BIN_ARGS", "ODOO_BIN_BOOTSTRAP_ARGS", "ODOO_BANNER_TEXT", "ODOO_BANNER_BG_COLOR"}
+    }
+    environment.update(
+        GODOO_RUNTIME_MATERIALIZED="1",
+        GODOO_INIT_IF_EMPTY="true",
+        GODOO_X_SENDFILE="false",
+        VIRTUAL_ENV=str(live_stack.python_path.parent.parent),
+        DEBUG="0",
+    )
+    command = [
+        str(live_stack.python_path),
+        "-m",
+        "godoo_cli",
+        "runtime",
+        "start",
+        "--update-changed",
+        "--odoo-main-path",
+        str(live_stack.odoo_path),
+        "--workspace-addon-path",
+        str(live_stack.workspace_addons),
+        "--odoo-conf-path",
+        str(config.odoo_conf_path),
+        "--data-dir",
+        str(config.data_dir),
+        "--db-name",
+        db_name,
+        "--db-filter",
+        db_name,
+        "--db-user",
+        live_stack.db_user,
+        "--no-install-workspace-modules",
+        "--no-install-base-modules",
+        "--extra-args=--stop-after-init --no-http",
+    ]
+    previous = None
+    for _attempt in range(2):
+        result = subprocess.run(
+            command, cwd=tmp_path, env=environment, text=True, capture_output=True, check=False, timeout=60
+        )
+        assert result.returncode == 0, result.stderr[-12000:]
+        baseline = live_stack.scalar(db_name, "SELECT value FROM ir_config_parameter WHERE key = %s", (BASELINE_KEY,))
+        assert baseline is not None
+        if previous is not None:
+            assert baseline == previous
+        previous = baseline
+        assert not runtime_readiness_marker(config.data_dir, db_name).exists()

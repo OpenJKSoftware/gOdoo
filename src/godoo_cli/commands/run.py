@@ -36,6 +36,8 @@ def _uses_managed_server_config(arguments: list[str]) -> bool:
     return _odoo_command_name(arguments) in {None, "server"}
 
 
+# Typer declares each passthrough command option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def run_odoo(
     arguments: Annotated[list[str], typer.Argument(help="Arguments to pass directly to odoo-bin.")],
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],

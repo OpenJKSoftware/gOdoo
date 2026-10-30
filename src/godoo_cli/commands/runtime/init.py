@@ -3,6 +3,8 @@
 import json
 import logging
 import os
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -11,6 +13,7 @@ import typer
 
 from ...models import GodooConfig
 from ...runtime.archive import load_runtime_archive, prepare_archive_with_original_filestore
+from ...runtime.checksums import ModulePlan, module_states, pending_installs, plan_module_changes
 from ...runtime.dataset import resolve_runtime_dataset
 from ...runtime.hooks import discover_hooks, has_eligible_hooks, run_prepare_hooks
 from ...runtime.lifecycle import (
@@ -42,6 +45,34 @@ LOGGER = logging.getLogger(__name__)
 CLI = CommonCLI()
 
 
+@dataclass(frozen=True, kw_only=True)
+class InitOptions:
+    """Describe one initialization policy separately from its resolved runtime target."""
+
+    seed: Path | None = None
+    dump_path: Path | None = None
+    if_needed: bool = False
+    keep_reset_baseline: bool = False
+    verify_archive_crc: bool = False
+    restore_jobs: int = 1
+    original_filestore: Path | None = None
+    update_modules: list[str] | None = None
+    install_modules: list[str] | None = None
+    update_changed: bool = False
+    upgrade_path: list[Path] | None = None
+    pre_upgrade_scripts: list[Path] | None = None
+    log_handlers: list[str] | None = None
+    x_sendfile: bool | None = None
+    report_url: str | None = None
+    hooks_dir: list[Path] | None = None
+    expected_odoo_major: int | None = None
+    install_base_modules: bool = True
+    install_workspace_modules: bool = True
+    odoo_demo: bool = False
+    extra_bootstrap_args: list[str] | None = None
+    nginx_config: Path | None = None
+
+
 def _validate_pre_upgrade_options(
     restore_requested: bool,
     pre_upgrade_scripts: list[Path] | None,
@@ -49,16 +80,13 @@ def _validate_pre_upgrade_options(
     after_restore_hooks_selected: bool,
 ) -> None:
     """Reject hook combinations that would start Odoo before pre-upgrade scripts."""
-    if restore_requested and pre_upgrade_scripts and after_restore_hooks_selected:
+    if restore_requested and pre_upgrade_scripts and update_modules and after_restore_hooks_selected:
         message = "An eligible after_restore hook cannot run with --pre-upgrade-script because it starts Odoo first."
         raise typer.BadParameter(message, param_hint="--hooks-dir")
-    if pre_upgrade_scripts and not split_lifecycle_values(update_modules):
-        message = "--pre-upgrade-script requires at least one --update module."
-        raise typer.BadParameter(message, param_hint="--update")
 
 
 def _validate_native_paths(
-    upgrade_path: list[Path] | None, pre_upgrade_scripts: list[Path] | None, update_modules: list[str] | None
+    upgrade_path: list[Path] | None, pre_upgrade_scripts: list[Path] | None
 ) -> tuple[list[Path], list[Path] | None]:
     """Resolve native upgrade inputs before lifecycle state can change."""
     upgrade_paths = split_upgrade_paths(upgrade_path)
@@ -71,14 +99,12 @@ def _validate_native_paths(
         if not path.is_file():
             message = f"Native pre-upgrade script does not exist: {path}"
             raise typer.BadParameter(message, param_hint="--pre-upgrade-script")
-    if (upgrade_paths or scripts) and not split_lifecycle_values(update_modules):
-        message = "Native upgrade paths and pre-upgrade scripts require at least one --update module."
-        raise typer.BadParameter(message, param_hint="--update")
     return upgrade_paths, scripts or None
 
 
 # Keep validation and execution ordering visible at this public command boundary.
-def deployment_init_odoo_runtime(  # noqa: C901
+# Typer declares each public CLI option in this callback signature.
+def deployment_init_odoo_runtime(  # pylint: disable=too-many-arguments
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     workspace_addon_path: Annotated[Path, CLI.odoo_paths.workspace_addon_path],
     odoo_conf_path: Annotated[Path, CLI.odoo_paths.conf_path],
@@ -128,6 +154,14 @@ def deployment_init_odoo_runtime(  # noqa: C901
     ] = None,
     update_modules: Annotated[list[str] | None, typer.Option("--update", envvar="GODOO_RECONCILE_UPDATE")] = None,
     install_modules: Annotated[list[str] | None, typer.Option("--install", envvar="GODOO_RECONCILE_INSTALL")] = None,
+    update_changed: Annotated[
+        bool,
+        typer.Option(
+            "--update-changed/--no-update-changed",
+            envvar="GODOO_UPDATE_CHANGED",
+            help="Select native upgrades from a database-backed source checksum baseline.",
+        ),
+    ] = False,
     upgrade_path: Annotated[
         list[Path] | None,
         typer.Option("--upgrade-path", envvar="GODOO_RECONCILE_UPGRADE_PATH"),
@@ -208,8 +242,50 @@ def deployment_init_odoo_runtime(  # noqa: C901
             },
         )
 
+    return CLI.returner(
+        initialize_odoo_runtime(
+            resolve_config,
+            InitOptions(
+                seed=seed,
+                dump_path=dump_path,
+                if_needed=if_needed,
+                keep_reset_baseline=keep_reset_baseline,
+                verify_archive_crc=verify_archive_crc,
+                restore_jobs=restore_jobs,
+                original_filestore=original_filestore,
+                update_modules=update_modules,
+                install_modules=install_modules,
+                update_changed=update_changed,
+                upgrade_path=upgrade_path,
+                pre_upgrade_scripts=pre_upgrade_scripts,
+                log_handlers=log_handlers,
+                x_sendfile=x_sendfile,
+                report_url=report_url,
+                hooks_dir=hooks_dir,
+                expected_odoo_major=expected_odoo_major,
+                install_base_modules=install_base_modules,
+                install_workspace_modules=install_workspace_modules,
+                odoo_demo=odoo_demo,
+                extra_bootstrap_args=extra_bootstrap_args,
+                nginx_config=nginx_config,
+            ),
+        )
+    )
+
+
+# Keep initialization validation and mutation ordering together.
+def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: InitOptions) -> int:  # noqa: C901
+    """Validate declarations, resolve one target, and initialize without exiting the CLI."""
+    dump_path = request.dump_path
+    install_modules = request.install_modules
+    original_filestore = request.original_filestore
+    pre_upgrade_scripts = request.pre_upgrade_scripts
+    report_url = request.report_url
+    seed = request.seed
+    update_modules = request.update_modules
+    upgrade_path = request.upgrade_path
     config = None
-    if if_needed:
+    if request.if_needed:
         config = resolve_config()
         payload, status = inspect_runtime(
             config.db_connection.with_db(config.db_name, readonly=True),
@@ -218,33 +294,37 @@ def deployment_init_odoo_runtime(  # noqa: C901
         )
         typer.echo(json.dumps(payload, sort_keys=True))
         if status not in (20, 21, 23):
-            return CLI.returner(status)
-
-    if odoo_demo:
+            return status
+    if request.odoo_demo:
         if seed is not None:
             message = "--seed cannot be combined with demo data."
             raise typer.BadParameter(message, param_hint="--odoo-demo")
         dump_path = original_filestore = None
     try:
-        dataset = resolve_runtime_dataset(
-            dataset_root=dump_path,
-            seed=seed,
-            original_filestore=original_filestore,
-        )
+        dataset = resolve_runtime_dataset(dataset_root=dump_path, seed=seed, original_filestore=original_filestore)
     except (RuntimeError, OSError, ValueError) as error:
         raise typer.BadParameter(str(error), param_hint="--dump-path") from error
     if dataset is not None:
         seed = dataset.source
         original_filestore = dataset.original_filestore
-
     try:
-        hooks = discover_hooks(hooks_dir or [])
+        hooks = discover_hooks(request.hooks_dir or [])
         prepared_modules = run_prepare_hooks(hooks, environment=os.environ.get("GODOO_ENVIRONMENT") or None)
     except (OSError, TypeError, ValueError) as error:
         raise typer.BadParameter(str(error), param_hint="--hooks-dir") from error
+    if request.update_changed and any(
+        (
+            has_eligible_hooks(
+                hooks, phase=phase, outcome=outcome, environment=os.environ.get("GODOO_ENVIRONMENT") or None
+            )
+            for phase, outcome in (("after_restore", "restored"), ("after_bootstrap", "bootstrapped"))
+        )
+    ):
+        message = "--update-changed requires database hooks to use after_reconcile."
+        raise typer.BadParameter(message, param_hint="--hooks-dir")
     update_modules = list(dict.fromkeys([*split_lifecycle_values(update_modules), *prepared_modules.update])) or None
     install_modules = list(dict.fromkeys([*split_lifecycle_values(install_modules), *prepared_modules.install])) or None
-    upgrade_path, pre_upgrade_scripts = _validate_native_paths(upgrade_path, pre_upgrade_scripts, update_modules)
+    upgrade_path, pre_upgrade_scripts = _validate_native_paths(upgrade_path, pre_upgrade_scripts)
     environment = os.environ.get("GODOO_ENVIRONMENT") or None
     if report_url is not None:
         report_url = report_url.strip()
@@ -253,11 +333,8 @@ def deployment_init_odoo_runtime(  # noqa: C901
         runtime_version = require_odoo_version(config.odoo_install_folder, SUPPORTED_ODOO_VERSION_SPECIFIER)
     except OdooVersionError as error:
         raise typer.BadParameter(str(error), param_hint="--odoo-main-path") from error
-    if expected_odoo_major is not None and runtime_version.major != expected_odoo_major:
-        message = (
-            f"Configured Odoo runtime is {runtime_version.raw}; "
-            f"the selected runtime requires Odoo {expected_odoo_major}.x."
-        )
+    if request.expected_odoo_major is not None and runtime_version.major != request.expected_odoo_major:
+        message = f"Configured Odoo runtime is {runtime_version.raw}; the selected runtime requires Odoo {request.expected_odoo_major}.x."
         raise typer.BadParameter(message, param_hint="--expected-odoo-major")
     persisted = read_runtime_lifecycle(runtime_readiness_marker(config.data_dir, config.db_name), config.db_name)
     _validate_pre_upgrade_options(
@@ -266,7 +343,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
         update_modules,
         has_eligible_hooks(hooks, phase="after_restore", outcome="restored", environment=environment),
     )
-    if x_sendfile_enabled(config, x_sendfile) and not report_url:
+    if x_sendfile_enabled(config, request.x_sendfile) and (not report_url):
         message = "Set GODOO_REPORT_URL when X-Sendfile is enabled."
         raise typer.BadParameter(message, param_hint="--report-url")
     runtime_seed = seed
@@ -279,9 +356,7 @@ def deployment_init_odoo_runtime(  # noqa: C901
             return
         try:
             validated_archive = prepare_archive_with_original_filestore(
-                runtime_seed,
-                original_filestore,
-                verify_archive_crc=verify_archive_crc,
+                runtime_seed, original_filestore, verify_archive_crc=request.verify_archive_crc
             )
         except (OSError, ValueError, RuntimeRestoreError) as error:
             raise typer.BadParameter(str(error), param_hint="--original-filestore") from error
@@ -292,19 +367,19 @@ def deployment_init_odoo_runtime(  # noqa: C901
 
     def prepare(conf: GodooConfig) -> None:
         """Prepare Odoo and the optional Nginx static-file lookup."""
-        if nginx_config is not None:
-            write_nginx_static_config(conf, nginx_config, runtime_version)
-        prepare_runtime(conf, x_sendfile=x_sendfile)
+        if request.nginx_config is not None:
+            write_nginx_static_config(conf, request.nginx_config, runtime_version)
+        prepare_runtime(conf, x_sendfile=request.x_sendfile)
 
     def ensure(conf: GodooConfig) -> bool:
         """Bootstrap the runtime without repeating preparation."""
         return ensure_runtime(
             conf,
             preparer=already_prepared,
-            odoo_demo=odoo_demo,
-            extra_bootstrap_args=extra_bootstrap_args,
-            install_workspace_modules=install_workspace_modules,
-            install_base_modules=install_base_modules,
+            odoo_demo=request.odoo_demo,
+            extra_bootstrap_args=request.extra_bootstrap_args,
+            install_workspace_modules=request.install_workspace_modules,
+            install_base_modules=request.install_base_modules,
             allow_lifecycle_retry=True,
         )
 
@@ -323,8 +398,8 @@ def deployment_init_odoo_runtime(  # noqa: C901
                 lifecycle_owner="init",
                 target_major=runtime_version.major,
                 expected_dump_identity=dataset.dump_identity,
-                keep_reset_baseline=keep_reset_baseline,
-                restore_jobs=restore_jobs,
+                keep_reset_baseline=request.keep_reset_baseline,
+                restore_jobs=request.restore_jobs,
             )
             return
         result = load_runtime_archive(
@@ -338,12 +413,46 @@ def deployment_init_odoo_runtime(  # noqa: C901
             _validated_archive=validated_archive,
             lifecycle_owner="init",
             require_same_archive_identity=True,
-            keep_reset_baseline=keep_reset_baseline,
-            verify_archive_crc=verify_archive_crc,
+            keep_reset_baseline=request.keep_reset_baseline,
+            verify_archive_crc=request.verify_archive_crc,
         )
         if result:
             message = f"Odoo seed archive load failed for runtime '{conf.db_name}' (exit code {result})"
             raise RuntimeError(message)
+
+    plan: ModulePlan | None = None
+    selected_updates = split_lifecycle_values(update_modules)
+    selected_installs = split_lifecycle_values(install_modules)
+
+    def plan_reconciliation(conf: GodooConfig) -> None:
+        """Select native work under the lifecycle lock before any database hook."""
+        nonlocal plan, selected_updates, selected_installs
+        if request.update_changed:
+            plan = plan_module_changes(
+                conf, selected_updates, selected_installs, pre_upgrade_scripts=bool(pre_upgrade_scripts)
+            )
+            selected_updates, selected_installs = (plan.updates, plan.installs)
+        elif selected_installs:
+            selected_installs = pending_installs(module_states(conf), selected_installs)
+
+    def reconcile(conf: GodooConfig) -> int:
+        """Run native reconciliation and checkpoint only verified source state."""
+        result = reconcile_runtime(
+            conf,
+            preparer=already_prepared,
+            allow_lifecycle_retry=True,
+            reconciler=lambda runtime: reconcile_modules(
+                runtime,
+                selected_updates,
+                selected_installs,
+                upgrade_path=upgrade_path,
+                pre_upgrade_scripts=pre_upgrade_scripts,
+                log_handlers=request.log_handlers,
+            ),
+        )
+        if result == 0 and plan is not None:
+            plan.finish(conf)
+        return result
 
     try:
         outcome, result = deployment_init(
@@ -353,46 +462,29 @@ def deployment_init_odoo_runtime(  # noqa: C901
             ensure=ensure,
             preparer=prepare,
             preflight=lambda conf: preflight_reconcile_dependencies(
-                conf,
-                update_modules,
-                install_modules,
-                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+                conf, update_modules, install_modules, ignore_missing_installed_modules=bool(pre_upgrade_scripts)
             ),
             seed_preflight=prepare_seed,
             post_restore_preflight=lambda conf: preflight_reconcile_dependencies(
-                conf,
-                update_modules,
-                install_modules,
-                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+                conf, update_modules, install_modules, ignore_missing_installed_modules=bool(pre_upgrade_scripts)
             ),
-            reconciler=lambda conf: reconcile_runtime(
-                conf,
-                preparer=already_prepared,
-                allow_lifecycle_retry=True,
-                reconciler=lambda runtime: reconcile_modules(
-                    runtime,
-                    update_modules,
-                    install_modules,
-                    upgrade_path=upgrade_path,
-                    pre_upgrade_scripts=pre_upgrade_scripts,
-                    log_handlers=log_handlers,
-                ),
-            ),
+            reconcile_preflight=plan_reconciliation,
+            reconciler=reconcile,
             hooks=hooks,
             environment=environment,
             upgrade_path=upgrade_path,
-            keep_reset_baseline=keep_reset_baseline,
+            keep_reset_baseline=request.keep_reset_baseline,
         )
         if result == 0 and report_url:
             set_report_url(config, report_url)
     except LifecycleBootstrapError as error:
         LOGGER.exception("Native Odoo bootstrap failed during deployment initialization")
-        return CLI.returner(error.return_code)
+        return error.return_code
     except (ValueError, RuntimeError, OSError, psycopg2.Error):
         LOGGER.exception("Deployment initialization failed")
-        return CLI.returner(1)
+        return 1
     finally:
         if validated_archive is not None:
             validated_archive.cleanup()
     LOGGER.info("Runtime initialization outcome: %s", outcome.value)
-    return CLI.returner(result)
+    return result

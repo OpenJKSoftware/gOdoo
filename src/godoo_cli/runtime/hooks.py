@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import inspect
+import json
 import logging
 import sys
 from collections.abc import Callable, Iterable, Sequence
@@ -30,6 +31,7 @@ class Hook:
     phase: str
     on: tuple[str, ...] = OUTCOMES
     environments: tuple[str, ...] | None = None
+    once: bool = False
 
     def __post_init__(self) -> None:
         """Reject declarations that cannot be evaluated safely."""
@@ -40,6 +42,12 @@ class Hook:
             message = f"Unknown hook phase '{self.phase}'."
             raise ValueError(message)
         _validate_string_tuple("Hook outcomes", self.on, allowed=OUTCOMES)
+        if type(self.once) is not bool:
+            message = "Hook once must be a boolean."
+            raise ValueError(message)
+        if self.phase == "prepare" and self.once:
+            message = "Preparation hooks cannot declare once=True."
+            raise ValueError(message)
         if self.phase == "prepare" and self.on != OUTCOMES:
             message = "Preparation hooks cannot filter by outcome."
             raise ValueError(message)
@@ -177,15 +185,33 @@ def _run_database_hook_batch(shell_env: Any, sources: Sequence[str], *, outcome:
                 outcome=outcome,
             )
             try:
+                completion_key = None
+                parameters = None
+                if definition.hook.once:
+                    scope = environment if definition.hook.environments is not None else None
+                    identity = json.dumps([definition.hook.id, scope], separators=(",", ":"))
+                    completion_key = "godoo.hooks.once." + hashlib.sha256(identity.encode()).hexdigest()
+                    parameters = context.env["ir.config_parameter"].sudo()
+                    if parameters.get_param(completion_key):
+                        cursor.rollback()
+                        LOGGER.info("Hook %s already completed.", definition.hook.id)
+                        continue
                 if definition.needs_run is not None:
                     decision = definition.needs_run(context)
                     _require_bool(decision, definition.hook.id)
                     if not decision:
-                        cursor.rollback()
+                        if parameters is not None:
+                            parameters.set_param(completion_key, "1")
+                            context.env.flush_all()
+                            cursor.commit()
+                        else:
+                            cursor.rollback()
                         LOGGER.info("Hook %s already satisfied.", definition.hook.id)
                         continue
                 LOGGER.info("Hook %s running.", definition.hook.id)
                 definition.run(context)
+                if parameters is not None:
+                    parameters.set_param(completion_key, "1")
                 context.env.flush_all()
                 cursor.commit()
                 LOGGER.info("Hook %s completed.", definition.hook.id)

@@ -42,6 +42,8 @@ def script_name_argument() -> object:
     )
 
 
+# Mirror the shell connection/path flags shared by the two public shell command adapters.
+# pylint: disable-next=too-many-arguments
 def _shell_command(
     *,
     odoo_main_path: Path,
@@ -75,6 +77,8 @@ def _shell_command(
     return build_odoo_shell_command(config)
 
 
+# Typer declares each interactive-shell option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def odoo_shell(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     odoo_conf_path: Annotated[Path | None, CLI.odoo_paths.conf_path] = None,
@@ -119,6 +123,8 @@ def odoo_shell(
     return CLI.returner(ret.returncode)
 
 
+# Typer declares each script and connection option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def odoo_shell_run_script(
     script_name: Annotated[str, script_name_argument()],
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],

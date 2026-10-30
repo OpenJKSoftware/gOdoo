@@ -79,6 +79,8 @@ def validate_initialization_state(
         raise ValueError(message)
 
 
+# Preserve the bootstrap service API: native policy flags and independently injectable lifecycle operations.
+# pylint: disable-next=too-many-arguments
 def ensure_runtime(
     godoo_config: GodooConfig,
     *,
@@ -182,6 +184,8 @@ def _initialize_runtime(
     return LifecycleOutcome.BOOTSTRAPPED
 
 
+# Preserve the lifecycle service API and its independently injectable restore, reconciliation, and recovery steps.
+# pylint: disable-next=too-many-arguments
 def deployment_init(
     config: GodooConfig,
     *,
@@ -193,6 +197,7 @@ def deployment_init(
     preflight: RuntimePreparer | None = None,
     seed_preflight: RuntimePreparer | None = None,
     post_restore_preflight: RuntimePreparer | None = None,
+    reconcile_preflight: RuntimePreparer | None = None,
     hooks: list[HookDefinition] | None = None,
     environment: str | None = None,
     upgrade_path: list[Path] | Path | None = None,
@@ -227,6 +232,8 @@ def deployment_init(
             hook_outcome = outcome
         if hook_outcome == LifecycleOutcome.RESTORED and post_restore_preflight:
             post_restore_preflight(config)
+        if reconcile_preflight:
+            reconcile_preflight(config)
         phase = {
             LifecycleOutcome.BOOTSTRAPPED: "after_bootstrap",
             LifecycleOutcome.RESTORED: "after_restore",
@@ -328,9 +335,6 @@ def reconcile_modules(
     scripts = list(dict.fromkeys(pre_upgrade_scripts or []))
     handlers = split_lifecycle_values(log_handlers)
     upgrade_paths = split_upgrade_paths(upgrade_path)
-    if (upgrade_paths or scripts) and not updates:
-        message = "--upgrade-path and --pre-upgrade-script require at least one --update module."
-        raise ValueError(message)
     extra: list[str] = ["--stop-after-init"]
     if updates:
         extra.extend(["--update", ",".join(updates)])
@@ -340,7 +344,7 @@ def reconcile_modules(
         return 0
     if upgrade_paths:
         extra.extend(["--upgrade-path", ",".join(str(path) for path in upgrade_paths)])
-    if scripts:
+    if scripts and updates:
         extra.extend(["--pre-upgrade-scripts", ",".join(str(script) for script in scripts)])
     for handler in handlers:
         extra.extend(["--log-handler", handler])

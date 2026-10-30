@@ -23,6 +23,9 @@ x-runtime: &runtime
     ODOO_WORKSPACE_ADDON_LOCATION: ${ODOO_WORKSPACE_ADDON_LOCATION:-/odoo/godoo_workspace/addons}
     ODOO_CONF_PATH: ${ODOO_CONF_PATH:-/odoo/config/odoo.conf}
     GODOO_RUNTIME_SEED: "${GODOO_RUNTIME_SEED:-}"
+    GODOO_UPDATE_CHANGED: ${GODOO_UPDATE_CHANGED:-true}
+    GODOO_RECONCILE_UPDATE: "${GODOO_RECONCILE_UPDATE:-}"
+    GODOO_RECONCILE_INSTALL: "${GODOO_RECONCILE_INSTALL:-}"
     GODOO_X_SENDFILE: ${GODOO_X_SENDFILE:-true}
     GODOO_HOOK_DIRS: "${GODOO_HOOK_DIRS:-}"
     GODOO_ENVIRONMENT: "${GODOO_ENVIRONMENT:-}"
@@ -37,16 +40,17 @@ x-runtime: &runtime
 services:
   init:
     <<: *runtime
+    profiles: [maintenance]
     command: [godoo, runtime, init]
     depends_on:
       db:
         condition: service_healthy
   app:
     <<: *runtime
-    command: [godoo, runtime, launch, "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--proxy-mode"]
+    command: [godoo, runtime, start, "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--proxy-mode"]
     depends_on:
-      init:
-        condition: service_completed_successfully
+      db:
+        condition: service_healthy
   nginx:
     build:
       context: ..

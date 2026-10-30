@@ -8,16 +8,15 @@ database topology is a same-host PostgreSQL sidecar on an isolated Compose netwo
 
 ## Service and ownership boundaries
 
-This diagram shows **Compose startup dependencies**, not HTTP traffic. A failed database healthcheck or init job
-prevents the dependent app from starting. “App service started” is a Compose state, not proof of HTTP readiness. The
-[HTTP and file delivery](#http-and-file-delivery) section describes request routing.
+This diagram shows **Compose startup dependencies**, not HTTP traffic. A failed database healthcheck prevents app
+startup; failed preparation makes the app exit before it serves. “App service started” is a Compose state, not proof of
+HTTP readiness. The [HTTP and file delivery](#http-and-file-delivery) section describes request routing.
 
 ```mermaid
 flowchart TD
     Compose["Operator runs downstream Docker Compose"]
     Compose --> DB["Compose starts db<br/>and waits for PostgreSQL's healthcheck"]
-    DB -->|database healthy| Init["Compose runs init<br/>godoo runtime init prepares the database and filestore"]
-    Init -->|init exits with code 0| App["Compose starts app<br/>godoo runtime launch starts Odoo"]
+    DB -->|database healthy| App["Compose starts app<br/>godoo runtime start prepares, then serves"]
     App -->|app service started| Nginx["Compose starts nginx<br/>HTTP ingress becomes available"]
 ```
 
@@ -61,22 +60,32 @@ healthcheck from [the base Compose file](../docker/docker-compose.base.yml).
 
 ```yaml
 services:
-  init:
-    command: [godoo, runtime, init] # One-shot preparation, not a daemon.
+  app:
+    command: [godoo, runtime, start]
+    environment:
+      GODOO_UPDATE_CHANGED: "true"
     depends_on:
       db:
         condition: service_healthy
 
-  app:
-    command: [godoo, runtime, launch] # Launch only prepared state.
+  init:
+    profiles: [maintenance]
+    command: [godoo, runtime, init] # Explicit maintenance, excluded from ordinary startup.
     depends_on:
-      init:
-        condition: service_completed_successfully
+      db:
+        condition: service_healthy
 ```
 
-Use `GODOO_INIT_IF_EMPTY=true` for startup that skips a ready runtime. Keep it false, or pass `--no-if-needed`, for
-deployment jobs that reconcile modules and hooks. Demo mode ignores configured restore inputs and rejects an explicit
-seed. All processes managing the pair must share the same data directory.
+The app owns initialization on every process start, including Docker restarts. Give it all restore dataset mounts and
+settings previously provided to init; seed datasets should be read-only. Stop existing Odoo writers before deployment or
+maintenance initialization. The supported scope is one app service, not concurrent replicas writing the same runtime.
+Use routed HTTP readiness after app startup; a running or restarting container does not prove initialization succeeded.
+
+`runtime start` always reconciles and ignores `GODOO_INIT_IF_EMPTY`. That variable still controls standalone
+`runtime init`. Demo mode ignores configured datasets and rejects an explicit seed. All pair operations share the same
+data directory. For maintenance, `docker compose run --rm init` explicitly selects the profiled service. Do not also
+start it through an ordinary deployment service list. Use `runtime launch` only when preparation is deliberately owned
+by a separate caller.
 
 ## PostgreSQL
 

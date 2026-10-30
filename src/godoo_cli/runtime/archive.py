@@ -572,6 +572,8 @@ def _overlay_staged_filestore(source: Path, destination: Path) -> None:
         shutil.copyfile(member, target)
 
 
+# Preserve the public ZIP-restore API, including its native options and injectable pair-recovery operations.
+# pylint: disable-next=too-many-arguments
 def load_runtime_archive(  # noqa: C901
     *,
     connection: DBConnection,

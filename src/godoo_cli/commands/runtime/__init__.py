@@ -8,6 +8,7 @@ from .dependencies import runtime_dependencies
 from .init import deployment_init_odoo_runtime
 from .launch import launch_odoo
 from .shell import odoo_shell, odoo_shell_run_script
+from .start import start_odoo_runtime
 from .status import runtime_status
 
 LOGGER = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ def runtime_cli_app() -> typer.Typer:
         help="Manage an Odoo runtime: its lifecycle, database, and matching filestore.",
     )
     app.command("init")(deployment_init_odoo_runtime)
+    app.command("start")(start_odoo_runtime)
     app.command("dependencies")(runtime_dependencies)
     app.command("launch")(launch_odoo)
     app.command("status")(runtime_status)

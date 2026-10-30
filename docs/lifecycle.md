@@ -16,44 +16,79 @@ Run in the configured downstream runtime environment. CLI values override export
 ```bash
 # Prepare and reconcile explicitly, including on an already ready database.
 # Other Odoo writers must be stopped.
-godoo runtime init && godoo runtime launch
+godoo runtime start --update-changed
 
-# For ordinary startup, skip initialization when the runtime is already ready.
+# Optional maintenance policy: skip all hooks and reconciliation on a ready runtime.
 godoo runtime init --if-needed && godoo runtime launch
 
 # Inspect state without changing the runtime.
 godoo runtime status --json
 ```
 
-These are alternative startup policies. Set `GODOO_INIT_IF_EMPTY=true` for conditional startup; use `--no-if-needed` to
-override it for deployment jobs that must apply updates or hooks. Conditional init prints the same JSON payload as
+`runtime start` uses the existing init and launch options, resolves one target, and always initializes explicitly before
+serving. It ignores `GODOO_INIT_IF_EMPTY` and has no `--if-needed` option. Bootstrap arguments apply only to
+initialization; server/debugger arguments apply only to launch. Failed initialization returns nonzero without launching,
+and lifecycle locks are released before the server lifetime.
+
+For separate maintenance commands, set `GODOO_INIT_IF_EMPTY=true` for conditional init; use `--no-if-needed` to override
+it for deployment jobs that must apply updates or hooks. Conditional init prints the same JSON payload as
 `runtime status --json` and checks readiness before loading datasets, hooks, or Odoo.
 
 The diagram below starts when initialization is required or explicitly requested. A ready runtime skipped by
 `--if-needed` exits before this work. Each arrow means the preceding step succeeded; failures stop initialization.
-Launching the server is a separate caller action. The bootstrap/restore branches show first initialization; recovery
-retries rerun hooks for the original outcome, as described under
+`runtime start` launches after this work succeeds; `runtime init` exits without serving. The bootstrap/restore branches
+show first initialization; recovery retries rerun hooks for the original outcome, as described under
 [incomplete initialization](#incomplete-initialization).
 
 ```mermaid
 flowchart TD
-    Prepare["gOdoo: run prepare hooks<br/>and check known dependencies"] --> State{"State of the target<br/>database and filestore?"}
-    State -->|ready| Reconcile["Odoo: install or update selected modules<br/>and run eligible native migrations"]
-    State -->|missing or empty| Seed{"Backup or dataset<br/>selected for restore?"}
-    State -->|inconsistent| Stop["Stop initialization<br/>Operator must recover a matching database and filestore"]
-    Seed -->|yes| Restore["gOdoo: restore the selected backup<br/>and its matching attachments"]
-    Seed -->|no| Bootstrap["Odoo: create a new database"]
-    Restore --> Restored["gOdoo: run eligible after_restore hooks"]
-    Bootstrap --> Bootstrapped["gOdoo: run eligible after_bootstrap hooks"]
-    Restored --> Reconcile
-    Bootstrapped --> Reconcile
-    Reconcile --> Finalize["gOdoo: run eligible after_reconcile hooks"]
-    Finalize --> Ready["gOdoo: mark initialization complete<br/>and exit successfully"]
-    Ready -->|caller runs a separate command| Launch["godoo runtime launch<br/>Start the prepared Odoo server"]
+    Prepare["Prepare hooks and dependency preflight"] --> State{"Database and filestore state"}
+    State -->|ready| Plan["Registry-free source selection when enabled"]
+    State -->|missing or empty| Seed{"Seed selected?"}
+    State -->|inconsistent| Stop["Stop; recover a matching pair"]
+    Seed -->|yes| Restore["Restore backup and matching attachments"]
+    Seed -->|no| Bootstrap["Native Odoo bootstrap"]
+    Restore --> Plan
+    Bootstrap --> Plan
+    Plan --> OutcomeHooks["Eligible after_restore / after_bootstrap hooks<br/>Legacy ordering; excluded with update-changed"]
+    OutcomeHooks --> Reconcile["Native module reconciliation"]
+    Reconcile --> Baseline["Verify and save the planned source baseline when enabled"]
+    Baseline --> Finalize["Eligible after_reconcile hooks"]
+    Finalize --> Ready["Clear pending lifecycle state"]
+    Ready --> Launch["runtime start launches Odoo<br/>runtime init exits"]
 ```
 
-Init is a one-shot job. In Compose, launch depends on init's `service_completed_successfully`; gOdoo does not start
-downstream services itself.
+Use `runtime start` as the app entrypoint so Docker restarts also prepare the runtime. Keep `runtime init` as explicit
+maintenance tooling; do not also run a second init service during ordinary startup. gOdoo does not start downstream
+services itself.
+
+### Source-driven native reconciliation
+
+`--update-changed` or `GODOO_UPDATE_CHANGED=true` selects source changes without loading an Odoo registry. Under the
+runtime lock, after restore/bootstrap and before database hooks, gOdoo reads installed and pending module state and
+compares source snapshots. A missing baseline deliberately upgrades installed source-backed modules once. Later
+unchanged starts request no native updates. Explicit `--update` selections remain explicit; desired installs already
+installed or queued for upgrade are filtered out. Native Odoo expands upgrade dependents and installs new dependencies.
+Pending install/upgrade states are included; pending removals need a selected native action or initialization fails.
+
+The independent `godoo.runtime.source_checksums.v1` parameter stores JSON `{"format": 1, "modules": {name: sha256}}`.
+Hashes include deterministic relative filenames and content, all translations regardless of active languages, and core
+Python package sources as part of `base`. Tests, static assets, Git metadata, Python bytecode, and editor swap files are
+excluded. Installed, pending, and requested addons plus their source dependencies are snapshotted before native work. If
+that set can introduce installs, potential auto-install addons and their dependencies are captured too. Unrelated
+ordinary addons are not hashed unless the caller explicitly selects `all`. Imported addons and pathless Studio
+customization are not source modules. Corrupt baseline data fails visibly.
+
+Missing installed sources may be deferred only when a selected native update will run configured pre-upgrade cleanup.
+They must be removed or repaired before a strict post-native rescan. Other missing sources fail initialization. Valid
+native upgrade paths can remain configured without forcing an update; pre-upgrade scripts run only with native update
+selections. These settings are dormant on unchanged starts.
+
+Only a successful native process with no unfinished module states can advance the baseline. gOdoo verifies final
+installed sources against the snapshot taken before native work and saves that snapshot before post-hooks. Source drift
+or failed native work leaves the old baseline; failed post-hooks retain the successful baseline and earlier completed
+one-shot hooks. The pending lifecycle marker remains until all phases succeed. Native Odoo can commit partial work; this
+is not an atomic module-upgrade guarantee. See the native migration recovery limits in [Hooks](hooks.md).
 
 Backups use native Odoo commands on Odoo 19 or newer and PostgreSQL tools on Odoo 16–18.
 
@@ -267,7 +302,9 @@ make dev
 
 `godoo db reset` performs the pair operation; callers must stop writers first. `--db-template` selects another database
 with its matching filestore; `--empty` retains drop-only behavior. Reset copies the database and uses rsync to delete
-filestore files absent from the baseline. PostgreSQL's faster copy method is used when available.
+filestore files absent from the baseline. PostgreSQL's faster copy method is used when available. At default verbosity,
+reset logs lock waiting, baseline checks, database and filestore operations, lifecycle updates, and successful
+completion. `--empty` logs database removal and filestore cleanup too.
 
 An interrupted reset can leave an incomplete active filestore: its marker blocks init, so rerun reset. A missing or
 incomplete baseline needs a fresh restore. The next init reruns restore hooks, native reconciliation, and final hooks.

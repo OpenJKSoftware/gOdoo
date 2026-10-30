@@ -76,6 +76,8 @@ def _test_modules_to_run(
     return [module.name for module in test_modules], dependencies
 
 
+# Typer declares each isolated-test option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def odoo_run_tests(
     test_module_names: Annotated[
         list[str],

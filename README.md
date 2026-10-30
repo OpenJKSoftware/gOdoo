@@ -109,19 +109,20 @@ in the Python environment that contains Odoo; gOdoo uses `VIRTUAL_ENV`, otherwis
 Commands read the project `.env`. **Explicit CLI values → exported environment → project `.env`** is the configuration
 precedence. Use `godoo --help` or `godoo <command> --help` for the full reference.
 
-### Prepare once, then launch
+### Prepare on every server start
 
 Initialization prepares the database and matching filestore, checks dependencies, and runs selected module updates and
-hooks. Launch starts the prepared runtime. In Compose, the app should depend on the init service completing
-successfully.
+hooks. `runtime start` performs this work before launching Odoo on the same target. Use it as the app entrypoint so
+Docker restarts also prepare the runtime; the app depends on a healthy database.
 
 ```bash
 # Run in a configured runtime environment with other Odoo writers stopped.
-godoo runtime init && godoo runtime launch
+godoo runtime start --update-changed
 ```
 
-Use `godoo runtime init --if-needed` for startup that skips reconciliation when the runtime is already ready. For
-deployments applying module updates or hooks, use explicit initialization. Inspect state without changing it:
+`--update-changed` selects native upgrades from source hashes; unchanged starts skip upgrades. Explicit maintenance
+`runtime init` and prepared-only `runtime launch` remain available. `runtime init --if-needed` skips all hooks and
+reconciliation on a ready runtime; `runtime start` always initializes explicitly. Inspect state without changing it:
 
 ```bash
 godoo runtime status --json

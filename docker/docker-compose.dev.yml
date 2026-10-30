@@ -28,7 +28,7 @@ services:
         -m,
         godoo_cli,
         runtime,
-        launch,
+        start,
         "--extra-args=${ODOO_BIN_ARGS:+${ODOO_BIN_ARGS} }--workers=0 --proxy-mode",
       ]
     volumes:
@@ -39,6 +39,7 @@ services:
       GODOO_RUNTIME_ODOO_PATH: ${GODOO_RUNTIME_ODOO_PATH}
       GODOO_RUNTIME_ADDON_PATHS: ${GODOO_RUNTIME_ADDON_PATHS}
       GODOO_DEV_MODE: "1"
+      GODOO_KEEP_RESET_BASELINE: ${GODOO_KEEP_RESET_BASELINE:-true}
       ODOO_MANIFEST: /odoo/godoo_workspace/odoo_manifest.yml
       PYTHONPATH: /odoo/godoo_workspace/src
 

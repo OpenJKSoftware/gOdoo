@@ -14,6 +14,8 @@ CLI = CommonCLI()
 LOGGER = logging.getLogger(__name__)
 
 
+# Typer declares each RPC import option in this public callback signature.
+# pylint: disable-next=too-many-arguments
 def import_to_odoo(
     read_paths: Annotated[
         list[Path],
