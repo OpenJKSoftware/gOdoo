@@ -16,7 +16,6 @@ from godoo_cli.git import GitUrl, native_git_result, repository
 from godoo_cli.git.repository import Git
 from godoo_cli.models import GitMergeSource, GodooGitRepo
 from godoo_cli.workspace.git import (
-    _assert_clean,
     _check_ref_format,
     _ensure_pool,
     _worktree_pool,
@@ -532,7 +531,7 @@ def test_checkout_bytes_do_not_depend_on_host_line_ending_configuration(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Guards the contract that checkout bytes do not depend on host line ending configuration."""
-    _working, remote, _initial = _remote(tmp_path)
+    working, remote, _initial = _remote(tmp_path)
     config = tmp_path / "gitconfig"
     config.write_text("[core]\n\tautocrlf = true\n", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
@@ -540,6 +539,10 @@ def test_checkout_bytes_do_not_depend_on_host_line_ending_configuration(
     selected, _selected_commit = _selection(remote, tmp_path / "sources")
 
     assert (Path(selected) / "shared.txt").read_bytes() == b"original\n"
+    _commit(working, "next.txt", "advanced\n")
+    _git(working, "push", str(remote), "19.0")
+    _selection(remote, tmp_path / "sources")
+    assert (Path(selected) / "next.txt").read_bytes() == b"advanced\n"
 
 
 def test_merge_order_is_part_of_recipe_identity(tmp_path: Path) -> None:
@@ -644,39 +647,124 @@ def _assert_existing_floating_worktree_is_reset(tmp_path: Path) -> None:
     assert _git(Path(selected), "rev-parse", "HEAD") == advanced
 
 
-def test_ignored_changes_are_removed_on_sync(tmp_path: Path) -> None:
-    """Guards the contract that ignored changes are removed on sync."""
+def test_untracked_and_ignored_files_survive_inspection_and_sync(tmp_path: Path) -> None:
     working, remote, _initial = _remote(tmp_path)
     _commit(working, ".gitignore", "ignored.txt\n")
     _git(working, "push", str(remote), "19.0")
     root = tmp_path / "sources"
     selected, _selected_commit = _selection(remote, root)
-    (Path(selected) / "ignored.txt").write_text("unsupported", encoding="utf-8")
+    path = Path(selected)
+    (path / "ignored.txt").write_text("ignored content", encoding="utf-8")
+    (path / "untracked.txt").write_text("user content", encoding="utf-8")
+    repo = GodooGitRepo(url=remote.as_uri(), branch="19.0")
 
-    _selection(remote, root)
-    assert not (Path(selected) / "ignored.txt").exists()
-
-
-def test_ignored_finder_metadata_does_not_make_worktree_dirty(tmp_path: Path) -> None:
-    """Guards the narrow exception for ignored Finder metadata."""
-    working, remote, _initial = _remote(tmp_path)
-    _commit(working, ".gitignore", ".DS_Store\nignored.txt\n")
+    _inspect_repo(repo, root=root, default_branch="19.0", role="odoo")
+    _commit(working, "new.txt", "upstream update")
     _git(working, "push", str(remote), "19.0")
+    _selection(remote, root)
+
+    assert (path / "new.txt").read_text(encoding="utf-8") == "upstream update"
+    assert (path / "ignored.txt").read_text(encoding="utf-8") == "ignored content"
+    assert (path / "untracked.txt").read_text(encoding="utf-8") == "user content"
+
+
+@pytest.mark.parametrize("staged", [False, True])
+def test_sync_rejects_tracked_changes(tmp_path: Path, staged: bool) -> None:
+    _working, remote, _initial = _remote(tmp_path)
     root = tmp_path / "sources"
     selected, _selected_commit = _selection(remote, root)
     path = Path(selected)
-    (path / ".DS_Store").write_bytes(b"finder metadata")
-    (path / "ignored.txt").write_text("unsupported", encoding="utf-8")
+    (path / "shared.txt").write_text("user edit", encoding="utf-8")
+    if staged:
+        _git(path, "add", "shared.txt")
 
     with pytest.raises(WorkspaceError, match="Managed source is dirty"):
-        _assert_clean(path)
-    (path / "ignored.txt").unlink()
-    _assert_clean(path)
-    (path / ".DS_Store").unlink()
-    (path / ".DS_Store").mkdir()
-    (path / ".DS_Store" / "nested").write_bytes(b"finder metadata directory")
-    with pytest.raises(WorkspaceError, match="Managed source is dirty"):
-        _assert_clean(path)
+        _selection(remote, root)
+    assert (path / "shared.txt").read_text(encoding="utf-8") == "user edit"
+
+
+@pytest.mark.parametrize("ignored", [False, True])
+def test_sync_rejects_untracked_collision_with_new_commit(tmp_path: Path, ignored: bool) -> None:
+    working, remote, _initial = _remote(tmp_path)
+    if ignored:
+        _commit(working, ".gitignore", "collision.txt\n")
+        _git(working, "push", str(remote), "19.0")
+    root = tmp_path / "sources"
+    selected, _selected_commit = _selection(remote, root)
+    path = Path(selected)
+    previous = _git(path, "rev-parse", "HEAD")
+    (path / "collision.txt").write_text("user content", encoding="utf-8")
+    (working / "collision.txt").write_text("upstream content", encoding="utf-8")
+    _git(working, "add", "-f", "collision.txt")
+    _git(working, "commit", "-m", "add collision")
+    _git(working, "push", str(remote), "19.0")
+
+    with pytest.raises(WorkspaceError, match="would be overwritten"):
+        _selection(remote, root)
+    assert (path / "collision.txt").read_text(encoding="utf-8") == "user content"
+    assert _git(path, "rev-parse", "HEAD") == previous
+
+
+def test_merge_collision_preserves_ignored_file_and_previous_commit(tmp_path: Path) -> None:
+    working, remote, _initial = _remote(tmp_path)
+    _commit(working, ".gitignore", "collision.txt\n")
+    _git(working, "checkout", "-b", "feature")
+    _commit(working, "feature.txt", "feature")
+    _git(working, "push", str(remote), "19.0", "feature")
+    root = tmp_path / "sources"
+    spec = _merge_spec(remote)
+    source = _sync_repo(spec, root=root, default_branch="19.0", role="odoo")
+    path = source.host_path
+    previous = _git(path, "rev-parse", "HEAD")
+    (path / "collision.txt").write_text("user content", encoding="utf-8")
+    (working / "collision.txt").write_text("upstream content", encoding="utf-8")
+    _git(working, "add", "-f", "collision.txt")
+    _git(working, "commit", "-m", "add collision")
+    _git(working, "push", str(remote), "feature")
+
+    with pytest.raises(WorkspaceError, match="would be overwritten"):
+        _sync_repo(spec, root=root, default_branch="19.0", role="odoo")
+    assert (path / "collision.txt").read_text(encoding="utf-8") == "user content"
+    assert _git(path, "rev-parse", "HEAD") == previous
+
+
+def test_merge_allows_ignored_file_when_result_keeps_its_deletion(tmp_path: Path) -> None:
+    working, remote, initial = _remote(tmp_path)
+    _git(working, "checkout", "-b", "feature", initial)
+    _commit(working, "feature.txt", "feature")
+    _git(working, "checkout", "19.0")
+    _git(working, "rm", "shared.txt")
+    _commit(working, ".gitignore", "shared.txt\n")
+    _git(working, "push", str(remote), "19.0", "feature")
+    root = tmp_path / "sources"
+    spec = _merge_spec(remote)
+    source = _sync_repo(spec, root=root, default_branch="19.0", role="odoo")
+    ignored = source.host_path / "shared.txt"
+    ignored.write_text("user content", encoding="utf-8")
+
+    _sync_repo(spec, root=root, default_branch="19.0", role="odoo")
+
+    assert ignored.read_text(encoding="utf-8") == "user content"
+
+
+def test_legacy_occupant_with_ignored_file_is_preserved(tmp_path: Path) -> None:
+    working, remote, _initial = _remote(tmp_path)
+    initial = _commit(working, ".gitignore", "ignored.txt\n")
+    _git(working, "push", str(remote), "19.0")
+    root = tmp_path / "sources"
+    selected, _selected_commit = _selection(remote, root)
+    readable = Path(selected)
+    pool = _worktree_pool(readable)
+    legacy = root / "worktrees" / "godoo%2F19.0"
+    legacy.parent.mkdir()
+    _git(pool, "worktree", "move", str(readable), str(legacy))
+    _git(pool, "worktree", "add", "--detach", str(readable), initial)
+    (readable / "ignored.txt").write_text("user content", encoding="utf-8")
+
+    with pytest.raises(WorkspaceError, match="dirty"):
+        _selection(remote, root)
+    assert (readable / "ignored.txt").read_text(encoding="utf-8") == "user content"
+    assert legacy.exists()
 
 
 def test_unrelated_named_worktree_at_expected_path_is_preserved(tmp_path: Path) -> None:

@@ -15,7 +15,7 @@ cd /path/to/project
 # Set this in .env instead if each shell should inherit the same value.
 export GODOO_SOURCES_ROOT=/absolute/path/to/shared-sources
 
-# Synchronize managed sources. This can discard edits in verified worktrees.
+# Synchronize managed sources. Tracked edits and untracked path collisions stop synchronization.
 godoo workspace sync
 
 # Generate editor files from the selected sources.
@@ -62,18 +62,19 @@ flowchart TD
     Check --> Build["Production image build copies<br/>selected sources into the image"]
 ```
 
-| Command                 | Changes state? | Purpose                                                                    |
-| ----------------------- | -------------- | -------------------------------------------------------------------------- |
-| `workspace sync`        | Yes            | Update managed worktrees and archive caches; may reset verified worktrees. |
-| `workspace configure`   | Yes            | Validate sources and generate editor files under `.godoo/workspace.lock`.  |
-| `workspace check`       | No             | Validate offline, without source-worktree or archive locks.                |
-| `workspace runtime-env` | No             | Validate sources and emit shell-safe resolved path assignments.            |
-| `workspace materialize` | Yes            | Copy selected sources into an image layout.                                |
-| `workspace storage`     | No             | Inspect shared source storage.                                             |
-| `workspace gc`          | Yes            | Manage shared storage cleanup; inspect `--help` before use.                |
+| Command                 | Changes state? | Purpose                                                                   |
+| ----------------------- | -------------- | ------------------------------------------------------------------------- |
+| `workspace sync`        | Yes            | Update managed worktrees and archive caches; preserve untracked files.    |
+| `workspace configure`   | Yes            | Validate sources and generate editor files under `.godoo/workspace.lock`. |
+| `workspace check`       | No             | Validate offline, without source-worktree or archive locks.               |
+| `workspace runtime-env` | No             | Validate sources and emit shell-safe resolved path assignments.           |
+| `workspace materialize` | Yes            | Copy selected sources into an image layout.                               |
+| `workspace storage`     | No             | Inspect shared source storage.                                            |
+| `workspace gc`          | Yes            | Manage shared storage cleanup; inspect `--help` before use.               |
 
 Git fetches report elapsed time every ten seconds and retain Git output for failure diagnostics. Git owns the pools,
-worktrees, branches, locks, and caches under the shared source root; use workspace commands to manage them.
+worktrees, branches, locks, and caches under the shared source root; use workspace commands to manage them. Tracked
+edits stop synchronization. Untracked and ignored files are preserved; Git rejects updates that would overwrite them.
 
 ## Editor configuration
 

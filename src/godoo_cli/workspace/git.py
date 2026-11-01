@@ -68,7 +68,7 @@ def _status_result(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> tuple[int, str | bytes, str | bytes]:
-    """Run ignored status in porcelain NUL mode for the clean-tree safety check."""
+    """Run status in porcelain NUL mode for worktree safety checks."""
     return native_git_result(*arguments, cwd=cwd, env=env, binary=True)
 
 
@@ -444,36 +444,18 @@ def _head(path: Path) -> str:
     return _repo(path).head_commit()
 
 
-def _assert_clean(path: Path) -> None:
-    """Reject any direct change to a managed worktree."""
+def _assert_clean(path: Path, *, include_untracked: bool = False) -> None:
+    """Reject tracked changes, and all untracked files before removing a worktree."""
+    arguments = ["--untracked-files=all", "--ignored"] if include_untracked else ["--untracked-files=no"]
     returncode, stdout, stderr = _status_result(
-        "--no-optional-locks",
-        "-C",
-        str(path),
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-        "--ignored",
+        "--no-optional-locks", "-C", str(path), "status", "--porcelain=v1", "-z", *arguments
     )
     if returncode:
         detail = stderr.strip() or stdout.strip()
         if isinstance(detail, bytes):
             detail = detail.decode(errors="replace")
         workspace_fail(f"Git status failed for {path}: {detail}")
-    entries = os.fsdecode(stdout).split("\0")
-    unexpected = [
-        entry
-        for entry in entries
-        if entry
-        and not (
-            entry.startswith("!! ")
-            and (candidate := path / entry[3:]).name == ".DS_Store"
-            and candidate.is_file()
-            and not candidate.is_symlink()
-        )
-    ]
-    if unexpected:
+    if stdout:
         workspace_fail(f"Managed source is dirty; direct edits are unsupported: {path}")
 
 
@@ -542,6 +524,13 @@ def _checkout_environment() -> dict[str, str]:
     }
 
 
+def _reset_worktree(path: Path, commit: str) -> None:
+    """Restore tracked files without applying host Git configuration."""
+    _worktree_command(
+        "-C", str(path), "-c", "core.autocrlf=false", "reset", "--hard", commit, env=_checkout_environment()
+    )
+
+
 def _merge_commit(path: Path, tree: str, previous: str, commit: str) -> str:
     """Write the deterministic commit used for one ordered merge input."""
     environment = _checkout_environment()
@@ -564,10 +553,47 @@ def _merge_commit(path: Path, tree: str, previous: str, commit: str) -> str:
     )
 
 
+def _assert_no_ignored_merge_collisions(path: Path, commit: str) -> None:
+    """Reject ignored files that an incoming merge could overwrite."""
+
+    def names(*arguments: str) -> set[str]:
+        returncode, stdout, stderr = _status_result("-C", str(path), *arguments, "-z")
+        if returncode:
+            workspace_fail(f"Git path inspection failed for {path}: {os.fsdecode(stderr).strip()}")
+        return set(os.fsdecode(stdout).split("\0")) - {""}
+
+    ignored = names("ls-files", "--others", "--ignored", "--exclude-standard")
+    if not ignored:
+        return
+    tree = _merge_command(
+        "-C",
+        str(path),
+        "-c",
+        "merge.renormalize=false",
+        "-c",
+        "rerere.enabled=false",
+        "merge-tree",
+        "--write-tree",
+        "HEAD",
+        commit,
+        env=_checkout_environment(),
+    ).splitlines()[0]
+    incoming = names("ls-tree", "-r", "--name-only", tree)
+    for name in incoming:
+        parts = name.split("/")
+        if any("/".join(parts[:index]) in ignored for index in range(1, len(parts) + 1)):
+            workspace_fail(f"Ignored file would be overwritten by merge in {path}: {name}")
+    for name in ignored:
+        parts = name.split("/")
+        if any("/".join(parts[:index]) in incoming for index in range(1, len(parts) + 1)):
+            workspace_fail(f"Ignored file would be overwritten by merge in {path}: {name}")
+
+
 def _merge_sources(path: Path, merge_commits: tuple[str, ...]) -> str:
     """Merge ordered inputs using fixed configuration and reproducible commits."""
     environment = _checkout_environment()
     for commit in merge_commits:
+        _assert_no_ignored_merge_collisions(path, commit)
         previous = _head(path)
         _merge_command(
             "-C",
@@ -586,6 +612,7 @@ def _merge_sources(path: Path, merge_commits: tuple[str, ...]) -> str:
             "--no-commit",
             "--no-stat",
             "--no-edit",
+            "--no-overwrite-ignore",
             "--",
             commit,
             env=environment,
@@ -656,7 +683,7 @@ def _publish_worktree(
             occupant = next((item for item in records if Path(item.get("worktree", "")) == path), None)
             if occupant is not None:
                 _usable_worktree(pool, path, root)
-                _assert_clean(path)
+                _assert_clean(path, include_untracked=True)
                 _worktree_command("-C", str(pool), "worktree", "remove", str(path))
             elif path.exists() or path.is_symlink():
                 workspace_fail(f"Readable source worktree path is occupied: {path}")
@@ -668,16 +695,26 @@ def _publish_worktree(
             workspace_fail(
                 f"Managed worktree path is occupied by another branch: {path} ({record.get('branch', 'detached')})."
             )
+        _assert_clean(selected)
         previous = _head(selected)
-        if record.get("branch") != branch_ref:
-            _repo(selected).switch(worktree_branch, base_commit, discard_changes=True)
-        _repo(selected).reset_hard(base_commit)
-        _repo(selected).clean()
+        _worktree_command(
+            "-C",
+            str(selected),
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.autocrlf=false",
+            "switch",
+            "--no-overwrite-ignore",
+            "-C",
+            worktree_branch,
+            base_commit,
+            env=_checkout_environment(),
+        )
         try:
             resolved = _merge_sources(selected, merge_commits) if merge_commits else _head(selected)
         except Exception:
-            _repo(selected).reset_hard(previous)
-            _repo(selected).clean()
+            _reset_worktree(selected, previous)
             raise
         return selected, resolved
 
@@ -731,8 +768,7 @@ def _create_worktree(
             )
             created_branch = not existing
             if existing:
-                _repo(staging).reset_hard(base_commit)
-                _repo(staging).clean()
+                _reset_worktree(staging, base_commit)
             resolved = _merge_sources(staging, merge_commits) if merge_commits else _head(staging)
             _assert_clean(staging)
             _worktree_command(
