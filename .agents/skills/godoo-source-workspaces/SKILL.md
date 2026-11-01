@@ -12,7 +12,7 @@ validated before locks or paths and cannot alter host/container depth. Git owns 
 archive caches below the shared source root. Never hand-edit managed worktrees or generated `.godoo/` and workspace
 files.
 
-Run `workspace sync` only with authority for the shared source root; it may reset verified managed worktrees.
+Run `workspace sync` only with authority for the shared source root; it updates verified managed worktrees.
 `workspace configure` regenerates state from checked sources. `workspace check` is offline and read-only. Run workspace
 commands from the project directory because that cwd supplies `.env` and manifest-relative paths.
 

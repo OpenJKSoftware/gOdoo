@@ -129,22 +129,6 @@ class GitRepository:
         """Return Git common directory for this repository."""
         return Path(self._require_repo().git.rev_parse("--git-common-dir"))
 
-    def switch(self, branch: str, start: str, *, discard_changes: bool = False) -> None:
-        """Switch an existing worktree branch to a commit."""
-        arguments: list[str] = []
-        if discard_changes:
-            arguments.append("--discard-changes")
-        arguments.extend(["-C", branch, start])
-        self._require_repo().git.switch(*arguments)
-
-    def reset_hard(self, commit: str) -> None:
-        """Reset the current worktree to commit."""
-        self._require_repo().git.reset("--hard", commit)
-
-    def clean(self) -> None:
-        """Remove untracked files from the current worktree."""
-        self._require_repo().git.clean("-fdx")
-
 
 def repository(path: Path) -> GitRepository:
     """Open a repository through the shared facade."""
