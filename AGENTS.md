@@ -14,6 +14,24 @@ coherent change.
   whole-changeset reviews.
 - Keep shared Docker validation sequential.
 
+## Branches and releases
+
+- Start each independent change on a short-lived `codex/<topic>` branch from freshly fetched `origin/main`. Do not reuse
+  a merged branch for new work. Keep implementation, tests, and documentation for one behavior together.
+- Before switching or creating a branch, inspect staged, unstaged, and untracked work. Preserve existing changes and
+  verify the resulting diff against `origin/main`; use a separate Git worktree for concurrent independent work.
+- Open topic PRs into `main` and check Quality results before merging. Topic-branch pushes alone do not trigger Quality.
+  Follow the existing merge strategy and commit conventions. Push and merge only within explicit authorization.
+- After merge, return to an updated `main` or start the next topic branch from current `origin/main`. Prune stale remote
+  references and remove merged branches only after checking ancestry and worktree ownership; preserve unfinished work.
+- Leave package version changes to `.github/workflows/version-bump.yml`, dispatched against `main` with the chosen bump
+  type. It creates `release/<version>` and the release PR; keep that PR limited to preparing the release.
+- Review the release PR description and available Quality results before merging: its description becomes the release
+  notes. The release-labeled PR must target `main` and match the title, branch, and version identities documented in
+  `.github/workflows/README.md`. Publication uses the release merge commit for PyPI, the tag, and the GitHub Release.
+- Keep release PRs short-lived and coordinate other merges to preserve the intended release scope. Do not use a
+  long-lived `release` or `develop` branch for this workflow, or move an existing release tag to repair publication.
+
 ## Code and CLI
 
 - Every shell script under `scripts/` has a purpose comment immediately below its shebang.
