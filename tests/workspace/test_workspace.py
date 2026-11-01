@@ -1,5 +1,6 @@
 """Generated workspace publication and read-only resolution contracts."""
 
+import json
 import os
 from pathlib import Path
 
@@ -197,3 +198,60 @@ def test_runtime_environment_orders_existing_addon_roots(monkeypatch: pytest.Mon
         ),
     }
     assert not settings.state_dir.exists()
+
+
+def test_project_settings_are_published_and_checked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(
+        "godoo_cli.workspace.operations.resolve_workspace_sources",
+        lambda _settings: ("digest", [_source(tmp_path)], []),
+    )
+    path = settings.project_root / ".vscode" / "settings.json"
+    path.parent.mkdir()
+    path.write_text(
+        r"""{
+          // Project settings may use VS Code JSONC syntax.
+          "yaml.customTags": ["!include scalar",],
+          "yaml.schemas": {"https://example.test/schema/*": "*.yml",},
+          "[yaml]": {"editor.defaultFormatter": "example.formatter",},
+          "python.languageServer": "Pylance", /* project choice */
+          "python.analysis.extraPaths": ["wrong"],
+        }""",
+        encoding="utf-8",
+    )
+    state = configure_workspace(settings)
+    values = json.loads(Path(state["vscode_workspace"]).read_text(encoding="utf-8"))["settings"]
+    assert values["yaml.customTags"] == ["!include scalar"]
+    assert values["yaml.schemas"] == {"https://example.test/schema/*": "*.yml"}
+    assert values["[yaml]"] == {"editor.defaultFormatter": "example.formatter"}
+    assert values["python.languageServer"] == "Pylance"
+    assert values["python.analysis.extraPaths"] == ["${workspaceFolder:gOdoo}/addons", str(_source(tmp_path).host_path)]
+    check_workspace(settings)
+
+    path.write_text('{"yaml.customTags": ["!changed scalar"]}', encoding="utf-8")
+    with pytest.raises(WorkspaceError, match="Generated VS Code workspace is stale"):
+        check_workspace(settings)
+    configure_workspace(settings)
+    check_workspace(settings)
+
+
+@pytest.mark.parametrize("content", ['{"broken": }', "[]"])
+def test_invalid_project_settings_fail_before_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str
+) -> None:
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(
+        "godoo_cli.workspace.operations.resolve_workspace_sources",
+        lambda _settings: ("digest", [_source(tmp_path)], []),
+    )
+    configure_workspace(settings)
+    workspace = settings.project_root / "project.code-workspace"
+    previous = workspace.read_bytes()
+    path = settings.project_root / ".vscode" / "settings.json"
+    path.parent.mkdir()
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(WorkspaceError, match="VS Code settings"):
+        configure_workspace(settings)
+    assert workspace.read_bytes() == previous
+    with pytest.raises(WorkspaceError, match="VS Code settings"):
+        check_workspace(settings)

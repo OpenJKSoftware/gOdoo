@@ -27,6 +27,7 @@ dependencies = [
     "packaging>=21.0",
     "typer-common-functions>=0.1.0",
     "typer>=0.9.0",
+    "json-with-comments>=1.3.0",
 ]
 
 [project.optional-dependencies]
