@@ -15,6 +15,7 @@ from ...runtime.archive import (
     load_runtime_archive,
     prepare_archive_with_original_filestore,
 )
+from ...runtime.backup import BackupFormat
 from ...runtime.odoo import SUPPORTED_ODOO_VERSION_SPECIFIER
 from ..common import CommonCLI
 from ..configuration import require_cli_odoo_version, resolve_development_odoo_main_path
@@ -29,25 +30,33 @@ def dump_database(
     odoo_main_path: Annotated[Path, CLI.odoo_paths.bin_path],
     odoo_conf_path: Annotated[Path | None, CLI.odoo_paths.conf_path] = None,
     data_dir: Annotated[Path, CLI.odoo_paths.data_dir] = Path("/var/lib/odoo"),
+    backup_format: Annotated[
+        BackupFormat,
+        typer.Option(
+            "--format",
+            envvar="GODOO_BACKUP_FORMAT",
+            help="zip: combined archive; dump: custom PostgreSQL dump and rsync filestore directory.",
+        ),
+    ] = BackupFormat.ZIP,
 ) -> int:
-    """Create an Odoo runtime archive."""
+    """Back up a live Odoo database and its filestore in the selected format."""
     try:
         odoo_main_path = resolve_development_odoo_main_path(odoo_main_path)
         version = require_cli_odoo_version(odoo_main_path, SUPPORTED_ODOO_VERSION_SPECIFIER)
-        return CLI.returner(
-            dump_runtime_archive(
-                db_name=db_name,
-                archive_path=archive_path,
-                odoo_bin_path=odoo_main_path / "odoo-bin",
-                odoo_conf_path=odoo_conf_path,
-                data_dir=data_dir,
-                odoo_version=version.major,
-                connection=DBConnection.from_odoo_config(db_name, odoo_conf_path),
-            )
+        result = dump_runtime_archive(
+            db_name=db_name,
+            backup_format=backup_format,
+            archive_path=archive_path,
+            odoo_bin_path=odoo_main_path / "odoo-bin",
+            odoo_conf_path=odoo_conf_path,
+            data_dir=data_dir,
+            odoo_version=version.major,
+            connection=DBConnection.from_odoo_config(db_name, odoo_conf_path),
         )
-    except OSError:
+    except (OSError, RuntimeError, ValueError, psycopg2.Error):
         LOGGER.exception("Archive creation failed")
         return CLI.returner(1)
+    return CLI.returner(result)
 
 
 # Typer declares each archive-restore option in this public callback signature.

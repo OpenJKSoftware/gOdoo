@@ -8,7 +8,7 @@ import subprocess
 import sys
 import zipfile
 from collections.abc import Sequence
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from pathlib import Path
 
 import pytest
@@ -236,8 +236,11 @@ def test_omitted_version_selects_archive_dispatch(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.parametrize("odoo_version", [19, 20])
-def test_dump_replaces_destination_only_after_success(tmp_path: Path, odoo_version: int):
+def test_dump_replaces_destination_only_after_success(
+    tmp_path: Path, odoo_version: int, monkeypatch: pytest.MonkeyPatch
+):
     """Guards the contract that dump replaces destination only after success."""
+    monkeypatch.setattr(runtime_archive, "retain_attachment_files", lambda _connection: nullcontext())
     destination = tmp_path / "runtime.zip"
     destination.write_bytes(b"previous")
 
@@ -245,7 +248,8 @@ def test_dump_replaces_destination_only_after_success(tmp_path: Path, odoo_versi
 
     def create_archive(command: Sequence[str]) -> int:
         commands.append(list(command))
-        Path(command[-1]).write_bytes(b"new")
+        with zipfile.ZipFile(command[-1], "w") as result:
+            result.writestr("dump.sql", b"new")
         return 0
 
     assert (
@@ -259,13 +263,15 @@ def test_dump_replaces_destination_only_after_success(tmp_path: Path, odoo_versi
         )
         == 0
     )
-    assert destination.read_bytes() == b"new"
+    with zipfile.ZipFile(destination) as result:
+        assert result.read("dump.sql") == b"new"
     assert commands[0][:-1] == [
         "/odoo/odoo-bin",
         "db",
         "--data-dir",
         str(tmp_path / "data"),
         "dump",
+        "--no-filestore",
         "runtime",
     ]
     assert Path(commands[0][-1]).parent == tmp_path
@@ -795,10 +801,11 @@ def test_postgres_restore_waits_after_consumer_closes_input(tmp_path: Path, monk
 
 @pytest.mark.parametrize("odoo_version", [18, 19])
 def test_failed_dump_reports_failure_and_preserves_destination(
-    tmp_path: Path, odoo_version: int, caplog: pytest.LogCaptureFixture
+    tmp_path: Path, odoo_version: int, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Keep the previous archive and avoid a success message after dump failure."""
     caplog.set_level(logging.INFO, logger=runtime_archive.LOGGER.name)
+    monkeypatch.setattr(runtime_archive, "retain_attachment_files", lambda _connection: nullcontext())
     destination = tmp_path / "runtime.zip"
     destination.write_bytes(b"previous")
 
