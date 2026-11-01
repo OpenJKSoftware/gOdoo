@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .types import ResolvedSource
+import jsonc
+
+from .types import ResolvedSource, WorkspaceError
 
 if TYPE_CHECKING:
     from .types import WorkspaceSettings
@@ -14,6 +16,27 @@ if TYPE_CHECKING:
 CONTAINER_PROJECT = Path("/odoo/godoo_workspace")
 PROJECT_FOLDER_NAME = "gOdoo"
 PROJECT_WORKSPACE_FOLDER = f"${{workspaceFolder:{PROJECT_FOLDER_NAME}}}"
+
+
+def _project_settings(project_root: Path) -> dict[str, Any]:
+    """Read project editor settings in VS Code's JSON-with-comments format."""
+    path = project_root / ".vscode" / "settings.json"
+    try:
+        content = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeError) as error:
+        message = f"Unable to read VS Code settings {path}: {error}"
+        raise WorkspaceError(message) from error
+    try:
+        data = jsonc.loads(content)
+    except jsonc.JSONDecodeError as error:
+        message = f"Invalid VS Code settings {path}: {error}"
+        raise WorkspaceError(message) from error
+    if not isinstance(data, dict):
+        message = f"VS Code settings must be an object: {path}"
+        raise WorkspaceError(message)
+    return data
 
 
 def workspace_data(
@@ -50,11 +73,8 @@ def workspace_data(
     return {
         "folders": folders,
         "settings": {
-            "python.defaultInterpreterPath": f"{PROJECT_WORKSPACE_FOLDER}/.venv/bin/python",
-            "python.languageServer": "None",
+            **_project_settings(settings.project_root),
             "python.analysis.extraPaths": python_extra_paths,
-            "python.testing.pytestEnabled": False,
-            "python.testing.unittestEnabled": False,
         },
         "launch": {
             "version": "0.2.0",

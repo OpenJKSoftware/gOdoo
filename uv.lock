@@ -525,6 +525,7 @@ source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
     { name = "godoo-rpc" },
+    { name = "json-with-comments" },
     { name = "packaging" },
     { name = "passlib" },
     { name = "psycopg2", marker = "sys_platform == 'linux'" },
@@ -570,6 +571,7 @@ requires-dist = [
     { name = "godoo-rpc", specifier = ">=0.1.4" },
     { name = "inotify", marker = "extra == 'odoo-dev'", specifier = ">=0.2.10" },
     { name = "ipdb", marker = "extra == 'odoo-dev'", specifier = ">=0.13.9" },
+    { name = "json-with-comments", specifier = ">=1.3.0" },
     { name = "mock", marker = "extra == 'odoo-dev'", specifier = ">=4.0.3" },
     { name = "packaging", specifier = ">=21.0" },
     { name = "passlib", specifier = ">=1.7.3" },
@@ -868,6 +870,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
+]
+
+[[package]]
+name = "json-with-comments"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/8d/08b696af5b68210999c8f9f4ba1729ccbd4ae2bbf535f547a9d07ca36ce7/json_with_comments-1.3.0.tar.gz", hash = "sha256:8e9668f9aaa9f50cb546828da958c606e45f3866daceb51f16b0ee61985c0677", size = 7070, upload-time = "2026-08-24T01:33:14.494Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/72/79259c11af4c22f187d0da18411982883428c2e915b2f9eb43bcd20d81fe/json_with_comments-1.3.0-py3-none-any.whl", hash = "sha256:cc96215e8960687180a6e60db8567c806ba40fb56187b2b8cf60ccc0bdfeb81e", size = 6603, upload-time = "2026-08-24T01:33:13.275Z" },
 ]
 
 [[package]]

@@ -90,17 +90,22 @@ make typecheck
 ```
 
 Open `godoo.code-workspace` for this repository, or the generated `<project>.code-workspace` downstream. Opening the
-same files in another project's window does not load their workspace settings.
+same files in another project's window does not load their workspace settings. The generated workspace copies settings
+from the project's `.vscode/settings.json`, including JSON comments and trailing commas. Set fixed editor preferences
+there, including the interpreter, language server, and test discovery. gOdoo generates `python.analysis.extraPaths` from
+the selected sources and takes precedence for that setting in the generated workspace. Run `workspace configure` after
+changing project settings; `workspace check` reports the workspace as stale until it is regenerated. Projects without
+those fixed settings inherit their VS Code defaults or other configured values.
 
 | Generated setting    | Contract                                                                                                   |
 | -------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Workspace folder     | Fixed name `gOdoo`; project-relative paths use `${workspaceFolder:gOdoo}`.                                 |
 | Selected sources     | Odoo, addon, and archive paths remain absolute host paths.                                                 |
-| Python analysis      | The Python extension's language server is disabled so Odoo IDE can provide Python and Odoo analysis.       |
-| Python extension     | Keep it installed for interpreter selection and debugging.                                                 |
 | Extra paths          | `python.analysis.extraPaths` includes the selected sources.                                                |
 | `gOdoo: attach`      | Maps the project to `/odoo/godoo_workspace` and the selected sources to their development-container paths. |
 | `pyrightconfig.json` | Ignored project-root file covering `src/`, `addons/`, `scripts/`, project addons, and resolved sources.    |
+
+Keep the Python extension for interpreter selection and debugging.
 
 Python uses Ruff for formatting and safe fixes on save, with lint rules from `pyproject.toml`, including C901. Supported
 text formats use Prettier and `.prettierrc.yml`.
