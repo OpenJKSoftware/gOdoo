@@ -8,6 +8,39 @@ hooks, then launch Odoo. Runtime commands require Odoo 16 or newer.
 Stop ordinary Odoo writers before initialization, restore, clone, or replacement. gOdoo locks coordinate gOdoo
 operations; they do not stop ordinary Odoo writes.
 
+## Back up a live runtime
+
+```bash
+# Default: one combined ZIP, including attachments.
+godoo db backup /backups/runtime.zip --db-name odoo
+
+# PostgreSQL custom format plus a separate filestore, copied with rsync.
+godoo db backup /backups/current --db-name odoo --format dump
+```
+
+`--format` accepts `zip` (default) or `dump`; `GODOO_BACKUP_FORMAT` supplies the environment default. Both formats
+capture the database first, then the filestore. The `dump` destination contains `odoo.dump` and
+`odoo_filestore/filestore/<database>/`, directly usable by `godoo runtime init --dump-path` or
+`godoo db restore <directory> --force`. It requires `pg_dump` and `rsync` in the execution environment. The destination
+must be outside Odoo's data directory. Borg or another backup system owns history; each successful run replaces the
+selected destination.
+
+During capture, gOdoo holds a row lock on `base.autovacuum_job`. Odoo's scheduler skips that internal cleanup job;
+users, attachment writes, integrations, and other background jobs continue. No app restart or attachment-table write
+lock is needed. The lock is released on completion or connection closure. If cleanup is already running, backup fails
+immediately so it can be retried afterward. The backup fails if the guard connection is lost before publication.
+
+This protects standard Odoo filestore storage and scheduled cleanup on Odoo 16 and newer, including Odoo 19's manual
+scheduled-action trigger. Do not run private cleanup methods, custom file deletion, attachment storage migration, or
+Odoo 16–18 manual autovacuum during backup. External attachment backends need their own backup procedure. Files added
+after the database snapshot may also be copied; they are harmless extra files, not additional database records.
+
+Backups are staged before replacing the previous result. Directory destinations must be dedicated child directories
+inside a mounted backup volume, not the mount root itself. Replacing a directory briefly renames the previous pair to
+`.<destination-name>.previous`; failed promotion restores it. After an abrupt termination, inspect that directory and
+the destination before retrying. gOdoo refuses to overwrite a retained previous pair. Start Borg only after this command
+succeeds, and keep other backup readers out of the brief directory promotion window.
+
 ## Initialize and launch
 
 Run in the configured downstream runtime environment. CLI values override exported environment values, then the project

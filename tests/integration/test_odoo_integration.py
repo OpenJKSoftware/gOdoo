@@ -15,7 +15,8 @@ import pytest
 from psycopg2 import sql
 
 from godoo_cli.models import GodooConfig
-from godoo_cli.runtime.archive import dump_runtime_archive, load_runtime_archive
+from godoo_cli.runtime.archive import dump_runtime_archive, load_legacy_runtime_dump, load_runtime_archive
+from godoo_cli.runtime.backup import BackupFormat, retain_attachment_files
 from godoo_cli.runtime.baseline import baseline_database_name, save_runtime_baseline
 from godoo_cli.runtime.checksums import BASELINE_KEY, plan_module_changes
 from godoo_cli.runtime.hooks import discover_hooks, run_hook_phase
@@ -370,13 +371,16 @@ def test_real_hook_retry_preserves_committed_work_and_original_outcome(live_stac
     )
 
 
-def test_real_lifecycle_seeds_database_and_filestore_from_odoo_archive(live_stack: LiveStack) -> None:
+@pytest.mark.parametrize("backup_format", list(BackupFormat))
+def test_real_lifecycle_seeds_database_and_filestore_from_odoo_archive(
+    live_stack: LiveStack, backup_format: BackupFormat
+) -> None:
     """Proves archive seeding restores both live database data and its paired filestore before reconciliation."""
     source_name = live_stack.new_database_name("seed_source")
     target_name = live_stack.new_database_name("seed_target")
     source_config = live_stack.config(source_name)
     target_config = live_stack.config(target_name)
-    archive = live_stack.root / "runtime-seed.zip"
+    archive = live_stack.root / ("runtime-seed.zip" if backup_format == BackupFormat.ZIP else "runtime-seed")
     assert live_stack.initialize(source_config) == 0
 
     live_stack.execute(
@@ -390,6 +394,7 @@ def test_real_lifecycle_seeds_database_and_filestore_from_odoo_archive(live_stac
     assert (
         dump_runtime_archive(
             db_name=source_name,
+            backup_format=backup_format,
             archive_path=archive,
             odoo_bin_path=live_stack.odoo_path / "odoo-bin",
             odoo_conf_path=source_config.odoo_conf_path,
@@ -399,6 +404,15 @@ def test_real_lifecycle_seeds_database_and_filestore_from_odoo_archive(live_stac
     )
 
     def seed(conf: GodooConfig) -> None:
+        if backup_format == BackupFormat.DUMP:
+            load_legacy_runtime_dump(
+                connection=conf.db_connection,
+                data_dir=conf.data_dir,
+                source_folder=archive,
+                db_template="template0",
+                force=True,
+            )
+            return
         result = load_runtime_archive(
             connection=conf.db_connection,
             data_dir=conf.data_dir,
@@ -792,3 +806,26 @@ def test_real_runtime_start_reuses_one_target_and_ignores_conditional_init(
             assert baseline == previous
         previous = baseline
         assert not runtime_readiness_marker(config.data_dir, db_name).exists()
+
+
+def test_real_backup_guard_skips_cleanup_and_permits_writes(live_stack: LiveStack) -> None:
+    """Prove cron acquisition skips cleanup while attachment writes still commit."""
+    name = live_stack.new_database_name("backup_guard")
+    config = live_stack.config(name)
+    assert live_stack.initialize(config) == 0
+    cron_id = live_stack.scalar(
+        name, "SELECT res_id FROM ir_model_data WHERE module = 'base' AND name = 'autovacuum_job'"
+    )
+    with retain_attachment_files(config.db_connection):
+        with live_stack.connect(name) as other, other.cursor() as cursor:
+            cursor.execute("SET LOCAL lock_timeout TO '1s'")
+            cursor.execute("SELECT id FROM ir_cron WHERE id = %s FOR NO KEY UPDATE SKIP LOCKED", (cron_id,))
+            assert cursor.fetchall() == []
+            cursor.execute("LOCK ir_attachment IN ROW EXCLUSIVE MODE NOWAIT")
+            cursor.execute("INSERT INTO ir_attachment (name, type) VALUES ('backup concurrent write', 'binary')")
+        with live_stack.connect(name) as other, other.cursor() as cursor:
+            cursor.execute("SELECT id FROM ir_cron WHERE id = %s FOR UPDATE SKIP LOCKED", (cron_id,))
+            assert cursor.fetchall() == []
+    with live_stack.connect(name) as other, other.cursor() as cursor:
+        cursor.execute("SELECT id FROM ir_cron WHERE id = %s FOR NO KEY UPDATE NOWAIT", (cron_id,))
+        assert cursor.fetchone() == (cron_id,)

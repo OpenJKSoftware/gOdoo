@@ -24,6 +24,7 @@ from ..database.connection import DBConnection
 from ..database.postgres import postgres_argv, postgres_environment
 from ..database.state import base_module_major, database_exists
 from ..helpers.progress import ProgressPhase as _ProgressPhase
+from .backup import BackupFormat, publish_backup_directory, retain_attachment_files
 from .baseline import baseline_database_name, save_runtime_baseline
 from .filestore import copy_filestore
 from .locks import begin_runtime_restore, runtime_data_directory, runtime_locks
@@ -273,7 +274,9 @@ def _stream_sql_input(command: Sequence[str], dump_path: Path, environment: dict
     return 0
 
 
-def dump_runtime_archive(
+# Keep capture, retention, and promotion together, with Odoo and PostgreSQL targets supplied explicitly.
+# pylint: disable-next=too-many-arguments
+def dump_runtime_archive(  # noqa: C901
     *,
     db_name: str,
     archive_path: Path,
@@ -283,54 +286,98 @@ def dump_runtime_archive(
     runner: CommandRunner | None = None,
     odoo_version: int | None = None,
     connection: DBConnection | None = None,
+    backup_format: BackupFormat = BackupFormat.ZIP,
 ) -> int:
-    """Create an archive atomically, retaining any prior destination on failure."""
+    """Capture the database before attachments, then publish the complete backup.
+
+    Returns:
+        Zero on success, otherwise the failing subprocess exit status.
+
+    Raises:
+        ValueError: If the destination overlaps runtime storage or has the wrong type.
+    """
     with runtime_locks(data_dir, db_name, odoo_conf_path=odoo_conf_path):
+        target_connection = connection or _archive_connection(db_name, odoo_conf_path)
+        runtime_data = runtime_data_directory(data_dir, odoo_conf_path)
+        archive_path = archive_path.resolve()
+        if archive_path == runtime_data or archive_path in runtime_data.parents or runtime_data in archive_path.parents:
+            message = "The backup destination must be outside Odoo's data directory."
+            raise ValueError(message)
+        if backup_format == BackupFormat.DUMP and archive_path.exists() and not archive_path.is_dir():
+            message = "The dump backup destination must be a directory."
+            raise ValueError(message)
         archive_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = archive_path.with_name(f".{archive_path.name}.{uuid.uuid4().hex}.tmp")
         sql_temporary = temporary.with_suffix(".sql")
         try:
-            target_connection = connection or _archive_connection(db_name, odoo_conf_path)
-            runtime_data = runtime_data_directory(data_dir, odoo_conf_path)
             native = _uses_native_db_commands(odoo_version, odoo_bin_path)
-            if native:
+            separate = backup_format == BackupFormat.DUMP
+            if separate:
+                temporary.mkdir()
+            if native and not separate:
                 command = odoo_db_command(
                     odoo_bin_path=odoo_bin_path,
                     odoo_conf_path=odoo_conf_path,
                     data_dir=data_dir,
-                    arguments=["dump", db_name, str(temporary)],
+                    arguments=["dump", "--no-filestore", db_name, str(temporary)],
                 )
             else:
                 command = [
                     "pg_dump",
                     "--no-owner",
-                    "--format=plain",
+                    "--format=custom" if separate else "--format=plain",
                     "--file",
-                    str(sql_temporary),
+                    str(temporary / LEGACY_DUMP_FILENAME if separate else sql_temporary),
                     *postgres_argv(target_connection),
                 ]
-            with _ProgressPhase("Dumping runtime database", logger=LOGGER) as progress:
-                if runner is not None:
-                    result = runner(command)
-                elif native:
-                    result = _run_odoo_db(command)
-                else:
-                    result = _run_postgres_command(command, target_connection)
-                progress.failed = result != 0
-            if result:
-                return result
-            if not native:
+            with retain_attachment_files(target_connection):
+                with _ProgressPhase("Dumping runtime database", logger=LOGGER) as progress:
+                    if runner is not None:
+                        result = runner(command)
+                    else:
+                        with postgres_environment(target_connection) as environment:
+                            if native and not separate:
+                                # Odoo 19 reads these before its config file, including empty overrides.
+                                environment.update(
+                                    PGHOST=target_connection.hostname,
+                                    PGPORT=str(target_connection.port or 5432),
+                                    PGUSER=target_connection.username,
+                                    PGPASSWORD=target_connection.password,
+                                    PGSSLMODE=target_connection.sslmode or "prefer",
+                                )
+                            result = run_odoo_command(command, env=environment).returncode
+                    progress.failed = result != 0
+                if result:
+                    return result
                 filestore = runtime_filestore_path(runtime_data, db_name)
-                with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
-                    archive.write(sql_temporary, "dump.sql")
-                    if filestore.is_dir():
-                        for path in sorted(filestore.rglob("*")):
-                            if path.is_file():
-                                archive.write(path, Path("filestore") / path.relative_to(filestore))
-            os.replace(temporary, archive_path)
+                with _ProgressPhase("Copying backup filestore", logger=LOGGER) as progress:
+                    if separate:
+                        destination = temporary / LEGACY_FILESTORE_DIRECTORY / "filestore" / db_name
+                        destination.mkdir(parents=True)
+                        if filestore.is_dir():
+                            command = ["rsync", "-rLpt", f"{filestore}/", f"{destination}/"]
+                            result = runner(command) if runner is not None else run_odoo_command(command).returncode
+                            progress.failed = result != 0
+                            if result:
+                                return result
+                    else:
+                        with zipfile.ZipFile(temporary, "a" if native else "w", zipfile.ZIP_DEFLATED) as archive:
+                            if not native:
+                                archive.write(sql_temporary, "dump.sql")
+                            if filestore.is_dir():
+                                for path in sorted(filestore.rglob("*")):
+                                    if path.is_file():
+                                        archive.write(path, Path("filestore") / path.relative_to(filestore))
+            if separate:
+                publish_backup_directory(temporary, archive_path)
+            else:
+                os.replace(temporary, archive_path)
             return 0
         finally:
-            temporary.unlink(missing_ok=True)
+            if temporary.is_dir():
+                shutil.rmtree(temporary)
+            else:
+                temporary.unlink(missing_ok=True)
             sql_temporary.unlink(missing_ok=True)
 
 
