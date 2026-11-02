@@ -119,6 +119,17 @@ def test_pending_states_are_not_hidden_by_matching_hashes(runtime: tuple[GodooCo
         checksums.plan_module_changes(config, [], [])
 
 
+def test_explicit_installs_are_verified_even_when_already_installed_at_planning(
+    runtime: tuple[GodooConfig, Database, Path],
+) -> None:
+    config, database, _addons = runtime
+    plan = checksums.plan_module_changes(config, [], ["custom"])
+    assert plan.installs == []
+    database.states["custom"] = ModuleState("uninstalled")
+    with pytest.raises(RuntimeError, match="Requested modules were not installed: custom"):
+        plan.finish(config)
+
+
 @pytest.mark.parametrize("cleanup_removes_missing", [False, True])
 def test_missing_sources_require_real_cleanup_and_strict_rescan(
     runtime: tuple[GodooConfig, Database, Path], cleanup_removes_missing: bool

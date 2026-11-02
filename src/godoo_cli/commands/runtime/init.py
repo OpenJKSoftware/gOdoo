@@ -13,9 +13,21 @@ import typer
 
 from ...models import GodooConfig
 from ...runtime.archive import load_runtime_archive, prepare_archive_with_original_filestore
-from ...runtime.checksums import ModulePlan, module_states, pending_installs, plan_module_changes
+from ...runtime.checksums import (
+    ModulePlan,
+    module_states,
+    pending_installs,
+    plan_module_changes,
+    verify_installed_modules,
+)
 from ...runtime.dataset import resolve_runtime_dataset
-from ...runtime.hooks import discover_hooks, has_eligible_hooks, run_prepare_hooks
+from ...runtime.hooks import (
+    complete_prepare_hooks,
+    discover_hooks,
+    has_eligible_hooks,
+    pending_prepare_hooks,
+    run_prepare_hooks,
+)
 from ...runtime.lifecycle import (
     LifecycleBootstrapError,
     deployment_init,
@@ -423,10 +435,35 @@ def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: 
     plan: ModulePlan | None = None
     selected_updates = split_lifecycle_values(update_modules)
     selected_installs = split_lifecycle_values(install_modules)
+    requested_installs = list(selected_installs)
+    prepare_completion_keys: list[str] = []
 
     def plan_reconciliation(conf: GodooConfig) -> None:
         """Select native work under the lifecycle lock before any database hook."""
-        nonlocal plan, selected_updates, selected_installs
+        nonlocal plan, selected_updates, selected_installs, requested_installs, prepare_completion_keys
+        once_hooks, prepare_completion_keys = pending_prepare_hooks(conf, hooks, environment)
+        if once_hooks:
+            once_modules = run_prepare_hooks(once_hooks, environment, once=True)
+            once_updates = split_lifecycle_values(list(once_modules.update))
+            once_installs = split_lifecycle_values(list(once_modules.install))
+            if "all" in once_installs:
+                message = "One-time preparation hooks must name install modules explicitly; 'all' cannot be verified."
+                raise ValueError(message)
+            selected_updates = list(dict.fromkeys([*selected_updates, *once_updates]))
+            selected_installs = list(dict.fromkeys([*selected_installs, *once_installs]))
+            requested_installs = list(selected_installs)
+            _validate_pre_upgrade_options(
+                runtime_seed is not None or (persisted is not None and persisted["outcome"] == "restored"),
+                pre_upgrade_scripts,
+                selected_updates,
+                has_eligible_hooks(hooks, phase="after_restore", outcome="restored", environment=environment),
+            )
+            preflight_reconcile_dependencies(
+                conf,
+                selected_updates,
+                selected_installs,
+                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+            )
         if request.update_changed:
             plan = plan_module_changes(
                 conf, selected_updates, selected_installs, pre_upgrade_scripts=bool(pre_upgrade_scripts)
@@ -452,6 +489,10 @@ def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: 
         )
         if result == 0 and plan is not None:
             plan.finish(conf)
+        elif result == 0 and requested_installs:
+            verify_installed_modules(conf, requested_installs)
+        if result == 0:
+            complete_prepare_hooks(conf, prepare_completion_keys)
         return result
 
     try:
@@ -480,7 +521,7 @@ def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: 
     except LifecycleBootstrapError as error:
         LOGGER.exception("Native Odoo bootstrap failed during deployment initialization")
         return error.return_code
-    except (ValueError, RuntimeError, OSError, psycopg2.Error):
+    except (TypeError, ValueError, RuntimeError, OSError, psycopg2.Error):
         LOGGER.exception("Deployment initialization failed")
         return 1
     finally:

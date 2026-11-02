@@ -45,9 +45,6 @@ class Hook:
         if type(self.once) is not bool:
             message = "Hook once must be a boolean."
             raise ValueError(message)
-        if self.phase == "prepare" and self.once:
-            message = "Preparation hooks cannot declare once=True."
-            raise ValueError(message)
         if self.phase == "prepare" and self.on != OUTCOMES:
             message = "Preparation hooks cannot filter by outcome."
             raise ValueError(message)
@@ -131,15 +128,59 @@ def has_eligible_hooks(hooks: Iterable[HookDefinition], *, phase: str, outcome: 
     return any(_is_eligible(definition.hook, phase, outcome, environment) for definition in hooks)
 
 
-def run_prepare_hooks(hooks: Iterable[HookDefinition], environment: str | None) -> ModuleSelections:
+def run_prepare_hooks(
+    hooks: Iterable[HookDefinition], environment: str | None, *, once: bool = False
+) -> ModuleSelections:
     """Run eligible preparation hooks and collect their module requests."""
     context = _PrepareContext(environment=environment)
     for definition in hooks:
+        if definition.hook.once != once:
+            continue
         if not _is_eligible(definition.hook, "prepare", None, environment):
             LOGGER.info("Hook %s excluded by declaration.", definition.hook.id)
             continue
         _run_prepare_hook(definition, context)
     return ModuleSelections(update=_deduplicate(context._update), install=_deduplicate(context._install))
+
+
+def _completion_key(hook: Hook, environment: str | None) -> str:
+    scope = environment if hook.environments is not None else None
+    identity = json.dumps([hook.id, scope], separators=(",", ":"))
+    return "godoo.hooks.once." + hashlib.sha256(identity.encode()).hexdigest()
+
+
+def pending_prepare_hooks(
+    config: GodooConfig, hooks: Iterable[HookDefinition], environment: str | None
+) -> tuple[list[HookDefinition], list[str]]:
+    """Select eligible one-time preparation hooks not yet completed in this database."""
+    selected = [
+        definition
+        for definition in hooks
+        if definition.hook.once and _is_eligible(definition.hook, "prepare", None, environment)
+    ]
+    if not selected:
+        return [], []
+    keys = [_completion_key(definition.hook, environment) for definition in selected]
+    with config.db_connection.with_db(config.db_name, readonly=True).connect() as cursor:
+        cursor.execute(
+            "SELECT key FROM ir_config_parameter WHERE key = ANY(%s) AND value IS NOT NULL AND value != ''", [keys]
+        )
+        completed = {row[0] for row in cursor.fetchall()}
+    pending = [(definition, key) for definition, key in zip(selected, keys, strict=True) if key not in completed]
+    return [definition for definition, _key in pending], [key for _definition, key in pending]
+
+
+def complete_prepare_hooks(config: GodooConfig, keys: list[str]) -> None:
+    """Record verified one-time preparation hooks after native reconciliation."""
+    if not keys:
+        return
+    with config.db_connection.connect() as cursor:
+        for key in keys:
+            cursor.execute(
+                "INSERT INTO ir_config_parameter (key, value) VALUES (%s, %s) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                [key, "1"],
+            )
 
 
 def run_hook_phase(
@@ -188,9 +229,7 @@ def _run_database_hook_batch(shell_env: Any, sources: Sequence[str], *, outcome:
                 completion_key = None
                 parameters = None
                 if definition.hook.once:
-                    scope = environment if definition.hook.environments is not None else None
-                    identity = json.dumps([definition.hook.id, scope], separators=(",", ":"))
-                    completion_key = "godoo.hooks.once." + hashlib.sha256(identity.encode()).hexdigest()
+                    completion_key = _completion_key(definition.hook, environment)
                     parameters = context.env["ir.config_parameter"].sudo()
                     if parameters.get_param(completion_key):
                         cursor.rollback()

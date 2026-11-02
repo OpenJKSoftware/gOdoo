@@ -7,18 +7,21 @@ Ordinary restores and major upgrades share the same initialization flow.
 
 ## Choose the right mechanism
 
-| Work                                      | Mechanism                                                         | Runs when                                                           |
-| ----------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Versioned schema or data repair           | Addon `migrations/<version>/pre-*.py`, `post-*.py`, or `end-*.py` | An eligible installed-to-manifest version change occurs.            |
-| External migration roots                  | Explicit `--upgrade-path`                                         | Selected module updates invoke Odoo's loader.                       |
-| Cursor-based work before registry loading | Explicit `--pre-upgrade-script`                                   | An update selection exists; maps to native `--pre-upgrade-scripts`. |
-| Choose modules to install/update          | `prepare` hook                                                    | Each initialization attempt, before dependency preflight.           |
-| Bootstrap or restore setup                | `after_bootstrap` / `after_restore` hook                          | The matching initialization outcome applies.                        |
-| Recurring environment policy              | `after_reconcile` hook                                            | Reconciliation succeeds and declaration filters match.              |
+| Work                                      | Mechanism                                                         | Mechanism owner | Runs when                                                           |
+| ----------------------------------------- | ----------------------------------------------------------------- | --------------- | ------------------------------------------------------------------- |
+| Versioned schema or data repair           | Addon `migrations/<version>/pre-*.py`, `post-*.py`, or `end-*.py` | Odoo            | An eligible installed-to-manifest version change occurs.            |
+| External migration roots                  | Explicit `--upgrade-path`                                         | Odoo            | Selected module updates invoke Odoo's loader.                       |
+| Cursor-based work before registry loading | Explicit `--pre-upgrade-script`                                   | Odoo            | An update selection exists; maps to native `--pre-upgrade-scripts`. |
+| Choose modules to install/update          | `prepare` hook                                                    | gOdoo           | Each initialization attempt, unless completed with `once=True`.     |
+| Bootstrap or restore setup                | `after_bootstrap` / `after_restore` hook                          | gOdoo           | The matching initialization outcome applies.                        |
+| Recurring environment policy              | `after_reconcile` hook                                            | gOdoo           | Reconciliation succeeds and declaration filters match.              |
+
+Projects supply the migration scripts and hook implementations. gOdoo forwards the selected native migration options to
+Odoo and runs the lifecycle hooks.
 
 Native migration versions must be above the installed version and at or below the manifest version. Fresh installs need
 their own install behavior. There is no transition directory, version-pair selector, implicit module list, or hook
-implicit migration scheduler. Ordinary database hooks can opt into transactional one-shot completion with `once=True`.
+implicit migration scheduler. Hooks can opt into one-shot completion with `once=True`.
 
 ## Discover and select hooks
 
@@ -49,7 +52,7 @@ actual boolean. A missing predicate runs whenever eligible; an exception fails i
 | `phase`        | `prepare`, `after_bootstrap`, `after_restore`, or `after_reconcile`.                                                             |
 | `on`           | Tuple of `ready`, `bootstrapped`, and/or `restored`; defaults to all. Custom outcome filters are invalid for preparation.        |
 | `environments` | Optional tuple of exact `GODOO_ENVIRONMENT` values. Omitted means unrestricted; an allowlist never matches an unset environment. |
-| `once`         | Optional boolean, default false. Record successful database-hook completion; preparation hooks cannot use it.                    |
+| `once`         | Optional boolean, default false. Record successful completion for this hook in the database.                                     |
 
 Environment is a deployment input, never inferred from database contents.
 
@@ -67,10 +70,38 @@ def run(ctx):
     ctx.request_modules(update=["project_base"], install=["helpdesk"])
 ```
 
-Preparation runs without starting Odoo and recomputes requests on every retry. Its context exposes `environment` and
-`request_modules(update=..., install=...)`, with no `env`. Preparation must not mutate databases or external systems. No
-request means no implicit action; even `all` requires an explicit request. Upgrade paths and pre-upgrade scripts remain
-explicit CLI/environment inputs.
+Preparation runs without starting Odoo. Its context exposes `environment` and
+`request_modules(update=..., install=...)`, with no `env`. Pass module names as sequences of strings. Requests combine
+with CLI and environment selections before dependency preflight and native reconciliation.
+
+`install=[...]` in a recurring hook requests installation on each initialization. Modules already installed or queued
+for upgrade are skipped; other requested modules are passed to Odoo for installation. A module uninstalled later is
+requested again on the next initialization. Change or remove the request if that module should remain uninstalled.
+Preparation must not mutate databases or external systems. No request means no implicit action; even `all` requires an
+explicit request. Upgrade paths and pre-upgrade scripts remain explicit CLI/environment inputs.
+
+A one-time preparation hook requests modules until reconciliation succeeds and every requested install is verified:
+
+```python
+# hooks/11_install_feature.py
+from godoo_cli.runtime.hooks import Hook
+
+HOOK = Hook(id="project.install_feature", phase="prepare", once=True)
+
+
+def run(ctx):
+    ctx.request_modules(install=["helpdesk"])
+```
+
+Run `godoo runtime start --hooks-dir /path/to/hooks` to initialize and reconcile before launching Odoo. A standalone
+`runtime launch` only starts a prepared runtime and does not run hooks. Once completed, the hook is skipped even if an
+operator later uninstalls the module. Use a new hook ID for a new installation request. List module names explicitly;
+`install=["all"]` cannot be verified and is rejected in one-time preparation hooks.
+
+One-time preparation runs after bootstrap or restore, when gOdoo can read the database completion record, but before
+other database hooks and native reconciliation. Its dependencies are therefore checked after bootstrap or restore. If
+reconciliation or verification fails, the hook runs again on retry using its current code. Native Odoo work and the
+completion record are separate transactions, so an interruption after native work may cause a retry.
 
 ## Reconcile database state
 
@@ -154,15 +185,17 @@ retries; it is not a completion record.
 
 Use `Hook(id="project.repair.2026_10", phase="after_reconcile", once=True)` for a transactional one-shot repair. IDs are
 immutable: use a new ID for a new repair. The runner stores completion in `ir_config_parameter` under
-`godoo.hooks.once.<identity-hash>`, in the same transaction as the action. Unrestricted hooks complete globally in that
-database; environment-restricted hooks complete separately for each selected environment. Restores and baseline resets
-carry or rewind the records with the database. Declaration filters still apply, and duplicate IDs remain invalid.
+`godoo.hooks.once.<identity-hash>`. For database hooks, it is stored in the same transaction as the action. Unrestricted
+hooks complete globally in that database; environment-restricted hooks complete separately for each selected
+environment. Restores and baseline resets carry or rewind the records with the database. Declaration filters still
+apply, and duplicate IDs remain invalid.
 
-Completed hooks skip `needs_run`. A false predicate means the desired state is already satisfied and records completion
-atomically without running the action. An exception rolls back the action and its completion record. A later hook's
-failure preserves earlier committed repairs. Hooks that commit internally or change external systems still need their
-own idempotency: the runner cannot promise exactly-once external effects. Keep recurring environment policy repeatable,
-with state predicates, so ordinary drift is repaired after every controlled start.
+Completed hooks skip `needs_run`. For database hooks, a false predicate records completion atomically without running
+the action; an exception rolls back the action and its completion record. For preparation hooks, completion is recorded
+after successful reconciliation and verification. A later hook's failure preserves earlier committed repairs. Hooks that
+commit internally or change external systems still need their own idempotency: the runner cannot promise exactly-once
+external effects. Keep recurring environment policy repeatable, with state predicates, so ordinary drift is repaired
+after every controlled start.
 
 | Attempt                                        | Outcome visible to hooks                                                            |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------- |

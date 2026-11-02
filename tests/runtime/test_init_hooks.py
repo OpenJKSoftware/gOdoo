@@ -162,6 +162,7 @@ def test_prepare_hooks_merge_cli_and_environment_requests_on_every_init(
         "reconcile_modules",
         lambda _config, update, install, **_kwargs: reconciled.append((update, install)) or 0,
     )
+    monkeypatch.setattr(runtime_init, "verify_installed_modules", lambda *_args: None)
 
     def deployment(current: GodooConfig, **kwargs: object) -> tuple[LifecycleOutcome, int]:
         kwargs["preflight"](current)  # type: ignore[operator]
@@ -271,3 +272,151 @@ def test_checksum_checkpoint_precedes_post_hooks_and_is_not_saved_on_native_fail
     result = runtime_init.initialize_odoo_runtime(lambda: config, runtime_init.InitOptions(update_changed=True))
     assert result == (native_status or 9)
     assert events == ([] if native_status else ["checkpoint", "failing-post-hook"])
+
+
+def test_native_install_success_is_verified_without_update_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from godoo_cli.models import OdooVersion
+
+    config = _config(tmp_path)
+    monkeypatch.setattr(runtime_init, "resolve_command_config", lambda **_kwargs: config)
+    monkeypatch.setattr(runtime_init, "require_odoo_version", lambda *_args: OdooVersion("Odoo", 19, 0))
+    monkeypatch.setattr(runtime_init, "x_sendfile_enabled", lambda *_args: False)
+    monkeypatch.setattr(runtime_init, "module_states", lambda _config: {})
+    monkeypatch.setattr(runtime_init, "reconcile_modules", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(runtime_init, "reconcile_runtime", lambda conf, *, reconciler, **_kwargs: reconciler(conf))
+    verifications: list[list[str]] = []
+
+    def verify(_config: GodooConfig, requested: list[str]) -> None:
+        verifications.append(requested)
+        message = "Requested modules were not installed: helpdesk"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(runtime_init, "verify_installed_modules", verify)
+
+    def deploy(conf: GodooConfig, **callbacks: Any) -> tuple[LifecycleOutcome, int]:
+        callbacks["reconcile_preflight"](conf)
+        return LifecycleOutcome.READY, callbacks["reconciler"](conf)
+
+    monkeypatch.setattr(runtime_init, "deployment_init", deploy)
+    result = runtime_init.initialize_odoo_runtime(
+        lambda: config,
+        runtime_init.InitOptions(install_modules=["helpdesk"]),
+    )
+    assert result == 1
+    assert verifications == [["helpdesk"]]
+
+
+def test_once_prepare_retries_then_remains_complete_after_uninstall(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from godoo_cli.runtime import checksums
+
+    config = _config(tmp_path)
+    hook_dir = tmp_path / "hooks"
+    hook_dir.mkdir()
+    (hook_dir / "install.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='install.helpdesk', phase='prepare', once=True)\n"
+        "def run(ctx): ctx.request_modules(install=['helpdesk'])\n",
+        encoding="utf-8",
+    )
+    completed: list[str] = []
+    calls: list[list[str]] = []
+    installed = False
+    monkeypatch.setattr(runtime_init, "resolve_command_config", lambda **_kwargs: config)
+    monkeypatch.setattr(runtime_init, "require_odoo_version", lambda *_args: SimpleNamespace(major=19, raw="19.0"))
+    monkeypatch.setattr(runtime_init, "x_sendfile_enabled", lambda *_args: False)
+    monkeypatch.setattr(runtime_init, "preflight_reconcile_dependencies", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runtime_init,
+        "pending_prepare_hooks",
+        lambda _conf, definitions, _environment: ([], []) if completed else (definitions, ["receipt"]),
+    )
+    monkeypatch.setattr(runtime_init, "complete_prepare_hooks", lambda _conf, keys: completed.extend(keys))
+    monkeypatch.setattr(runtime_init, "module_states", lambda _conf: {})
+    monkeypatch.setattr(
+        checksums,
+        "module_states",
+        lambda _conf: {"helpdesk": checksums.ModuleState("installed")} if installed else {},
+    )
+
+    def native(_conf: GodooConfig, _updates: list[str], installs: list[str], **_kwargs: Any) -> int:
+        nonlocal installed
+        calls.append(installs)
+        if len(calls) == 1:
+            return 1
+        if len(calls) == 2:
+            return 0
+        installed = True
+        return 0
+
+    monkeypatch.setattr(runtime_init, "reconcile_modules", native)
+    monkeypatch.setattr(runtime_init, "reconcile_runtime", lambda conf, *, reconciler, **_kwargs: reconciler(conf))
+
+    fail_post_hook = True
+
+    def deploy(conf: GodooConfig, **callbacks: Any) -> tuple[LifecycleOutcome, int]:
+        nonlocal fail_post_hook
+        callbacks["reconcile_preflight"](conf)
+        result = callbacks["reconciler"](conf)
+        if result == 0 and fail_post_hook:
+            fail_post_hook = False
+            return LifecycleOutcome.READY, 9
+        return LifecycleOutcome.READY, result
+
+    monkeypatch.setattr(runtime_init, "deployment_init", deploy)
+    request = runtime_init.InitOptions(hooks_dir=[hook_dir])
+    assert runtime_init.initialize_odoo_runtime(lambda: config, request) == 1
+    assert completed == []
+    assert runtime_init.initialize_odoo_runtime(lambda: config, request) == 1
+    assert completed == []
+    assert runtime_init.initialize_odoo_runtime(lambda: config, request) == 9
+    assert completed == ["receipt"]
+    installed = False
+    assert runtime_init.initialize_odoo_runtime(lambda: config, request) == 0
+    assert calls == [["helpdesk"], ["helpdesk"], ["helpdesk"], []]
+
+
+def test_once_prepare_update_cannot_start_restore_hook_before_pre_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    hook_dir = tmp_path / "hooks"
+    hook_dir.mkdir()
+    (hook_dir / "prepare.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='update', phase='prepare', once=True)\n"
+        "def run(ctx): ctx.request_modules(update=['base'])\n",
+        encoding="utf-8",
+    )
+    (hook_dir / "restore.py").write_text(
+        "from godoo_cli.runtime.hooks import Hook\n"
+        "HOOK = Hook(id='restore', phase='after_restore', on=('restored',))\n"
+        "def run(ctx): pass\n",
+        encoding="utf-8",
+    )
+    script = tmp_path / "pre.py"
+    script.write_text("def migrate(cr, version): pass\n", encoding="utf-8")
+    write_runtime_lifecycle(
+        runtime_readiness_marker(config.data_dir, config.db_name), config.db_name, outcome="restored"
+    )
+    monkeypatch.setattr(runtime_init, "resolve_command_config", lambda **_kwargs: config)
+    monkeypatch.setattr(runtime_init, "require_odoo_version", lambda *_args: SimpleNamespace(major=19, raw="19.0"))
+    monkeypatch.setattr(runtime_init, "x_sendfile_enabled", lambda *_args: False)
+    monkeypatch.setattr(
+        runtime_init,
+        "pending_prepare_hooks",
+        lambda _conf, definitions, _environment: ([item for item in definitions if item.hook.once], ["receipt"]),
+    )
+
+    def deploy(conf: GodooConfig, **callbacks: Any) -> tuple[LifecycleOutcome, int]:
+        callbacks["reconcile_preflight"](conf)
+        pytest.fail("pre-upgrade conflict must fail before database hooks")
+
+    monkeypatch.setattr(runtime_init, "deployment_init", deploy)
+    with pytest.raises(typer.BadParameter, match="after_restore hook"):
+        runtime_init.initialize_odoo_runtime(
+            lambda: config, runtime_init.InitOptions(hooks_dir=[hook_dir], pre_upgrade_scripts=[script])
+        )

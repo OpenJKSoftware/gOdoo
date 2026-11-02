@@ -356,6 +356,48 @@ def test_once_failure_rolls_back_action_and_receipt(
     assert values == {}
 
 
-def test_once_prepare_is_rejected() -> None:
-    with pytest.raises(ValueError, match="Preparation hooks cannot declare once"):
-        hooks.Hook(id="prepare", phase="prepare", once=True)
+def test_once_prepare_uses_database_completion_and_environment_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from contextlib import contextmanager
+
+    values: dict[str, str] = {}
+
+    class Database:
+        def with_db(self, *_args: Any, **_kwargs: Any) -> Self:
+            return self
+
+        @contextmanager
+        def connect(self):
+            yield self
+
+        def execute(self, query: str, args: list[Any]) -> None:
+            if query.startswith("SELECT"):
+                self.rows = [(key,) for key in args[0] if values.get(key)]
+            else:
+                values[args[0]] = args[1]
+
+        def fetchall(self):
+            return self.rows
+
+    monkeypatch.setattr(GodooConfig, "db_connection", property(lambda _self: Database()))
+    decisions: list[str] = []
+    definition = hooks.HookDefinition(
+        hook=hooks.Hook(id="install.feature", phase="prepare", once=True, environments=("development", "review")),
+        source=tmp_path / "hook.py",
+        run=lambda ctx: ctx.request_modules(install=["sale"]),
+        needs_run=lambda _ctx: decisions.append("checked") or True,
+    )
+    config = _config(tmp_path)
+    selected, keys = hooks.pending_prepare_hooks(config, [definition], "development")
+    assert selected == [definition]
+    assert hooks.run_prepare_hooks(selected, "development", once=True).install == ("sale",)
+    hooks.complete_prepare_hooks(config, keys)
+    assert hooks.pending_prepare_hooks(config, [definition], "development") == ([], [])
+    hooks.run_prepare_hooks(
+        hooks.pending_prepare_hooks(config, [definition], "development")[0], "development", once=True
+    )
+    assert decisions == ["checked"]
+    assert hooks.pending_prepare_hooks(config, [definition], "review")[0] == [definition]
+    assert hooks.pending_prepare_hooks(config, [definition], "production") == ([], [])
+    assert keys[0] == hooks._completion_key(definition.hook, "development")

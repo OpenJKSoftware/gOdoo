@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from collections.abc import Container, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..helpers.hashing import fingerprint, sha256_file
@@ -47,6 +47,21 @@ def pending_installs(states: dict[str, ModuleState], requested: list[str]) -> li
             for name in requested
             if states.get(name, ModuleState("unknown")).state not in {"installed", "to upgrade"}
         )
+    )
+
+
+def verify_installed_modules(config: GodooConfig, requested: list[str]) -> None:
+    """Require every explicitly requested module to be installed after reconciliation."""
+    states = module_states(config)
+    missing = _missing_installs(states, requested)
+    if missing:
+        message = f"Requested modules were not installed: {', '.join(missing)}"
+        raise RuntimeError(message)
+
+
+def _missing_installs(states: dict[str, ModuleState], requested: list[str]) -> list[str]:
+    return sorted(
+        name for name in requested if name != "all" and states.get(name, ModuleState("unknown")).state != "installed"
     )
 
 
@@ -141,6 +156,7 @@ class ModulePlan:
     updates: list[str]
     installs: list[str]
     snapshot: dict[str, str]
+    requested_installs: list[str] = field(default_factory=list)
 
     def finish(self, config: GodooConfig) -> None:
         """Verify native completion and unchanged sources before saving this snapshot."""
@@ -149,11 +165,7 @@ class ModulePlan:
         if pending:
             message = f"Native reconciliation left unfinished modules: {', '.join(pending)}"
             raise RuntimeError(message)
-        missing_installs = sorted(
-            name
-            for name in self.installs
-            if name != "all" and states.get(name, ModuleState("unknown")).state != "installed"
-        )
+        missing_installs = _missing_installs(states, [*self.installs, *self.requested_installs])
         if missing_installs:
             message = f"Requested modules were not installed: {', '.join(missing_installs)}"
             raise RuntimeError(message)
@@ -217,4 +229,4 @@ def plan_module_changes(
         )
         raise RuntimeError(message)
     LOGGER.info("Source reconciliation selected updates=%s installs=%s", selected_updates, selected_installs)
-    return ModulePlan(selected_updates, selected_installs, snapshot)
+    return ModulePlan(selected_updates, selected_installs, snapshot, requested_installs=list(installs))
