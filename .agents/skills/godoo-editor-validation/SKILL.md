@@ -1,25 +1,21 @@
 ---
 name: godoo-editor-validation
-description:
-  Validate gOdoo editor diagnostics, VS Code Problems, and debugpy attachment against resolved shared sources.
+description: Verify gOdoo editor diagnostics, navigation readiness, and debugger attachment.
 ---
 
 # gOdoo editor validation
 
-Read `docs/workspace.md`, then open the generated `<project>.code-workspace`.
+Use `docs/workspace.md` for configuration. Open `godoo.code-workspace` here or the generated `<project>.code-workspace`
+downstream. Recheck the active window and selected source worktree after user interaction. Keep the Python extension for
+interpreter selection and debugging.
 
-Keep the Python extension for interpreter selection and debugging. The generated `python.analysis.extraPaths` covers the
-resolved project, Odoo, third-party, and archive addon roots. The supported source mapping is the generated multi-root
-workspace plus its generated extra paths.
+Inspect exact diagnostics in VS Code Problems; CLI lint and tests do not reproduce that aggregate view. Mark editor
+validation unverified when the intended window is unavailable. Do not invent an external Odoo IDE diagnostics transport.
 
-Reload the window after generation, save representative project, Odoo, and addon files, then inspect VS Code Problems.
-Confirm each diagnostic refers to the intended selected host worktree. Problems validate editor analysis, not execution.
+For authorized attachment checks, use `gOdoo: attach` and prove a breakpoint hit, local variables, and the selected
+host/container mappings. Runtime startup belongs to downstream validation.
 
-Inspect exact editor diagnostics in VS Code's Problems panel. Do not require a repository-specific extension or claim
-that command-line lint and tests reproduce the aggregate Problems view. The Problems API is available only inside VS
-Code's extension host, and Odoo IDE does not provide a supported external diagnostics transport. Record this UI check as
-unverified when the active editor is unavailable.
-
-Start the downstream debug service separately, attach with the generated `gOdoo: attach` configuration, set a breakpoint
-in exercised code, and confirm the selected host/container mappings and local variables. Runtime startup belongs to
-downstream/runtime validation.
+For indexing investigations, record extension version, workspace/source identity, and cold/warm conditions. Define the
+XML/Python navigation or diagnostic check and measurement start before each run. Measure usable features separately from
+scan completion; observed success times are upper bounds on readiness. Repeat the same checks after changes and include
+failures/timeouts.

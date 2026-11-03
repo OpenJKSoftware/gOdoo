@@ -1,48 +1,26 @@
 # gOdoo repository contracts
 
-Keep only repo-specific behavior that code and tooling do not make obvious. Prefer existing patterns and the smallest
-coherent change.
+## Ownership and routing
 
-## Execution
+- The host owns Git, workspace commands, VS Code, linting, and the development `.venv`. Odoo uses `VIRTUAL_ENV`,
+  otherwise the project `.venv`. Downstream owns Docker, system packages, mounts, and service orchestration.
+- Use `godoo-source-workspaces` for source/workspace changes, `godoo-runtime-validation` for runtime or downstream
+  adoption, and both only when crossing those boundaries. Keep shared Docker validation sequential.
+- Use `godoo-editor-validation` for editor/debugger checks, `godoo-changeset-review` for broad reviews, and
+  `godoo-cli-development` for Python, scripts, or CLI contracts.
 
-- The host owns Git, workspace commands, VS Code, linting, and the development `.venv`. Odoo runs in the selected
-  environment (`VIRTUAL_ENV`, otherwise the project `.venv`). Downstream owns Docker and system packages; gOdoo never
-  detects or orchestrates containers.
-- Load the matching skill under `.agents/skills/` for source-workspace or runtime work; load both only when a change
-  crosses those boundaries.
-- Use `godoo-editor-validation` for VS Code diagnostics and development-flow checks, `godoo-changeset-review` for
-  whole-changeset reviews, and `godoo-release-management` for release preparation and publication.
-- Keep shared Docker validation sequential.
+## Branches and publication
 
-## Branches and releases
-
-- Start each independent change on a short-lived `codex/<topic>` branch from freshly fetched `origin/main`. Do not reuse
-  a merged branch for new work. Keep implementation, tests, and documentation for one behavior together.
-- Before switching or creating a branch, inspect staged, unstaged, and untracked work. Preserve existing changes and
-  verify the resulting diff against `origin/main`; use a separate Git worktree for concurrent independent work.
-- Open topic PRs into `main` and check Quality results before merging. Topic-branch pushes alone do not trigger Quality.
-  Follow the existing merge strategy and commit conventions. Push and merge only within explicit authorization.
-- After merge, return to an updated `main` or start the next topic branch from current `origin/main`. Prune stale remote
-  references and remove merged branches only after checking ancestry and worktree ownership; preserve unfinished work.
-
-## Code and CLI
-
-- Every shell script under `scripts/` has a purpose comment immediately below its shebang.
-- Operational Python modules define and use `LOGGER = logging.getLogger(__name__)`; passive metadata, value-type, and
-  re-export modules do not carry unused loggers. Reserve `rich.print()` for user-facing output.
-- Export command groups through `src/godoo_cli/commands/__init__.py` and attach them in
-  `src/godoo_cli/commands/root.py`. Reuse env-first option metadata from `src/godoo_cli/commands/common.py`; new options
-  need an environment fallback unless there is a concrete reason not to provide one.
-- For Typer commands, keep behavior in the function docstring and parameter help in `Annotated` metadata.
+- Start independent changes on short-lived `codex/<topic>` branches from freshly fetched `origin/main`; preserve
+  existing work and use separate worktrees for concurrent changes.
+- Before branch/worktree/PR or release operations, use `godoo-release-management` for ownership checks, branch
+  lifecycle, Quality gates, and release procedures. Push and merge only within explicit authorization.
 
 ## Validation
 
-- Implementers run only focused proof for owned behavior; they never run full `make lint` or `make test` unless
-  explicitly the integration owner.
-- The coordinator or named integration owner runs `make lint` and `make test` sequentially on the final tree, plus
-  applicable editor, workspace, runtime, and live-surface checks.
-- For whole-changeset review, the validator receives a coordinator-generated current staged, unstaged, and untracked
-  diff snapshot and coverage manifest before implementer reports or prior findings; it performs an independent first
-  pass, then may consume those reports for a targeted second pass.
-- Validate relevant Python typing boundaries and editor configuration with the editor-validation skill; lint and unit
-  tests do not establish that editor diagnostics are clear.
+- Implementers run focused checks for owned behavior. The named integration owner runs `make lint` and `make test`
+  sequentially on the final implementation tree, plus applicable editor, workspace, runtime, and live-surface checks.
+- Whole-changeset review follows `godoo-changeset-review`: independent first pass on the current staged, unstaged, and
+  untracked snapshot, then targeted follow-up using implementer reports.
+- Use editor-validation for affected typing/editor boundaries; report source checks, editor results, built artifacts,
+  and live behavior separately.

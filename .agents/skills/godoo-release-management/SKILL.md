@@ -1,24 +1,22 @@
 ---
 name: godoo-release-management
-description:
-  Prepare, review, merge, and verify gOdoo releases using the repository's version-bump and publication workflows.
+description: Handle gOdoo branch lifecycle, release preparation, and publication checks.
 ---
 
-# gOdoo release management
+# gOdoo branches and releases
 
-Read `.github/workflows/README.md` and inspect the current release state before acting. Publish or merge only when
-explicitly authorized. Keep the release PR short-lived and coordinate other merges to preserve its intended scope.
+Use `.github/workflows/README.md` for workflow commands and release identity checks. Review alone authorizes no
+dispatch, merge, or publication.
 
-Dispatch `.github/workflows/version-bump.yml` against `main` with the selected bump type. The workflow creates
-`release/<version>` and its release PR; leave version changes to it and keep the PR limited to release preparation. Do
-not use long-lived `release` or `develop` branches for this workflow.
+Topic-branch pushes alone do not run Quality; inspect PR Quality before merging. Do not start new work on a merged
+branch. Check ancestry and worktree ownership before removing branches.
 
-The release PR description becomes the release notes. Never replace existing release text or remove its changelog
-summary. If additions are needed, replace the placeholder and preserve the generated changelog and remaining text.
-Review the notes, release-preparation diff, release label, source repository, target branch, title, branch name, package
-version, and available Quality results against the identities in `.github/workflows/README.md` before merging.
+For an authorized version bump, dispatch `version-bump.yml` against `main`; let the workflow change the version and
+create its release PR. Keep that PR limited to release preparation.
 
-After the authorized merge, verify publication to PyPI, the `v<version>` tag at the release merge commit, and the GitHub
-Release. If publication fails, inspect the failed step and existing PyPI, tag, and release state before retrying. Never
-move an existing release tag to repair publication. Report the released version, revision, validation, and any
-downstream adoption required.
+The PR body becomes the release notes. Preserve existing release text and generated changelog summaries; replace only
+the summary placeholder when adding content.
+
+After the authorized release merge, verify PyPI publication, `v<version>` at the merge commit, and the GitHub Release.
+Inspect existing publication/tag/release state before retrying. Never move an existing release tag. Report downstream
+adoption separately.
