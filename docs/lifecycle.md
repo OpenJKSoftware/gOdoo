@@ -113,15 +113,17 @@ ordinary addons are not hashed unless the caller explicitly selects `all`. Impor
 customization are not source modules. Corrupt baseline data fails visibly.
 
 Missing installed sources may be deferred only when a selected native update will run configured pre-upgrade cleanup.
-They must be removed or repaired before a strict post-native rescan. Other missing sources fail initialization. Valid
-native upgrade paths can remain configured without forcing an update; pre-upgrade scripts run only with native update
-selections. These settings are dormant on unchanged starts.
+Cleanup must remove them from the installed module state; sources are not scanned again after native work. Other missing
+sources fail initialization. Valid native upgrade paths can remain configured without forcing an update; pre-upgrade
+scripts run only with native update selections. These settings are dormant on unchanged starts.
 
-Only a successful native process with no unfinished module states can advance the baseline. gOdoo verifies final
-installed sources against the snapshot taken before native work and saves that snapshot before post-hooks. Source drift
-or failed native work leaves the old baseline; failed post-hooks retain the successful baseline and earlier completed
-one-shot hooks. The pending lifecycle marker remains until all phases succeed. Native Odoo can commit partial work; this
-is not an atomic module-upgrade guarantee. See the native migration recovery limits in [Hooks](hooks.md).
+Only successful native reconciliation with no unfinished module states can advance the baseline. gOdoo checks that the
+final installed modules were included in the snapshot taken before native work, then saves those checksums before
+post-hooks. Source files are assumed to remain unchanged during reconciliation; changes after the scan are detected on
+the next initialization. Failed native work leaves the old baseline; failed post-hooks retain the successful baseline
+and earlier completed one-shot hooks. The pending lifecycle marker remains until all phases succeed. Native Odoo can
+commit partial work; this is not an atomic module-upgrade guarantee. See the native migration recovery limits in
+[Hooks](hooks.md).
 
 Backups use native Odoo commands on Odoo 19 or newer and PostgreSQL tools on Odoo 16–18.
 

@@ -1,6 +1,7 @@
 """Source snapshots select native work without certifying unreconciled code."""
 
 import json
+from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -131,7 +132,7 @@ def test_explicit_installs_are_verified_even_when_already_installed_at_planning(
 
 
 @pytest.mark.parametrize("cleanup_removes_missing", [False, True])
-def test_missing_sources_require_real_cleanup_and_strict_rescan(
+def test_missing_sources_require_real_cleanup(
     runtime: tuple[GodooConfig, Database, Path], cleanup_removes_missing: bool
 ) -> None:
     config, database, _addons = runtime
@@ -146,7 +147,7 @@ def test_missing_sources_require_real_cleanup_and_strict_rescan(
         plan.finish(config)
         assert "obsolete" not in json.loads(database.baseline)["modules"]
     else:
-        with pytest.raises(RuntimeError, match="remain unavailable"):
+        with pytest.raises(RuntimeError, match="not captured before reconciliation"):
             plan.finish(config)
         assert database.baseline == old
 
@@ -160,13 +161,30 @@ def test_imported_and_pathless_studio_are_not_source_modules(runtime: tuple[Godo
     assert set(json.loads(database.baseline)["modules"]) == {"base", "custom"}
 
 
-def test_source_drift_and_corrupt_baseline_never_get_certified(runtime: tuple[GodooConfig, Database, Path]) -> None:
-    config, database, addons = runtime
+def test_source_checksums_are_calculated_once_per_reconciliation(
+    runtime: tuple[GodooConfig, Database, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, database, _addons = runtime
+    original = checksums.source_snapshot
+    calls = 0
+
+    def count_snapshots(
+        config: GodooConfig, states: dict[str, ModuleState], requested: Sequence[str] = ()
+    ) -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        return original(config, states, requested)
+
+    monkeypatch.setattr(checksums, "source_snapshot", count_snapshots)
     plan = checksums.plan_module_changes(config, [], [])
-    (addons / "custom" / "__init__.py").write_text("changed during native work")
-    with pytest.raises(RuntimeError, match="sources changed during reconciliation"):
-        plan.finish(config)
-    assert database.baseline is None
+    plan.finish(config)
+
+    assert calls == 1
+    assert json.loads(database.baseline)["modules"] == plan.snapshot
+
+
+def test_corrupt_baseline_fails(runtime: tuple[GodooConfig, Database, Path]) -> None:
+    config, database, _addons = runtime
     database.baseline = "broken json"
     with pytest.raises(RuntimeError, match="corrupt"):
         checksums.plan_module_changes(config, [], [])
@@ -193,3 +211,41 @@ def test_snapshot_scope_excludes_unrelated_addons_but_captures_new_dependencies(
     changed = checksums.plan_module_changes(config, [], [])
     assert set(changed.snapshot) == {"base", "custom", "new_dependency", "automatic_bridge"}
     assert "unrelated" in checksums.plan_module_changes(config, [], ["all"]).snapshot
+
+
+def test_parallel_snapshot_preserves_module_and_core_checksums(runtime: tuple[GodooConfig, Database, Path]) -> None:
+    config, database, addons = runtime
+    (addons / "custom" / "nested").mkdir()
+    (addons / "custom" / "nested" / "data.xml").write_text("<data/>")
+    (config.odoo_install_folder / "odoo" / "api.py").write_text("core source")
+
+    expected = {
+        "base": checksums.fingerprint(
+            [
+                checksums._tree_hash(addons / "base"),
+                checksums._tree_hash(config.odoo_install_folder / "odoo", core=True),
+            ]
+        ),
+        "custom": checksums._tree_hash(addons / "custom"),
+    }
+
+    assert checksums.source_snapshot(config, database.states) == expected
+
+
+def test_checksum_failure_does_not_save_baseline(
+    runtime: tuple[GodooConfig, Database, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, database, addons = runtime
+    original = checksums._tree_hash
+
+    def fail_hash(path: Path, *, core: bool = False) -> str:
+        if path == addons / "custom":
+            message = "Cannot read source"
+            raise OSError(message)
+        return original(path, core=core)
+
+    monkeypatch.setattr(checksums, "_tree_hash", fail_hash)
+
+    with pytest.raises(OSError, match="Cannot read source"):
+        checksums.plan_module_changes(config, [], [])
+    assert database.baseline is None

@@ -7,12 +7,15 @@ import json
 import logging
 import os
 import re
+import time
 from collections.abc import Container, Sequence
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..helpers.hashing import fingerprint, sha256_file
 from ..models import GodooConfig, GodooModules
+from ..models.godoo_modules import GodooModule
 
 LOGGER = logging.getLogger(__name__)
 BASELINE_KEY = "godoo.runtime.source_checksums.v1"
@@ -93,12 +96,23 @@ def source_snapshot(
     Returns:
         Candidate module names mapped to deterministic source digests.
     """
+    started_at = time.monotonic()
+    LOGGER.info("Checking module source changes: addon_paths=%d requested=%d", len(config.addon_paths), len(requested))
+    registry_started_at = time.monotonic()
+    LOGGER.info("Module source discovery started")
     registry = GodooModules(list(config.addon_paths))
     available = {module.name: module for module in registry.get_modules()}
+    LOGGER.info(
+        "Module source discovery completed: modules=%d elapsed=%.3fs",
+        len(available),
+        time.monotonic() - registry_started_at,
+    )
     roots = _required_sources(states, available) | set(requested)
     if "all" in requested:
         roots.update(available)
     selected = [available[name] for name in sorted(roots & available.keys())]
+    dependency_started_at = time.monotonic()
+    LOGGER.info("Module source dependency resolution started: roots=%d", len(selected))
     selected.extend(registry.get_module_dependencies(selected))
     if any(
         states.get(module.name, ModuleState("unknown")).state not in {"installed", "to upgrade"} for module in selected
@@ -106,9 +120,48 @@ def source_snapshot(
         automatic = [module for module in available.values() if module.manifest.get("auto_install", False) is not False]
         selected.extend(automatic)
         selected.extend(registry.get_module_dependencies(automatic))
-    result = {module.name: _tree_hash(module.path) for module in dict.fromkeys(selected)}
-    if "base" in result:
-        result["base"] = fingerprint([result["base"], _tree_hash(config.odoo_install_folder / "odoo", core=True)])
+    selected = list(dict.fromkeys(selected))
+    LOGGER.info(
+        "Module source dependency resolution completed: modules=%d elapsed=%.3fs",
+        len(selected),
+        time.monotonic() - dependency_started_at,
+    )
+    hash_started_at = time.monotonic()
+    LOGGER.info("Calculating module source checksums: modules=%d", len(selected))
+
+    def hash_module(module: GodooModule) -> str:
+        digest = _tree_hash(module.path)
+        if module.name == "base":
+            digest = fingerprint([digest, _tree_hash(config.odoo_install_folder / "odoo", core=True)])
+        return digest
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {module.name: executor.submit(hash_module, module) for module in selected}
+        pending = set(futures.values())
+        next_progress_at = hash_started_at + 15
+        while pending:
+            done, pending = wait(
+                pending, timeout=max(0, next_progress_at - time.monotonic()), return_when=FIRST_COMPLETED
+            )
+            for future in done:
+                future.result()
+            now = time.monotonic()
+            if pending and now >= next_progress_at:
+                LOGGER.info(
+                    "Calculating module source checksums: completed=%d/%d elapsed=%.1fs",
+                    len(futures) - len(pending),
+                    len(futures),
+                    now - hash_started_at,
+                )
+                next_progress_at = now + 15
+        result = {name: future.result() for name, future in futures.items()}
+
+    LOGGER.info(
+        "Module source checksums calculated: modules=%d elapsed=%.3fs hashing_elapsed=%.3fs",
+        len(result),
+        time.monotonic() - started_at,
+        time.monotonic() - hash_started_at,
+    )
     LOGGER.debug("Source snapshot covers %s of %s available addons", len(result), len(available))
     return result
 
@@ -159,7 +212,7 @@ class ModulePlan:
     requested_installs: list[str] = field(default_factory=list)
 
     def finish(self, config: GodooConfig) -> None:
-        """Verify native completion and unchanged sources before saving this snapshot."""
+        """Verify native completion before saving the planned source checksums."""
         states = module_states(config)
         pending = sorted(name for name, module in states.items() if module.state.startswith("to "))
         if pending:
@@ -169,15 +222,10 @@ class ModulePlan:
         if missing_installs:
             message = f"Requested modules were not installed: {', '.join(missing_installs)}"
             raise RuntimeError(message)
-        current = source_snapshot(config, states)
-        required = _required_sources(states, current)
-        missing = required - current.keys()
+        required = _required_sources(states, self.snapshot)
+        missing = required - self.snapshot.keys()
         if missing:
-            message = f"Installed module sources remain unavailable after reconciliation: {', '.join(sorted(missing))}"
-            raise RuntimeError(message)
-        changed = sorted(name for name in required if self.snapshot.get(name) != current[name])
-        if changed:
-            message = f"Module sources changed during reconciliation: {', '.join(changed)}; retry initialization."
+            message = f"Installed module sources were not captured before reconciliation: {', '.join(sorted(missing))}"
             raise RuntimeError(message)
         baseline = {"format": 1, "modules": {name: self.snapshot[name] for name in sorted(required)}}
         with config.db_connection.connect() as cursor:
