@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+import shlex
 import signal
 import ssl
 import sys
@@ -184,7 +185,9 @@ def test_upgrade_cli_forwards_official_options(monkeypatch: pytest.MonkeyPatch, 
     result = CliRunner().invoke(main_cli(), ["upgrade", *arguments])
 
     assert result.exit_code == 0, result.output
-    assert child.call_args.args[0][2:] == arguments
+    command = child.call_args.args[0]
+    assert command[2:] == arguments
+    assert f"Odoo upgrade command: {shlex.join(command)}" in unstyle(result.output)
 
 
 def test_upgrade_cli_preserves_nonzero_client_status(monkeypatch: pytest.MonkeyPatch) -> None:

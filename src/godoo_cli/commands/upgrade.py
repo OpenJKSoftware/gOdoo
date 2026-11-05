@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shlex
 import signal
 import ssl
 import subprocess
@@ -73,7 +74,9 @@ def _run_upgrade_client(arguments: list[str]) -> int:
         client_path.write_bytes(client)
         child_environment = os.environ.copy()
         child_environment["SSL_VERIFICATION"] = "0" if ssl_disabled else "1"
-        return _run_process([sys.executable, str(client_path), *arguments], env=child_environment)
+        command = [sys.executable, str(client_path), *arguments]
+        print(f"Odoo upgrade command: {shlex.join(command)}", flush=True)
+        return _run_process(command, env=child_environment)
 
 
 def _run_process(command: list[str], *, env: dict[str, str] | None = None) -> int:
