@@ -18,7 +18,7 @@ from godoo_cli.commands.runtime.shell import (
 )
 from godoo_cli.commands.test.load_data import odoo_load_test_data
 from godoo_cli.database.state import DbBootstrapStatus
-from godoo_cli.models import GodooConfig
+from godoo_cli.models import GodooConfig, OdooVersion
 from godoo_cli.runtime.locks import runtime_readiness_marker, runtime_restore_marker
 from godoo_cli.runtime.odoo import (
     OdooOptions,
@@ -374,11 +374,13 @@ def test_public_shell_preflight_uses_materialized_config_addons_with_stale_cache
         options: OdooOptions,
         *,
         ignore_missing_installed_modules: bool = False,
+        runtime_version: OdooVersion | None = None,
     ) -> list[str]:
         modules = original_selected_modules(
             selected_config,
             options,
             ignore_missing_installed_modules=ignore_missing_installed_modules,
+            runtime_version=runtime_version,
         )
         selected.extend(modules)
         return modules
@@ -391,7 +393,7 @@ def test_public_shell_preflight_uses_materialized_config_addons_with_stale_cache
         "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
         lambda _path: SimpleNamespace(major=19, minor=0, raw="19.0"),
     )
-    monkeypatch.setattr("godoo_cli.runtime.odoo.require_runtime_database_major", lambda _config: None)
+    monkeypatch.setattr("godoo_cli.runtime.odoo.require_runtime_database_major", lambda _config, **_kwargs: None)
     monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "venv"))
 
     with (
