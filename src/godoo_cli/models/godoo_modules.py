@@ -126,9 +126,13 @@ class GodooModules:
         """Return one named module, including Odoo's built-in addons."""
         if mod := self.godoo_modules.get(name):
             return mod
-        for mod in self._get_modules():
-            if mod.name == name:
-                return mod
+        for path in self.addon_paths:
+            candidate = path / name
+            if not candidate.is_dir() or not (candidate / "__manifest__.py").exists():
+                continue
+            mod = GodooModule(candidate)
+            self.godoo_modules[name] = mod
+            return mod
         msg = f"Module '{name}' not found in addon-paths"
         LOGGER.error(msg)
         raise ModuleNotFoundError(msg)

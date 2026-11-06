@@ -116,8 +116,8 @@ def launch_prepared_runtime(
     if dev_mode:
         launch_args.extend(["--dev", "xml,qweb" if debug_listen or parent_debugger else "xml,qweb,reload"])
     require_runtime_launch_ready(godoo_conf)
-    preflight_for_config(godoo_conf, launch_args)
     launch_cmd = build_launch_command(godoo_conf, launch_args, upgrade_workspace_modules=False)
+    preflight_for_config(godoo_conf, launch_cmd[1:])
     if nginx_config is not None:
         write_nginx_static_config(resolve_odoo_config(godoo_conf, launch_cmd[1:]), nginx_config, runtime_version)
     if debug_listen and not parent_debugger:

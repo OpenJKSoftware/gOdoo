@@ -463,6 +463,7 @@ def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: 
                 selected_updates,
                 selected_installs,
                 ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+                use_materialized_config=True,
             )
         if request.update_changed:
             plan = plan_module_changes(
@@ -507,7 +508,11 @@ def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: 
             ),
             seed_preflight=prepare_seed,
             post_restore_preflight=lambda conf: preflight_reconcile_dependencies(
-                conf, update_modules, install_modules, ignore_missing_installed_modules=bool(pre_upgrade_scripts)
+                conf,
+                update_modules,
+                install_modules,
+                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
+                use_materialized_config=True,
             ),
             reconcile_preflight=plan_reconciliation,
             reconciler=reconcile,

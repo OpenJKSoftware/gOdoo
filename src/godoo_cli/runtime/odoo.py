@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import configparser
 import contextlib
+import copy
 import logging
 import os
 import re
@@ -236,6 +237,46 @@ def resolve_odoo_config(
             }
         )
     return replace(config, **values) if values else config
+
+
+def preflight_addon_paths(config: GodooConfig, arguments: Sequence[str] = ()) -> tuple[Path, ...]:
+    """Resolve addon roots for preflight using the child command's effective argv."""
+    return _effective_addon_paths(config, parse_odoo_options(arguments))
+
+
+def _addon_paths_with_implicit_roots(
+    config: GodooConfig,
+    selected: Sequence[Path],
+    data_dir: Path,
+) -> tuple[Path, ...]:
+    """Add Odoo's implicit addon roots around the selected roots."""
+    if not config.odoo_bin_path.is_file():
+        return tuple(dict.fromkeys(selected))
+    version = require_supported_odoo_runtime(config.odoo_install_folder)
+    data_addons = data_dir / "addons" / version.raw
+    roots = [config.odoo_install_folder / "odoo" / "addons", data_addons, *selected]
+    if version.major >= 19 or not selected:
+        roots.append(config.odoo_install_folder / "addons")
+    implicit = {config.odoo_install_folder / "odoo" / "addons", data_addons}
+    if version.major >= 19 or not selected:
+        implicit.add(roots[-1])
+    return tuple(dict.fromkeys(path for path in roots if path not in implicit or path.is_dir()))
+
+
+def _effective_addon_paths(config: GodooConfig, options: OdooOptions) -> tuple[Path, ...]:
+    """Resolve registry roots while retaining implicit roots around a CLI override."""
+    if options.addon_paths is not None:
+        selected = options.addon_paths
+    elif options.config_path is not None:
+        configured = _config_values(options.config_path).get("addons_path")
+        selected = tuple(Path(value.strip()) for value in configured.split(",") if value.strip()) if configured else ()
+    else:
+        selected = config.resolved_addon_paths if config.resolved_addon_paths is not None else config.addon_paths
+    configured_data_dir = None
+    if options.config_path is not None:
+        configured_data_dir = _config_values(options.config_path).get("data_dir")
+    data_dir = options.data_dir or (Path(configured_data_dir) if configured_data_dir else config.data_dir)
+    return _addon_paths_with_implicit_roots(config, selected, data_dir)
 
 
 def odoo_database_args(
@@ -560,7 +601,7 @@ def _selected_modules(
     elif "base" not in requested:
         requested.insert(0, "base")
     registry_started_at = time.monotonic()
-    registry = GodooModules(list(options.addon_paths or config.addon_paths))
+    registry = GodooModules(list(_effective_addon_paths(config, options)))
     LOGGER.debug(
         "Odoo dependency preflight module registry constructed: phase=selection addon_paths=%d elapsed=%.3fs",
         len(registry.addon_paths),
@@ -624,7 +665,7 @@ def _dependency_requirements(
 ) -> list[str]:
     """Return external Python requirements from one effective configuration."""
     registry_started_at = time.monotonic()
-    registry = GodooModules(list(options.addon_paths or config.addon_paths))
+    registry = GodooModules(list(_effective_addon_paths(config, options)))
     LOGGER.debug(
         "Odoo dependency preflight module registry constructed: phase=manifest addon_paths=%d elapsed=%.3fs",
         len(registry.addon_paths),
@@ -774,7 +815,9 @@ def preflight_for_config(
     arguments = list(extra_args)
     if any(item in {"--help", "-h", "--version"} for item in arguments):
         return
-    effective = config
+    effective = copy.copy(config)
+    effective.__dict__.pop("addon_paths", None)
+    object.__setattr__(effective, "resolved_addon_paths", preflight_addon_paths(config, arguments))
     if include_module_dependencies:
         require_runtime_database_major(effective)
     environment = (project_root or Path.cwd()).resolve() / ".venv"

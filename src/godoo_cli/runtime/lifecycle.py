@@ -303,6 +303,7 @@ def preflight_reconcile_dependencies(
     install_modules: list[str] | None,
     *,
     ignore_missing_installed_modules: bool = False,
+    use_materialized_config: bool = False,
 ) -> None:
     """Include explicitly selected modules in dependency preflight."""
     arguments: list[str] = []
@@ -312,6 +313,8 @@ def preflight_reconcile_dependencies(
         arguments.extend(["--update", ",".join(updates)])
     if installs:
         arguments.extend(["--init", ",".join(installs)])
+    if use_materialized_config and config.odoo_conf_path.is_file():
+        arguments.extend(["--config", str(config.odoo_conf_path)])
     preflight_for_config(
         config,
         arguments,

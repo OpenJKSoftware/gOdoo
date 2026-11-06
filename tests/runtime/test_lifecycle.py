@@ -91,6 +91,21 @@ def test_reconcile_preflight_includes_selected_modules(tmp_path: Path, monkeypat
     assert observed == ["--update", "sale,stock", "--init", "web"]
 
 
+def test_reconcile_preflight_uses_materialized_config_only_after_regeneration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observed: list[list[str]] = []
+    config = _config(tmp_path)
+    config.odoo_conf_path.write_text("[options]\naddons_path = selected\n", encoding="utf-8")
+    monkeypatch.setattr(lifecycle, "preflight_for_config", lambda _config, args, **_kwargs: observed.append(args))
+
+    lifecycle.preflight_reconcile_dependencies(config, ["sale"], None)
+    lifecycle.preflight_reconcile_dependencies(config, ["sale"], None, use_materialized_config=True)
+
+    assert observed[0] == ["--update", "sale"]
+    assert observed[1] == ["--update", "sale", "--config", str(config.odoo_conf_path)]
+
+
 def test_reconcile_without_selection_does_not_run_odoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Initialization without module selections must not trigger implicit upgrades."""
     monkeypatch.setattr(
