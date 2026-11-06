@@ -150,7 +150,7 @@ def test_prepare_hooks_merge_cli_and_environment_requests_on_every_init(
     monkeypatch.setattr(
         runtime_init,
         "preflight_reconcile_dependencies",
-        lambda _config, update, install, **_kwargs: preflight.append((update, install)),
+        lambda _config, update, install, _command, **_kwargs: preflight.append((update, install)),
     )
     monkeypatch.setattr(
         runtime_init,

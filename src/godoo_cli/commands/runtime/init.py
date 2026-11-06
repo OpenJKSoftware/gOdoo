@@ -43,6 +43,8 @@ from ...runtime.nginx import write_nginx_static_config
 from ...runtime.odoo import (
     SUPPORTED_ODOO_VERSION_SPECIFIER,
     OdooVersionError,
+    build_bootstrap_command,
+    build_launch_command,
     prepare_runtime,
     require_odoo_version,
     set_report_url,
@@ -462,8 +464,8 @@ def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: 
                 conf,
                 selected_updates,
                 selected_installs,
+                build_launch_command(conf, [], upgrade_workspace_modules=False, save_config=False),
                 ignore_missing_installed_modules=bool(pre_upgrade_scripts),
-                use_materialized_config=True,
             )
         if request.update_changed:
             plan = plan_module_changes(
@@ -504,15 +506,19 @@ def initialize_odoo_runtime(resolve_config: Callable[[], GodooConfig], request: 
             ensure=ensure,
             preparer=prepare,
             preflight=lambda conf: preflight_reconcile_dependencies(
-                conf, update_modules, install_modules, ignore_missing_installed_modules=bool(pre_upgrade_scripts)
+                conf,
+                update_modules,
+                install_modules,
+                build_bootstrap_command(conf, conf.addon_paths, install_workspace_modules=False),
+                ignore_missing_installed_modules=bool(pre_upgrade_scripts),
             ),
             seed_preflight=prepare_seed,
             post_restore_preflight=lambda conf: preflight_reconcile_dependencies(
                 conf,
                 update_modules,
                 install_modules,
+                build_launch_command(conf, [], upgrade_workspace_modules=False, save_config=False),
                 ignore_missing_installed_modules=bool(pre_upgrade_scripts),
-                use_materialized_config=True,
             ),
             reconcile_preflight=plan_reconciliation,
             reconciler=reconcile,

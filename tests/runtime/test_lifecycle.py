@@ -8,6 +8,7 @@ import pytest
 from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime import lifecycle
+from godoo_cli.runtime.odoo import build_bootstrap_command, build_launch_command, preflight_addon_paths
 
 
 @pytest.fixture(autouse=True)
@@ -87,23 +88,29 @@ def test_ensure_runtime_reports_native_bootstrap_failure(tmp_path: Path) -> None
 def test_reconcile_preflight_includes_selected_modules(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     observed: list[str] = []
     monkeypatch.setattr(lifecycle, "preflight_for_config", lambda _config, args, **_kwargs: observed.extend(args))
-    lifecycle.preflight_reconcile_dependencies(_config(tmp_path), ["sale,stock"], ["web"])
-    assert observed == ["--update", "sale,stock", "--init", "web"]
+    lifecycle.preflight_reconcile_dependencies(
+        _config(tmp_path), ["sale,stock"], ["web"], ["odoo-bin", "--config", "odoo.conf"]
+    )
+    assert observed == ["--config", "odoo.conf", "--update", "sale,stock", "--init", "web"]
 
 
-def test_reconcile_preflight_uses_materialized_config_only_after_regeneration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_reconcile_preflight_forwards_odoo_command_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     observed: list[list[str]] = []
     config = _config(tmp_path)
-    config.odoo_conf_path.write_text("[options]\naddons_path = selected\n", encoding="utf-8")
+    planned = tmp_path / "planned"
+    planned.mkdir()
+    configured = tmp_path / "configured"
+    config.odoo_conf_path.write_text(f"[options]\naddons_path = {configured}\n", encoding="utf-8")
     monkeypatch.setattr(lifecycle, "preflight_for_config", lambda _config, args, **_kwargs: observed.append(args))
 
-    lifecycle.preflight_reconcile_dependencies(config, ["sale"], None)
-    lifecycle.preflight_reconcile_dependencies(config, ["sale"], None, use_materialized_config=True)
+    bootstrap = build_bootstrap_command(config, [planned], install_workspace_modules=False)
+    launch = build_launch_command(config, [], upgrade_workspace_modules=False, save_config=False)
+    lifecycle.preflight_reconcile_dependencies(config, ["sale"], None, bootstrap)
+    lifecycle.preflight_reconcile_dependencies(config, ["sale"], None, launch)
 
-    assert observed[0] == ["--update", "sale"]
-    assert observed[1] == ["--update", "sale", "--config", str(config.odoo_conf_path)]
+    assert preflight_addon_paths(config, observed[0]) == (planned,)
+    assert preflight_addon_paths(config, observed[1]) == (configured,)
+    assert observed[0][-2:] == observed[1][-2:] == ["--update", "sale"]
 
 
 def test_reconcile_without_selection_does_not_run_odoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

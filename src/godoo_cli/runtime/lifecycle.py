@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from enum import StrEnum
 from pathlib import Path
 
@@ -301,20 +301,18 @@ def preflight_reconcile_dependencies(
     config: GodooConfig,
     update_modules: list[str] | None,
     install_modules: list[str] | None,
+    command: Sequence[str],
     *,
     ignore_missing_installed_modules: bool = False,
-    use_materialized_config: bool = False,
 ) -> None:
     """Include explicitly selected modules in dependency preflight."""
-    arguments: list[str] = []
+    arguments = list(command[1:])
     updates = split_lifecycle_values(update_modules)
     installs = split_lifecycle_values(install_modules)
     if updates:
         arguments.extend(["--update", ",".join(updates)])
     if installs:
         arguments.extend(["--init", ",".join(installs)])
-    if use_materialized_config and config.odoo_conf_path.is_file():
-        arguments.extend(["--config", str(config.odoo_conf_path)])
     preflight_for_config(
         config,
         arguments,
