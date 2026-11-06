@@ -70,7 +70,6 @@ def run_odoo(
         return CLI.returner(run_odoo_command([str(config.odoo_bin_path), *arguments]).returncode)
 
     require_runtime_launch_ready(config)
-    preflight_for_config(config, arguments)
     child_args = [
         "--config",
         str(config.odoo_conf_path.absolute()),
@@ -87,4 +86,5 @@ def run_odoo(
     ]
     separator = arguments.index("--") if "--" in arguments else len(arguments)
     command = [str(config.odoo_bin_path), *arguments[:separator], *child_args, *arguments[separator:]]
+    preflight_for_config(config, command[1:])
     return CLI.returner(run_odoo_command(command).returncode)

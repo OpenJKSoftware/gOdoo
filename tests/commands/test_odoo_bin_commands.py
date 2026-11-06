@@ -21,6 +21,7 @@ from godoo_cli.database.state import DbBootstrapStatus
 from godoo_cli.models import GodooConfig
 from godoo_cli.runtime.locks import runtime_readiness_marker, runtime_restore_marker
 from godoo_cli.runtime.odoo import (
+    OdooOptions,
     execution_python,
     odoo_command_argv,
     preflight_for_config,
@@ -330,6 +331,93 @@ def test_shell_overrides_stale_config_database_settings(tmp_path: Path):
     assert command[command.index("--db_port") + 1] == "5544"
 
 
+def test_public_shell_preflight_uses_materialized_config_addons_with_stale_cached_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Resolve installed modules from the real child config despite stale cached addon paths."""
+    paths = _command_paths(tmp_path)
+    config_addons = tmp_path / "config-addons"
+    stale_addons = tmp_path / "stale-addons"
+    package_addons = paths["odoo_main_path"] / "odoo" / "addons"
+    (paths["odoo_main_path"] / "odoo-bin").touch()
+    for root in (config_addons, stale_addons, package_addons):
+        root.mkdir(parents=True)
+    (config_addons / "config_only").mkdir()
+    (config_addons / "config_only" / "__manifest__.py").write_text(repr({"depends": []}), encoding="utf-8")
+    (stale_addons / "stale_only").mkdir()
+    (stale_addons / "stale_only" / "__manifest__.py").write_text(repr({"depends": []}), encoding="utf-8")
+    (package_addons / "base").mkdir()
+    (package_addons / "base" / "__manifest__.py").write_text(repr({"depends": []}), encoding="utf-8")
+    paths["odoo_conf_path"].write_text(
+        f"[options]\naddons_path = {config_addons}\ndata_dir = {tmp_path / 'data'}\n",
+        encoding="utf-8",
+    )
+    config = GodooConfig(
+        odoo_install_folder=paths["odoo_main_path"],
+        odoo_conf_path=paths["odoo_conf_path"],
+        workspace_addon_path=paths["workspace_addon_path"],
+        thirdparty_addon_path=tmp_path / "thirdparty",
+        db_name="runtime",
+        db_user="odoo",
+    )
+    object.__setattr__(config, "resolved_addon_paths", (stale_addons,))
+    assert config.addon_paths == [stale_addons]
+    object.__setattr__(config, "resolved_addon_paths", (config_addons,))
+
+    from godoo_cli.runtime import odoo as odoo_runtime
+
+    selected: list[str] = []
+    original_selected_modules = odoo_runtime._selected_modules
+
+    def record_selected_modules(
+        selected_config: GodooConfig,
+        options: OdooOptions,
+        *,
+        ignore_missing_installed_modules: bool = False,
+    ) -> list[str]:
+        modules = original_selected_modules(
+            selected_config,
+            options,
+            ignore_missing_installed_modules=ignore_missing_installed_modules,
+        )
+        selected.extend(modules)
+        return modules
+
+    monkeypatch.setattr("godoo_cli.commands.runtime.shell.resolve_command_config", lambda **_kwargs: config)
+    monkeypatch.setattr("godoo_cli.runtime.odoo.preflight_for_config", preflight_for_config)
+    monkeypatch.setattr("godoo_cli.runtime.odoo._database_modules", lambda _config: {"config_only": False})
+    monkeypatch.setattr(odoo_runtime, "_selected_modules", record_selected_modules)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: SimpleNamespace(major=19, minor=0, raw="19.0"),
+    )
+    monkeypatch.setattr("godoo_cli.runtime.odoo.require_runtime_database_major", lambda _config: None)
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "venv"))
+
+    with (
+        patch("godoo_cli.commands.runtime.shell.require_cli_odoo_version"),
+        patch(
+            "godoo_cli.commands.runtime.shell.run_odoo_command",
+            return_value=SimpleNamespace(returncode=0),
+        ) as run_command,
+    ):
+        assert (
+            odoo_shell(
+                odoo_main_path=paths["odoo_main_path"],
+                odoo_conf_path=paths["odoo_conf_path"],
+                db_name="runtime",
+                db_user="odoo",
+                pipe_in_command="env['x']",
+            )
+            == 0
+        )
+
+    child_command = run_command.call_args.args[0]
+    assert child_command[child_command.index("--config") + 1] == str(paths["odoo_conf_path"].absolute())
+    assert "config_only" in selected
+    assert "stale_only" not in selected
+
+
 def test_shell_script_injects_arguments_and_uses_the_shared_shell_preflight(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -484,7 +572,7 @@ def test_shell_major_guard_uses_the_effective_cli_selected_database(
     monkeypatch.setattr("godoo_cli.runtime.odoo.preflight_for_config", preflight_for_config)
     monkeypatch.setattr(
         "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
-        lambda _path: SimpleNamespace(major=19),
+        lambda _path: SimpleNamespace(major=19, minor=0, raw="19.0"),
     )
     monkeypatch.setattr(
         "godoo_cli.runtime.odoo.classify_bootstrap_state",

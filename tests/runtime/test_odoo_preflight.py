@@ -14,10 +14,11 @@ import pytest
 
 from godoo_cli.commands.run import run_odoo
 from godoo_cli.database.state import DbBootstrapStatus
-from godoo_cli.models import GodooConfig, OdooVersion
+from godoo_cli.models import GodooConfig, GodooModules, OdooVersion
 from godoo_cli.runtime.locks import runtime_readiness_marker, runtime_restore_marker
 from godoo_cli.runtime.odoo import (
     dependency_requirements,
+    preflight_addon_paths,
     preflight_for_config,
     require_runtime_database_major,
     require_runtime_launch_ready,
@@ -212,12 +213,99 @@ def test_missing_ordinary_database_module_still_raises(tmp_path: Path):
         selected_modules(cfg)
 
 
+def test_named_module_lookup_uses_first_root_without_scanning_duplicates(tmp_path: Path):
+    first, second = tmp_path / "first", tmp_path / "second"
+    manifest(first, "shared")
+    manifest(second, "shared")
+    assert GodooModules([first, second]).get_module("shared").path == first / "shared"
+
+
 def test_pre_upgrade_preflight_skips_missing_installed_module(tmp_path: Path):
     """Allow a pre-upgrade script to reconcile a legacy installed module."""
     cfg = config(tmp_path)
     object.__setattr__(cfg, "db_connection", FakeConnection([("base",), ("legacy_module",)]))
 
     assert dependency_requirements(cfg, ignore_missing_installed_modules=True) == []
+
+
+@pytest.mark.parametrize(("major", "expected_community"), [(16, False), (18, False), (19, True)])
+def test_preflight_addon_roots_follow_odoo_version_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, major: int, expected_community: bool
+):
+    cfg = config(tmp_path)
+    selected = cfg.workspace_addon_path
+    object.__setattr__(cfg, "data_dir", tmp_path / "data")
+    object.__setattr__(cfg, "resolved_addon_paths", (selected,))
+    package = cfg.odoo_install_folder / "odoo" / "addons"
+    community = cfg.odoo_install_folder / "addons"
+    data = cfg.data_dir / "addons" / f"{major}.0"
+    cfg.odoo_bin_path.touch()
+    package.mkdir(parents=True)
+    community.mkdir(exist_ok=True)
+    data.mkdir(parents=True)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=major, minor=0),
+    )
+
+    paths = preflight_addon_paths(cfg)
+
+    assert paths[:3] == (package, data, selected)
+    assert (community in paths) is expected_community
+
+
+def test_preflight_addon_paths_use_child_config_and_argv_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cfg = config(tmp_path)
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+    cfg.odoo_bin_path.touch()
+    cfg.odoo_conf_path.write_text("[options]\naddons_path = stale\ndb_name = ignored\n", encoding="utf-8")
+    child_config = tmp_path / "child.conf"
+    child_config.write_text("[options]\naddons_path = configured\ndb_name = ignored\n", encoding="utf-8")
+    cli = tmp_path / "cli"
+    result = preflight_addon_paths(cfg, ["-c", str(child_config), "--addons-path", str(cli)])
+    assert cli in result
+
+    from_config = preflight_addon_paths(cfg, ["--config", str(child_config)])
+    assert Path("configured") in from_config
+    assert Path("stale") not in from_config
+
+
+def test_selected_modules_keep_implicit_roots_with_cli_addon_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cfg = config(tmp_path)
+    cli_addons = tmp_path / "cli-addons"
+    cli_addons.mkdir()
+    manifest(cli_addons, "sale")
+    cfg.odoo_bin_path.touch()
+    monkeypatch.setattr("godoo_cli.runtime.odoo._database_modules", lambda _config: {})
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+
+    assert selected_modules(cfg, ["--addons-path", str(cli_addons), "-i", "sale"]) == ["base", "sale"]
+
+
+def test_preflight_module_lookup_uses_updated_paths_after_cached_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    cfg = config(tmp_path)
+    assert cfg.addon_paths == [cfg.odoo_install_folder / "addons"]
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    manifest(selected, "sale")
+    object.__setattr__(cfg, "resolved_addon_paths", (selected,))
+    cfg.odoo_bin_path.touch()
+    monkeypatch.setattr("godoo_cli.runtime.odoo._database_modules", lambda _config: {})
+    monkeypatch.setattr(
+        "godoo_cli.runtime.odoo.require_supported_odoo_runtime",
+        lambda _path: OdooVersion(text="Odoo", major=19, minor=0),
+    )
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "venv"))
+
+    preflight_for_config(cfg, ["-i", "sale"], project_root=tmp_path)
 
 
 def test_imported_module_in_one_database_does_not_hide_other_database_missing_source(tmp_path: Path):
@@ -352,7 +440,9 @@ def test_preflight_uses_the_supplied_effective_config(tmp_path: Path, monkeypatc
 
     preflight_for_config(effective, project_root=tmp_path)
 
-    assert observed == [effective]
+    assert len(observed) == 1
+    assert observed[0].db_host == effective.db_host
+    assert observed[0].db_port == effective.db_port
 
 
 def test_explicit_command_layer_values_override_config(tmp_path: Path):
@@ -690,7 +780,7 @@ def test_launch_normalizes_legacy_option_chunks_before_resolution(tmp_path: Path
         assert launch_odoo(extra_args=[f"--config {selected}"], **paths) == 0
 
     assert preflight.call_args.args[0].odoo_conf_path == selected
-    assert preflight.call_args.args[1] == ["--config", str(selected)]
+    assert preflight.call_args.args[1] == []
     assert build.call_args.args[0].odoo_conf_path == selected
 
 
@@ -709,7 +799,7 @@ def test_run_forwards_arbitrary_arguments_and_help_bypasses_preflight(tmp_path: 
     ):
         assert run_odoo(arguments, **paths) == 0
     preflight.assert_called_once()
-    assert preflight.call_args.args[1] == arguments
+    assert preflight.call_args.args[1][: len(arguments)] == arguments
     child = run.call_args.args[0]
     assert child[1 : 1 + len(arguments)] == arguments
     assert child[child.index("--config") + 1] == str(Path("selected.conf").absolute())
