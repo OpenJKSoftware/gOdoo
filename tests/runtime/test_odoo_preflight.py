@@ -31,7 +31,7 @@ from godoo_cli.runtime.odoo import (
 @pytest.fixture(autouse=True)
 def skip_database_major_guard_for_dependency_preflight_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep dependency tests independent of a live configured Odoo database."""
-    monkeypatch.setattr("godoo_cli.runtime.odoo.require_runtime_database_major", lambda *_args: None)
+    monkeypatch.setattr("godoo_cli.runtime.odoo.require_runtime_database_major", lambda *_args, **_kwargs: None)
 
 
 class FakeCursor:
