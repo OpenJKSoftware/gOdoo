@@ -180,15 +180,16 @@ def test_update_all_uses_modules_installed_in_database_only(tmp_path: Path):
     assert selected_modules(cfg, ["-u", "all"]) == ["base", "sale"]
 
 
-def test_virtual_studio_module_does_not_require_an_addon_source(tmp_path: Path):
+def test_virtual_studio_module_does_not_require_an_addon_source(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """Guards Odoo's native virtual Studio module behavior."""
     cfg = config(tmp_path)
     object.__setattr__(cfg, "db_connection", FakeConnection([("base",), ("studio_customization",)]))
 
     assert selected_modules(cfg, ["-u", "studio_customization"]) == ["base"]
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
-def test_imported_database_module_without_source_is_skipped(tmp_path: Path):
+def test_imported_database_module_without_source_is_skipped(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """Guards Odoo 19 imported modules without an addon manifest."""
     cfg = config(tmp_path)
     object.__setattr__(
@@ -202,15 +203,17 @@ def test_imported_database_module_without_source_is_skipped(tmp_path: Path):
     )
 
     assert selected_modules(cfg) == ["base"]
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
-def test_missing_ordinary_database_module_still_raises(tmp_path: Path):
+def test_missing_ordinary_database_module_still_raises(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """Guards missing installed addon sources remain preflight errors."""
     cfg = config(tmp_path)
     object.__setattr__(cfg, "db_connection", FakeConnection([("base",), ("missing_module",)]))
 
     with pytest.raises(ModuleNotFoundError, match="missing_module"):
         selected_modules(cfg)
+    assert "Module 'missing_module' not found in addon-paths" in caplog.text
 
 
 def test_named_module_lookup_uses_first_root_without_scanning_duplicates(tmp_path: Path):
@@ -220,12 +223,13 @@ def test_named_module_lookup_uses_first_root_without_scanning_duplicates(tmp_pat
     assert GodooModules([first, second]).get_module("shared").path == first / "shared"
 
 
-def test_pre_upgrade_preflight_skips_missing_installed_module(tmp_path: Path):
+def test_pre_upgrade_preflight_skips_missing_installed_module(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """Allow a pre-upgrade script to reconcile a legacy installed module."""
     cfg = config(tmp_path)
     object.__setattr__(cfg, "db_connection", FakeConnection([("base",), ("legacy_module",)]))
 
     assert dependency_requirements(cfg, ignore_missing_installed_modules=True) == []
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
 @pytest.mark.parametrize(("major", "expected_community"), [(16, False), (18, False), (19, True)])

@@ -122,7 +122,7 @@ class GodooModules:
                     NO_MODULE_PATHS.add(addon_folder_child)
                     continue
 
-    def get_module(self, name: str) -> GodooModule | None:
+    def get_module(self, name: str, *, log_missing: bool = True) -> GodooModule | None:
         """Return one named module, including Odoo's built-in addons."""
         if mod := self.godoo_modules.get(name):
             return mod
@@ -134,7 +134,8 @@ class GodooModules:
             self.godoo_modules[name] = mod
             return mod
         msg = f"Module '{name}' not found in addon-paths"
-        LOGGER.error(msg)
+        if log_missing:
+            LOGGER.error(msg)
         raise ModuleNotFoundError(msg)
 
     def get_module_dependencies(
