@@ -623,8 +623,13 @@ def _selected_modules(
     resolution_started_at = time.monotonic()
     modules = []
     for name in dict.fromkeys(requested):
+        expected_missing = (
+            name == "studio_customization"
+            or database_modules.get(name, False)
+            or (ignore_missing_installed_modules and name in database_modules and name != "base")
+        )
         try:
-            module = registry.get_module(name)
+            module = registry.get_module(name, log_missing=not expected_missing)
         except ModuleNotFoundError:
             if name == "studio_customization" or database_modules.get(name, False):
                 continue
