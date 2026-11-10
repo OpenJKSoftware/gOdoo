@@ -12,10 +12,13 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ..models import GodooConfig
 from .odoo import build_odoo_shell_command, run_odoo_command
+
+if TYPE_CHECKING:
+    from odoo.api import Environment
 
 LOGGER = logging.getLogger(__name__)
 
@@ -71,7 +74,9 @@ class ModuleSelections:
 
 
 @dataclass
-class _PrepareContext:
+class PrepareContext:
+    """Preparation callback context for environment and additive module requests."""
+
     environment: str | None
     _update: list[str] = field(default_factory=list)
     _install: list[str] = field(default_factory=list)
@@ -83,8 +88,10 @@ class _PrepareContext:
 
 
 @dataclass(frozen=True)
-class _DatabaseContext:
-    env: Any
+class DatabaseContext:
+    """Database callback context with the Odoo environment and lifecycle outcome."""
+
+    env: Environment
     environment: str | None
     outcome: str
 
@@ -132,7 +139,7 @@ def run_prepare_hooks(
     hooks: Iterable[HookDefinition], environment: str | None, *, once: bool = False
 ) -> ModuleSelections:
     """Run eligible preparation hooks and collect their module requests."""
-    context = _PrepareContext(environment=environment)
+    context = PrepareContext(environment=environment)
     for definition in hooks:
         if definition.hook.once != once:
             continue
@@ -220,7 +227,7 @@ def _run_database_hook_batch(shell_env: Any, sources: Sequence[str], *, outcome:
     registry = shell_env.registry
     for definition in definitions:
         with registry.cursor() as cursor:
-            context = _DatabaseContext(
+            context = DatabaseContext(
                 env=Environment(cursor, shell_env.uid, dict(shell_env.context)),
                 environment=environment,
                 outcome=outcome,
@@ -260,7 +267,7 @@ def _run_database_hook_batch(shell_env: Any, sources: Sequence[str], *, outcome:
                 raise
 
 
-def _run_prepare_hook(definition: HookDefinition, context: _PrepareContext) -> None:
+def _run_prepare_hook(definition: HookDefinition, context: PrepareContext) -> None:
     try:
         if definition.needs_run is not None:
             decision = definition.needs_run(context)

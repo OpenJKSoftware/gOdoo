@@ -60,19 +60,20 @@ Environment is a deployment input, never inferred from database contents.
 
 ```python
 # hooks/10_modules.py
-from godoo_cli.runtime.hooks import Hook
+from godoo_cli.runtime.hooks import Hook, PrepareContext
 
 HOOK = Hook(id="project.modules", phase="prepare")
 
 
-def run(ctx):
+def run(ctx: PrepareContext) -> None:
     # Merge with CLI/environment requests; names deduplicate in first-seen order.
     ctx.request_modules(update=["project_base"], install=["helpdesk"])
 ```
 
-Preparation runs without starting Odoo. Its context exposes `environment` and
-`request_modules(update=..., install=...)`, with no `env`. Pass module names as sequences of strings. Requests combine
-with CLI and environment selections before dependency preflight and native reconciliation.
+Import `PrepareContext` to annotate preparation callbacks without defining a project-local protocol. Preparation runs
+without starting Odoo. Its context exposes `environment` and `request_modules(update=..., install=...)`, with no `env`.
+Pass module names as sequences of strings. Requests combine with CLI and environment selections before dependency
+preflight and native reconciliation.
 
 `install=[...]` in a recurring hook requests installation on each initialization. Modules already installed or queued
 for upgrade are skipped; other requested modules are passed to Odoo for installation. A module uninstalled later is
@@ -84,12 +85,12 @@ A one-time preparation hook requests modules until reconciliation succeeds and e
 
 ```python
 # hooks/11_install_feature.py
-from godoo_cli.runtime.hooks import Hook
+from godoo_cli.runtime.hooks import Hook, PrepareContext
 
 HOOK = Hook(id="project.install_feature", phase="prepare", once=True)
 
 
-def run(ctx):
+def run(ctx: PrepareContext) -> None:
     ctx.request_modules(install=["helpdesk"])
 ```
 
@@ -107,7 +108,7 @@ completion record are separate transactions, so an interruption after native wor
 
 ```python
 # hooks/90_neutralize.py
-from godoo_cli.runtime.hooks import Hook
+from godoo_cli.runtime.hooks import DatabaseContext, Hook
 
 HOOK = Hook(
     id="project.neutralize",
@@ -117,21 +118,24 @@ HOOK = Hook(
 )
 
 
-def needs_run(ctx):
+def needs_run(ctx: DatabaseContext) -> bool:
     # Observe durable database state rather than remembering a previous attempt.
     return not bool(ctx.env["ir.config_parameter"].sudo().get_param("database.is_neutralized"))
 
 
-def run(ctx):
+def run(ctx: DatabaseContext) -> None:
     # Odoo is available only inside a database callback.
     from odoo.modules.neutralize import neutralize_database
 
     neutralize_database(ctx.env.cr)
 ```
 
-Database contexts expose `ctx.env`, `ctx.environment`, and the original `ctx.outcome`. They cannot request modules, read
-lifecycle markers as an API, rebuild the registry, or perform immediate module installs/updates. Module loading belongs
-in native reconciliation.
+`DatabaseContext.env` is typed as `odoo.api.Environment`. Make the selected Odoo source available to your type checker
+for completion and method checks. The type-only import keeps `DatabaseContext` safe to import without Odoo installed.
+`environment` is `str | None`, and `outcome` is `str` (`ready`, `bootstrapped`, or `restored`). Database contexts expose
+`ctx.env`, `ctx.environment`, and the original `ctx.outcome`. They cannot request modules, read lifecycle markers as an
+API, rebuild the registry, or perform immediate module installs/updates. Module loading belongs in native
+reconciliation.
 
 An eligible `after_restore` database hook conflicts with selected native pre-upgrade scripts because it would open the
 registry first. `--update-changed` requires database hooks to use `after_reconcile`; it rejects eligible `after_restore`
