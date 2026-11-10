@@ -12,10 +12,13 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ..models import GodooConfig
 from .odoo import build_odoo_shell_command, run_odoo_command
+
+if TYPE_CHECKING:
+    from odoo.api import Environment
 
 LOGGER = logging.getLogger(__name__)
 
@@ -88,7 +91,7 @@ class PrepareContext:
 class DatabaseContext:
     """Database callback context with the Odoo environment and lifecycle outcome."""
 
-    env: Any
+    env: Environment
     environment: str | None
     outcome: str
 

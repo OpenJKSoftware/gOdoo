@@ -130,11 +130,12 @@ def run(ctx: DatabaseContext) -> None:
     neutralize_database(ctx.env.cr)
 ```
 
-`DatabaseContext` is also safe to import without Odoo installed; `env` is typed as `Any` because Odoo is supplied by the
-runtime. `environment` is `str | None`, and `outcome` is `str` (`ready`, `bootstrapped`, or `restored`). Database
-contexts expose `ctx.env`, `ctx.environment`, and the original `ctx.outcome`. They cannot request modules, read
-lifecycle markers as an API, rebuild the registry, or perform immediate module installs/updates. Module loading belongs
-in native reconciliation.
+`DatabaseContext.env` is typed as `odoo.api.Environment`. Make the selected Odoo source available to your type checker
+for completion and method checks. The type-only import keeps `DatabaseContext` safe to import without Odoo installed.
+`environment` is `str | None`, and `outcome` is `str` (`ready`, `bootstrapped`, or `restored`). Database contexts expose
+`ctx.env`, `ctx.environment`, and the original `ctx.outcome`. They cannot request modules, read lifecycle markers as an
+API, rebuild the registry, or perform immediate module installs/updates. Module loading belongs in native
+reconciliation.
 
 An eligible `after_restore` database hook conflicts with selected native pre-upgrade scripts because it would open the
 registry first. `--update-changed` requires database hooks to use `after_reconcile`; it rejects eligible `after_restore`
