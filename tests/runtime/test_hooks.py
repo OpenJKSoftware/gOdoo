@@ -49,8 +49,11 @@ def test_prepare_hooks_merge_requests_and_never_expose_env(tmp_path: Path) -> No
     source = tmp_path / "hooks" / "prepare.py"
     _hook(
         source,
+        "from godoo_cli.runtime.hooks import PrepareContext\n"
         "HOOK = Hook(id='prepare', phase='prepare')\n"
-        "def run(ctx):\n"
+        "def run(ctx: PrepareContext) -> None:\n"
+        "    assert isinstance(ctx, PrepareContext)\n"
+        "    assert ctx.environment == 'development'\n"
         "    assert not hasattr(ctx, 'env')\n"
         "    ctx.request_modules(update=['sale', 'stock', 'sale'], install=['web', 'web'])\n",
     )
@@ -125,8 +128,12 @@ def test_database_batch_uses_fresh_cursor_and_rolls_back_skips(tmp_path: Path, m
     _hook(
         source,
         "import builtins\n"
+        "from godoo_cli.runtime.hooks import DatabaseContext\n"
         "HOOK = Hook(id='skip', phase='after_reconcile')\n"
-        "def needs_run(ctx):\n"
+        "def needs_run(ctx: DatabaseContext) -> bool:\n"
+        "    assert isinstance(ctx, DatabaseContext)\n"
+        "    assert ctx.environment is None\n"
+        "    assert ctx.outcome == 'restored'\n"
         "    builtins.hook_events.append(('needs', ctx.env.cr.number))\n"
         "    return False\n"
         "def run(ctx): raise AssertionError('skip must not run')\n",
